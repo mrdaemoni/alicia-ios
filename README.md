@@ -52,12 +52,14 @@ port **8766**, reachable over home Wi-Fi or Tailscale):
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| `stream` | `POST /api/chat` | SSE `{"t": token}` events; shares one conversation with Telegram |
+| `stream` | `POST /api/chat` | SSE `{"t": token}` events; shares one conversation with Telegram; `{"voice": true}` adds a TTS voice-note event; final event carries a `message_id` for reactions |
+| `react` | `POST /api/react` | long-press an Alicia bubble → emoji; feeds her reaction→archetype learning loop (same as Telegram reactions) |
+| `proactive` | `GET /api/proactive` | her recent proactive sends — seeds the Talk timeline and drives background-refresh local notifications |
 | `thoughts` | `GET /api/thoughts` | emergence season + diary days |
 | `tracks` | `GET /api/tracks` | podcast episodes; wavs served with Range support for AVPlayer |
 | `gallery` | `GET /api/gallery` | her real drawings (`imageURL` → `AsyncImage`) |
 | `health` | `GET /api/health` | backend vitals mapped to 0…1 gauges |
-| `complement` | `POST /api/complement` | she draws a reply to your canvas piece |
+| `complement` | `POST /api/complement` | she draws a reply to your canvas piece — the canvas PNG is uploaded so she sees what you drew |
 
 **To connect:** copy `Alicia/Secrets.example.plist` → `Alicia/Secrets.plist`
 (gitignored) and fill in `BaseURL` (Mac's Tailscale IP or LAN hostname, port
@@ -76,7 +78,10 @@ The scaffold is native-only so it runs immediately. When you want more, add thes
 ## Notes
 
 - Forces dark mode for the cosmic look (`.preferredColorScheme(.dark)` in `AliciaApp`). Remove that line to follow the system.
-- Audio playback is **real** (AVPlayer) for backend tracks; the simulated ticker remains as the fallback for mock/sample tracks without a URL.
+- Audio playback is **real** (AVPlayer) for backend tracks; the simulated ticker remains as the fallback for mock/sample tracks without a URL. Voice notes use a separate player so they never steal a podcast position.
+- Bubbles render **markdown** natively (`AttributedString(markdown:)`) — no dependencies.
+- **Pull-to-refresh** on every tab; the app also refetches on return to foreground.
+- **Notifications**: a `BGAppRefreshTask` polls `/api/proactive` and posts local notifications for her new proactive messages (no APNs / paid account needed; iOS chooses the polling cadence).
 - ATS: `Info.plist` allows plain-HTTP loads because the backend speaks http on a private network (tailnet/LAN) only.
 - SF Symbol names are placeholders for artwork/metrics — swap freely.
 - Built and reviewed for iOS 17 / Swift 5.9 / Xcode 16 with default concurrency settings. If you enable strict/Swift 6 concurrency, the `@State` store initializer in `AliciaApp` may need a small adjustment.

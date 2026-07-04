@@ -14,6 +14,19 @@ struct TalkView: View {
             .sectionBackground()
             .navigationTitle("Talk")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        store.voiceReplies.toggle()
+                    } label: {
+                        Image(systemName: store.voiceReplies
+                              ? "speaker.wave.2.fill" : "speaker.slash")
+                            .symbolEffect(.bounce, value: store.voiceReplies)
+                    }
+                    .accessibilityLabel(store.voiceReplies
+                                        ? "Voice replies on" : "Voice replies off")
+                }
+            }
         }
     }
 
@@ -29,6 +42,7 @@ struct TalkView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+            .refreshable { await store.load() }
             .onChange(of: store.messages.last?.text) {
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo(store.messages.last?.id, anchor: .bottom)
@@ -67,29 +81,86 @@ struct TalkView: View {
 }
 
 struct MessageBubble: View {
+    @Environment(AppStore.self) private var store
     let message: Message
     private var isMe: Bool { message.sender == .me }
+
+    /// Emoji palette mirroring what her reaction loop scores on Telegram.
+    private static let reactions = ["❤️", "🔥", "🧠", "👍", "🤔", "👎"]
+
+    /// Markdown-rendered body (falls back to plain text on parse failure).
+    private var rendered: AttributedString {
+        (try? AttributedString(
+            markdown: message.text,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+        ?? AttributedString(message.text)
+    }
 
     var body: some View {
         HStack {
             if isMe { Spacer(minLength: 40) }
-            Text(message.text.isEmpty ? "…" : message.text)
+            VStack(alignment: isMe ? .trailing : .leading, spacing: 4) {
+                if let label = message.proactiveLabel, !label.isEmpty {
+                    Label(label, systemImage: "sparkles")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.accentSoft)
+                }
+                bubble
+            }
+            if !isMe { Spacer(minLength: 40) }
+        }
+    }
+
+    private var bubble: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            Text(message.text.isEmpty ? AttributedString("…") : rendered)
                 .foregroundStyle(isMe ? .white : .primary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background {
-                    if isMe {
-                        Theme.accentGradient
-                    } else {
-                        Theme.card
+
+            if let voiceURL = message.voiceURL {
+                Button {
+                    store.playVoiceNote(voiceURL)
+                } label: {
+                    Image(systemName: "play.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(Theme.accentSoft)
+                }
+                .accessibilityLabel("Play voice note")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background {
+            if isMe {
+                Theme.accentGradient
+            } else {
+                Theme.card
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(isMe ? .clear : Theme.stroke)
+        )
+        .overlay(alignment: isMe ? .bottomLeading : .bottomTrailing) {
+            if let reaction = message.reaction {
+                Text(reaction)
+                    .font(.footnote)
+                    .padding(5)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .offset(x: isMe ? -10 : 10, y: 12)
+            }
+        }
+        .contextMenu {
+            // React to her replies only — reactions are her learning signal.
+            if !isMe, message.messageID != nil {
+                ForEach(Self.reactions, id: \.self) { emoji in
+                    Button {
+                        store.react(to: message, with: emoji)
+                    } label: {
+                        Text(emoji)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(isMe ? .clear : Theme.stroke)
-                )
-            if !isMe { Spacer(minLength: 40) }
+            }
         }
     }
 }

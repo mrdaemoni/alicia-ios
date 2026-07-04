@@ -16,6 +16,7 @@ struct MindView: View {
                 }
                 .padding(16)
             }
+            .refreshable { await store.load() }
             .sectionBackground()
             .navigationTitle("Alicia")
         }

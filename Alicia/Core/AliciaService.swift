@@ -4,26 +4,33 @@ import Foundation
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
-    /// Streams a reply token-by-token, mirroring an LLM/SSE endpoint.
-    func stream(_ prompt: String) -> AsyncStream<String>
+    /// Streams a reply as events: tokens, an optional voice-note URL, and a
+    /// final `.done` carrying the backend message id (for reactions).
+    func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent>
     func thoughts() async -> [Thought]
     func tracks() async -> [Track]
     func gallery() async -> [Artwork]
     func health() async -> [HealthMetric]
-    /// Ask Alicia to respond to a drawing you made.
-    func complement(_ title: String) async -> Artwork
+    /// Messages Alicia sent proactively (her own initiative) — newest first.
+    func proactive(limit: Int) async -> [ProactiveMessage]
+    /// React to one of her replies with an emoji. Feeds her learning loops.
+    func react(messageID: Int, emoji: String) async
+    /// Ask Alicia to respond to a drawing you made. `imageData` is the
+    /// canvas as PNG so she can see what you actually drew.
+    func complement(_ title: String, imageData: Data?) async -> Artwork
 }
 
 /// In-memory stand-in so the app runs with zero backend.
 struct MockAliciaService: AliciaService {
-    func stream(_ prompt: String) -> AsyncStream<String> {
+    func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
         let reply = SampleData.reply(to: prompt)
         return AsyncStream { continuation in
             Task {
                 for word in reply.split(separator: " ", omittingEmptySubsequences: false) {
                     try? await Task.sleep(for: .milliseconds(45))
-                    continuation.yield(String(word) + " ")
+                    continuation.yield(.token(String(word) + " "))
                 }
+                continuation.yield(.done(messageID: nil))
                 continuation.finish()
             }
         }
@@ -33,8 +40,10 @@ struct MockAliciaService: AliciaService {
     func tracks() async -> [Track] { SampleData.tracks }
     func gallery() async -> [Artwork] { SampleData.gallery }
     func health() async -> [HealthMetric] { SampleData.health }
+    func proactive(limit: Int) async -> [ProactiveMessage] { [] }
+    func react(messageID: Int, emoji: String) async {}
 
-    func complement(_ title: String) async -> Artwork {
+    func complement(_ title: String, imageData: Data?) async -> Artwork {
         try? await Task.sleep(for: .milliseconds(700))
         return Artwork(title: "Reply to \"\(title)\"",
                        note: "Alicia's response to your sketch",

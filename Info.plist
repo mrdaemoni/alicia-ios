@@ -12,5 +12,17 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Alicia connects to her backend on your Mac Mini over your home network or tailnet.</string>
+	<!-- Background refresh polls her proactive-message feed and posts local
+	     notifications; audio keeps a podcast playing when the app is
+	     backgrounded. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.alicia.app.refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>audio</string>
+	</array>
 </dict>
 </plist>

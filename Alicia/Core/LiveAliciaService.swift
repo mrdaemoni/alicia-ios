@@ -21,7 +21,9 @@ struct LiveAliciaService: AliciaService {
     // MARK: request plumbing
 
     private func request(_ path: String, method: String = "GET", body: Data? = nil) -> URLRequest {
-        var req = URLRequest(url: baseURL.appending(path: path))
+        // URL(string:relativeTo:) keeps query strings intact —
+        // appending(path:) would percent-encode the "?".
+        var req = URLRequest(url: URL(string: path, relativeTo: baseURL) ?? baseURL)
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let body {
@@ -64,31 +66,43 @@ struct LiveAliciaService: AliciaService {
 
     // MARK: chat (SSE)
 
-    func stream(_ prompt: String) -> AsyncStream<String> {
+    func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in
             let task = Task {
                 do {
-                    let body = try JSONEncoder().encode(["text": prompt])
+                    let body = try JSONSerialization.data(
+                        withJSONObject: ["text": prompt, "voice": voice])
                     let (bytes, resp) = try await URLSession.shared.bytes(
                         for: request("/api/chat", method: "POST", body: body))
                     guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-                        continuation.yield("(Alicia is unreachable right now — check the backend and your connection.)")
+                        continuation.yield(.token("(Alicia is unreachable right now — check the backend and your connection.)"))
+                        continuation.yield(.done(messageID: nil))
                         continuation.finish()
                         return
                     }
+                    var finished = false
                     for try await line in bytes.lines {
                         guard line.hasPrefix("data: "),
                               let data = line.dropFirst(6).data(using: .utf8),
-                              let event = try? JSONDecoder().decode(ChatEvent.self, from: data)
+                              let event = try? JSONDecoder().decode(WireEvent.self, from: data)
                         else { continue }
-                        if let t = event.t { continuation.yield(t) }
-                        if let err = event.error, !err.isEmpty {
-                            continuation.yield("\n(connection hiccup: \(err))")
+                        if let t = event.t { continuation.yield(.token(t)) }
+                        if let v = event.voice, let url = mediaURL(v) {
+                            continuation.yield(.voice(url))
                         }
-                        if event.done == true { break }
+                        if let err = event.error, !err.isEmpty {
+                            continuation.yield(.token("\n(connection hiccup: \(err))"))
+                        }
+                        if event.done == true {
+                            continuation.yield(.done(messageID: event.message_id))
+                            finished = true
+                            break
+                        }
                     }
+                    if !finished { continuation.yield(.done(messageID: nil)) }
                 } catch {
-                    continuation.yield("(Alicia is unreachable right now — check the backend and your connection.)")
+                    continuation.yield(.token("(Alicia is unreachable right now — check the backend and your connection.)"))
+                    continuation.yield(.done(messageID: nil))
                 }
                 continuation.finish()
             }
@@ -96,10 +110,33 @@ struct LiveAliciaService: AliciaService {
         }
     }
 
-    private struct ChatEvent: Decodable {
+    private struct WireEvent: Decodable {
         var t: String?
+        var voice: String?
         var done: Bool?
+        var message_id: Int?
         var error: String?
+    }
+
+    // MARK: reactions + proactive feed
+
+    func react(messageID: Int, emoji: String) async {
+        guard let body = try? JSONSerialization.data(
+            withJSONObject: ["message_id": messageID, "emoji": emoji]) else { return }
+        _ = try? await URLSession.shared.data(
+            for: request("/api/react", method: "POST", body: body))
+    }
+
+    private struct ProactiveDTO: Decodable {
+        var id, date, text, kind, archetype: String
+    }
+
+    func proactive(limit: Int) async -> [ProactiveMessage] {
+        await fetch("/api/proactive?limit=\(limit)", as: [ProactiveDTO].self).map {
+            ProactiveMessage(id: $0.id, text: $0.text, kind: $0.kind,
+                             archetype: $0.archetype,
+                             date: Self.parseDate($0.date))
+        }
     }
 
     // MARK: tab data
@@ -156,11 +193,16 @@ struct LiveAliciaService: AliciaService {
 
     // MARK: complement
 
-    func complement(_ title: String) async -> Artwork {
+    func complement(_ title: String, imageData: Data?) async -> Artwork {
         do {
-            let body = try JSONEncoder().encode(["title": title])
-            let (data, resp) = try await URLSession.shared.data(
-                for: request("/api/complement", method: "POST", body: body))
+            var payload: [String: Any] = ["title": title]
+            if let imageData {
+                payload["image"] = imageData.base64EncodedString()
+            }
+            let body = try JSONSerialization.data(withJSONObject: payload)
+            var req = request("/api/complement", method: "POST", body: body)
+            req.timeoutInterval = 120   // vision pass + render take a while
+            let (data, resp) = try await URLSession.shared.data(for: req)
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
                 throw URLError(.badServerResponse)
             }

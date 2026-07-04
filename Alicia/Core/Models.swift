@@ -6,6 +6,32 @@ struct Message: Identifiable, Hashable {
     var sender: Sender
     var text: String
     var date: Date = .now
+    /// Backend id for reacting to this reply (negative ints, iOS-minted).
+    var messageID: Int? = nil
+    /// Emoji the user reacted with (shown as a badge on the bubble).
+    var reaction: String? = nil
+    /// TTS voice note of this reply, when voice replies are on.
+    var voiceURL: URL? = nil
+    /// Non-nil for proactive messages pulled from her circulation feed
+    /// (e.g. "morning · ariadne") — rendered as a small caption.
+    var proactiveLabel: String? = nil
+}
+
+/// One event in a streamed chat reply.
+enum ChatEvent {
+    case token(String)
+    case voice(URL)
+    case done(messageID: Int?)
+}
+
+/// A proactive message Alicia sent on her own initiative (from the
+/// backend's circulation feed).
+struct ProactiveMessage: Identifiable, Hashable {
+    let id: String
+    var text: String
+    var kind: String
+    var archetype: String
+    var date: Date
 }
 
 /// One of Alicia's introspective notes — what she is thinking / working on.

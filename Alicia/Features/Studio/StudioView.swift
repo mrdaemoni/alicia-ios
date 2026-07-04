@@ -22,6 +22,7 @@ struct StudioView: View {
                 }
                 if store.nowPlaying != nil { PlayerBar() }
             }
+            .refreshable { await store.load() }
             .sectionBackground()
             .navigationTitle("Studio")
         }

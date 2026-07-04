@@ -18,6 +18,7 @@ struct HealthView: View {
                 }
                 .padding(16)
             }
+            .refreshable { await store.load() }
             .sectionBackground()
             .navigationTitle("Health")
         }

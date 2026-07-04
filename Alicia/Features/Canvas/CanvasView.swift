@@ -7,6 +7,7 @@ struct CanvasView: View {
     @Environment(AppStore.self) private var store
     @State private var mode: Mode = .draw
     @State private var drawing = PKDrawing()
+    @State private var toolsVisible = true
 
     var body: some View {
         NavigationStack {
@@ -25,12 +26,24 @@ struct CanvasView: View {
             .sectionBackground()
             .navigationTitle("Canvas")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if mode == .draw {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            withAnimation { toolsVisible.toggle() }
+                        } label: {
+                            Image(systemName: toolsVisible ? "pencil.slash" : "pencil.and.outline")
+                        }
+                        .accessibilityLabel(toolsVisible ? "Hide drawing tools" : "Show drawing tools")
+                    }
+                }
+            }
         }
     }
 
     private var drawSurface: some View {
         VStack(spacing: 14) {
-            PencilCanvas(drawing: $drawing, isActive: mode == .draw)
+            PencilCanvas(drawing: $drawing, isActive: mode == .draw && toolsVisible)
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.stroke))
                 .padding(.horizontal, 16)
@@ -45,7 +58,11 @@ struct CanvasView: View {
                         .background(Theme.card, in: Capsule())
                 }
                 Button {
-                    store.requestComplement(for: "Sketch")
+                    // Ship the actual canvas so she sees what was drawn.
+                    let png = drawing.bounds.isEmpty
+                        ? nil
+                        : drawing.image(from: drawing.bounds, scale: 2).pngData()
+                    store.requestComplement(for: "Sketch", image: png)
                     mode = .gallery
                 } label: {
                     Label("Ask Alicia to reply", systemImage: "sparkles")
@@ -57,7 +74,9 @@ struct CanvasView: View {
             }
             .font(.subheadline.weight(.semibold))
             .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            // The docked tool picker rises slightly above the tab bar; keep the
+            // action buttons clear of it while the tools are up.
+            .padding(.bottom, toolsVisible ? 32 : 8)
         }
     }
 
@@ -69,6 +88,7 @@ struct CanvasView: View {
             }
             .padding(16)
         }
+        .refreshable { await store.load() }
     }
 }
 

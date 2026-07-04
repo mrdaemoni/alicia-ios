@@ -25,15 +25,40 @@ final class AppStore {
         Task { await load() }
     }
 
+    /// True once the sample seed has been replaced by her real proactive
+    /// feed — never clobber a conversation in progress on refresh.
+    private var liveTimelineSeeded = false
+
     func load() async {
         async let t = service.thoughts()
         async let tr = service.tracks()
         async let g = service.gallery()
         async let h = service.health()
+        async let p = service.proactive(limit: 6)
         (thoughts, tracks, gallery, health) = await (t, tr, g, h)
+        let pro = await p
+        if !pro.isEmpty {
+            ProactiveNotifier.markSeen(pro)
+            if !liveTimelineSeeded {
+                // Open on what she's actually been saying, oldest first.
+                liveTimelineSeeded = true
+                messages = pro.reversed().map { m in
+                    Message(sender: .alicia, text: m.text, date: m.date,
+                            proactiveLabel: [m.kind.replacingOccurrences(of: "_", with: " "),
+                                             m.archetype]
+                                .filter { !$0.isEmpty }
+                                .joined(separator: " · "))
+                }
+            }
+        }
     }
 
     // MARK: Talk
+    /// Whether Alicia's replies also arrive as voice notes.
+    var voiceReplies = UserDefaults.standard.bool(forKey: "alicia.voiceReplies") {
+        didSet { UserDefaults.standard.set(voiceReplies, forKey: "alicia.voiceReplies") }
+    }
+
     func send(_ text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
@@ -41,10 +66,35 @@ final class AppStore {
         let idx = messages.count
         messages.append(Message(sender: .alicia, text: ""))
         Task {
-            for await token in service.stream(clean) {
-                if messages.indices.contains(idx) { messages[idx].text += token }
+            for await event in service.stream(clean, voice: voiceReplies) {
+                guard messages.indices.contains(idx) else { break }
+                switch event {
+                case .token(let t):   messages[idx].text += t
+                case .voice(let url): messages[idx].voiceURL = url
+                case .done(let mid):  messages[idx].messageID = mid
+                }
             }
         }
+    }
+
+    /// React to one of Alicia's replies. Optimistic UI; the backend feeds
+    /// it into her reaction→archetype learning loop.
+    func react(to message: Message, with emoji: String) {
+        guard let i = messages.firstIndex(where: { $0.id == message.id }) else { return }
+        messages[i].reaction = emoji
+        guard let mid = message.messageID else { return }
+        Task { await service.react(messageID: mid, emoji: emoji) }
+    }
+
+    // Voice-note playback (separate from the Studio player so a voice note
+    // never interrupts a podcast position).
+    private var voicePlayer: AVPlayer?
+
+    func playVoiceNote(_ url: URL) {
+        try? AVAudioSession.sharedInstance().setCategory(.playback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        voicePlayer = AVPlayer(url: url)
+        voicePlayer?.play()
     }
 
     // MARK: Studio player
@@ -137,9 +187,11 @@ final class AppStore {
     }
 
     // MARK: Canvas
-    func requestComplement(for title: String) {
+    /// `image` is the canvas as PNG — when present, Alicia sees what was
+    /// actually drawn (vision pass on the backend) before replying.
+    func requestComplement(for title: String, image: Data? = nil) {
         Task {
-            let art = await service.complement(title)
+            let art = await service.complement(title, imageData: image)
             gallery.insert(art, at: 0)
         }
     }
