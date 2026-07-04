@@ -30,6 +30,9 @@ protocol AliciaService {
     /// Home-screen greeting grounded in the live conversation; nil offline
     /// (the view falls back to a time-of-day line).
     func greeting() async -> String?
+    /// Reply to one of her proactive messages. Lands as Tier-3 capture +
+    /// shared history + memory on the backend; returns her answer.
+    func reply(proactiveID: String, text: String) async -> String?
 }
 
 /// In-memory stand-in so the app runs with zero backend.
@@ -68,4 +71,8 @@ struct MockAliciaService: AliciaService {
     func modeState() async -> (mode: String, words: Int) { ("idle", 0) }
     func modeAction(_ action: String, topic: String) async -> String? { nil }
     func greeting() async -> String? { nil }
+    func reply(proactiveID: String, text: String) async -> String? {
+        try? await Task.sleep(for: .milliseconds(600))
+        return "I hear you — say more when you're ready."
+    }
 }

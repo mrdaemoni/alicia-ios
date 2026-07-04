@@ -216,6 +216,20 @@ struct LiveAliciaService: AliciaService {
         } catch { return nil }
     }
 
+    private struct ReplyDTO: Decodable { var ok: Bool; var response: String? }
+
+    func reply(proactiveID: String, text: String) async -> String? {
+        do {
+            let body = try JSONSerialization.data(
+                withJSONObject: ["proactive_id": proactiveID, "text": text])
+            let (data, resp) = try await URLSession.shared.data(
+                for: request("/api/reply", method: "POST", body: body))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            let r = try JSONDecoder().decode(ReplyDTO.self, from: data)
+            return r.ok ? r.response : nil
+        } catch { return nil }
+    }
+
     private struct GreetingDTO: Decodable { var greeting: String }
 
     func greeting() async -> String? {

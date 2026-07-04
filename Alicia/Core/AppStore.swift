@@ -45,6 +45,7 @@ final class AppStore {
         greeting = await gr ?? greeting
         let pro = await p
         if !pro.isEmpty {
+            proactiveFeed = pro
             ProactiveNotifier.markSeen(pro)
             if !liveTimelineSeeded {
                 // Open on what she's actually been saying, oldest first.
@@ -72,6 +73,10 @@ final class AppStore {
     var walkWords = 0
     /// Live greeting for the Us page (nil → time-of-day fallback).
     var greeting: String?
+    /// Her recent proactive messages — Us reply card + Alicia-tab detail.
+    var proactiveFeed: [ProactiveMessage] = []
+    /// Programmatic tab switching (Dialogue chips → Alicia tab).
+    var selectedSection: AppSection = .us
     var isWalking: Bool { thinkingMode == "walk" }
 
     /// Start or end a walk. Her acknowledgment lands in the timeline.
@@ -123,6 +128,27 @@ final class AppStore {
         } else if let pid = message.proactiveID {
             Task { await service.react(proactiveID: pid, emoji: emoji) }
         }
+    }
+
+    /// React to a proactive message directly by id (Alicia-tab cards that
+    /// may not have a timeline twin).
+    func reactToProactive(id: String, emoji: String) {
+        if let i = messages.firstIndex(where: { $0.proactiveID == id }) {
+            messages[i].reaction = emoji
+        }
+        Task { await service.react(proactiveID: id, emoji: emoji) }
+    }
+
+    /// Reply to a proactive message from the Us page. The backend lands it
+    /// in every layer (Tier-3 capture, shared history, memory) and answers;
+    /// the exchange also joins the Dialogue timeline.
+    func replyToProactive(_ proactive: ProactiveMessage, text: String) async -> String? {
+        let reply = await service.reply(proactiveID: proactive.id, text: text)
+        messages.append(Message(sender: .me, text: text))
+        if let reply, !reply.isEmpty {
+            messages.append(Message(sender: .alicia, text: reply))
+        }
+        return reply
     }
 
     // Voice-note playback (separate from the Studio player so a voice note

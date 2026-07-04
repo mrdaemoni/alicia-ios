@@ -21,7 +21,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .us:      return "sun.horizon"
         case .dialogue: return "quote.bubble"
-        case .mind:    return "sparkle"
+        case .mind:    return "hare"
         case .studio:  return "waveform"
         case .canvas:  return "scribble.variable"
         }
@@ -29,10 +29,11 @@ enum AppSection: String, CaseIterable, Identifiable {
 }
 
 struct RootView: View {
-    @State private var selection: AppSection = .us
+    @Environment(AppStore.self) private var store
 
     var body: some View {
-        TabView(selection: $selection) {
+        @Bindable var store = store
+        TabView(selection: $store.selectedSection) {
             ForEach(AppSection.allCases) { section in
                 tab(for: section)
                     .tag(section)

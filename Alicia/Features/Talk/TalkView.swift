@@ -54,8 +54,16 @@ struct TalkView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(store.messages) { message in
-                        MessageBubble(message: message)
-                            .id(message.id)
+                        // Her proactive life stays a whisper here — one
+                        // tappable line that opens the Alicia tab. The
+                        // Dialogue page belongs to the dialogue.
+                        if message.proactiveLabel != nil {
+                            ProactiveWhisper(message: message)
+                                .id(message.id)
+                        } else {
+                            MessageBubble(message: message)
+                                .id(message.id)
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -101,6 +109,41 @@ struct TalkView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Theme.paper.opacity(0.55))
+    }
+}
+
+/// A proactive message reduced to one quiet line. Tapping it opens the
+/// Alicia tab, where her thinking lives in full.
+struct ProactiveWhisper: View {
+    @Environment(AppStore.self) private var store
+    let message: Message
+
+    var body: some View {
+        Button {
+            store.selectedSection = .mind
+        } label: {
+            HStack(spacing: 7) {
+                Image("ArtRabbit")
+                    .resizable().scaledToFill()
+                    .frame(width: 14, height: 14)
+                    .clipShape(Circle())
+                Text(message.proactiveLabel ?? "from her")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.accentSoft)
+                Text(message.text)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Theme.inkSoft.opacity(0.6))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.white.opacity(0.16), in: Capsule())
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
     }
 }
 

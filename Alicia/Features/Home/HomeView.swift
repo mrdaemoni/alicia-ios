@@ -40,7 +40,9 @@ struct HomeView: View {
                         nowPlayingChip(track)
                     }
 
-                    if let word = latestWord {
+                    if let latest = store.proactiveFeed.first {
+                        ProactiveReplyCard(proactive: latest)
+                    } else if let word = latestWord {
                         card(icon: "quote.opening",
                              title: word.proactiveLabel ?? "from Alicia",
                              body: word.text)
@@ -159,6 +161,89 @@ struct HomeView: View {
             .card(padding: 14, radius: 20)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Her latest word on the Us page, with a reply field right underneath —
+/// answering here lands in her memory, the shared history, and the
+/// relationship's learning loops, exactly like a Telegram reply.
+struct ProactiveReplyCard: View {
+    @Environment(AppStore.self) private var store
+    let proactive: ProactiveMessage
+    @State private var draft = ""
+    @State private var sending = false
+    @State private var herReply: String?
+    @FocusState private var focused: Bool
+
+    private var label: String {
+        [proactive.kind.replacingOccurrences(of: "_", with: " "),
+         proactive.archetype]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 5) {
+                Image("ArtRabbit")
+                    .resizable().scaledToFill()
+                    .frame(width: 15, height: 15)
+                    .clipShape(Circle())
+                Text(label.isEmpty ? "from Alicia" : label)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Theme.accentSoft)
+
+            Text((try? AttributedString(
+                    markdown: proactive.text,
+                    options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                 ?? AttributedString(proactive.text))
+                .font(.subheadline)
+                .lineLimit(10)
+
+            if let herReply {
+                Divider().overlay(Theme.stroke)
+                Text(herReply)
+                    .font(.subheadline)
+                    .italic()
+                    .foregroundStyle(Theme.ink.opacity(0.85))
+            }
+
+            HStack(spacing: 8) {
+                TextField("Answer her…", text: $draft, axis: .vertical)
+                    .lineLimit(1...4)
+                    .focused($focused)
+                    .font(.subheadline)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.30), in: Capsule())
+                Button {
+                    let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty, !sending else { return }
+                    draft = ""
+                    focused = false
+                    sending = true
+                    Task {
+                        herReply = await store.replyToProactive(proactive, text: text)
+                            ?? "(couldn't reach her — try again)"
+                        sending = false
+                    }
+                } label: {
+                    if sending {
+                        ProgressView().frame(width: 32, height: 32)
+                    } else {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Theme.accentGradient, in: Circle())
+                    }
+                }
+                .disabled(sending || draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 14, radius: 20)
     }
 }
 

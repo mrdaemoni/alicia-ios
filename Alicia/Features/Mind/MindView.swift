@@ -9,6 +9,12 @@ struct MindView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     stateHeader
+                    if !store.proactiveFeed.isEmpty {
+                        Text("What she's been saying")
+                            .font(.headline)
+                            .padding(.top, 4)
+                        ForEach(store.proactiveFeed) { SaidCard(item: $0) }
+                    }
                     Text("Recent thinking")
                         .font(.headline)
                         .padding(.top, 4)
@@ -94,4 +100,59 @@ struct LiveDot: View {
         .environment(AppStore(service: MockAliciaService()))
         .tint(Theme.accent)
         .preferredColorScheme(.dark)
+}
+
+/// One proactive message in full — the detail behind Dialogue's whisper
+/// line. Long-press to react; reactions feed her circulation loop.
+struct SaidCard: View {
+    @Environment(AppStore.self) private var store
+    let item: ProactiveMessage
+    @State private var reacted: String?
+
+    private var label: String {
+        [item.kind.replacingOccurrences(of: "_", with: " "), item.archetype]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                HStack(spacing: 5) {
+                    Image("ArtRabbit")
+                        .resizable().scaledToFill()
+                        .frame(width: 14, height: 14)
+                        .clipShape(Circle())
+                    Text(label.isEmpty ? "from her" : label)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Theme.accentSoft)
+                }
+                Spacer()
+                if let reacted { Text(reacted).font(.footnote) }
+                Text(item.date, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            Text((try? AttributedString(
+                    markdown: item.text,
+                    options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                 ?? AttributedString(item.text))
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+        .contextMenu {
+            ForEach(["❤️", "🔥", "🧠", "👍", "🤔", "👎"], id: \.self) { emoji in
+                Button {
+                    reacted = emoji
+                    Task { await storeReact(emoji) }
+                } label: { Text(emoji) }
+            }
+        }
+    }
+
+    private func storeReact(_ emoji: String) async {
+        store.reactToProactive(id: item.id, emoji: emoji)
+    }
 }
