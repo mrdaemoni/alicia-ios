@@ -31,7 +31,7 @@ Features/       Talk · Mind · Studio · Canvas · Health
 
 State is a single `@MainActor @Observable` `AppStore`, injected via `.environment(store)` and read with `@Environment(AppStore.self)`. This mirrors the central-`AppState` pattern from `nalexn/clean-architecture-swiftui` recommended in the research doc.
 
-## The networking seam — this is where you plug in the real Alicia
+## The networking seam — LIVE
 
 Everything the UI needs comes through `Core/AliciaService.swift`:
 
@@ -46,13 +46,23 @@ protocol AliciaService {
 }
 ```
 
-`MockAliciaService` returns `SampleData` and fakes streaming. To go live, write a `LiveAliciaService` that hits your backend (URLSession; `stream` maps naturally onto Server-Sent Events / chunked responses), then change one line in `App/AliciaApp.swift`:
+`Core/LiveAliciaService.swift` implements this against the Alicia backend's
+iOS API (`skills/ios_api.py` in the `alicia` repo — token-authed HTTP/SSE on
+port **8766**, reachable over home Wi-Fi or Tailscale):
 
-```swift
-@State private var store = AppStore(service: LiveAliciaService(baseURL: ...))
-```
+| Method | Endpoint | Notes |
+|---|---|---|
+| `stream` | `POST /api/chat` | SSE `{"t": token}` events; shares one conversation with Telegram |
+| `thoughts` | `GET /api/thoughts` | emergence season + diary days |
+| `tracks` | `GET /api/tracks` | podcast episodes; wavs served with Range support for AVPlayer |
+| `gallery` | `GET /api/gallery` | her real drawings (`imageURL` → `AsyncImage`) |
+| `health` | `GET /api/health` | backend vitals mapped to 0…1 gauges |
+| `complement` | `POST /api/complement` | she draws a reply to your canvas piece |
 
-No view changes required.
+**To connect:** copy `Alicia/Secrets.example.plist` → `Alicia/Secrets.plist`
+(gitignored) and fill in `BaseURL` (Mac's Tailscale IP or LAN hostname, port
+8766) and `Token` (`ALICIA_IOS_TOKEN` from the backend's `.env`). Without it
+the app runs on `MockAliciaService` and sample data — see `Core/Config.swift`.
 
 ## Where the recommended open-source libraries drop in
 
@@ -66,6 +76,7 @@ The scaffold is native-only so it runs immediately. When you want more, add thes
 ## Notes
 
 - Forces dark mode for the cosmic look (`.preferredColorScheme(.dark)` in `AliciaApp`). Remove that line to follow the system.
-- Audio playback is **simulated** (a timer advances the progress bar) so the app runs without bundled media. See the Studio note above to wire real files.
+- Audio playback is **real** (AVPlayer) for backend tracks; the simulated ticker remains as the fallback for mock/sample tracks without a URL.
+- ATS: `Info.plist` allows plain-HTTP loads because the backend speaks http on a private network (tailnet/LAN) only.
 - SF Symbol names are placeholders for artwork/metrics — swap freely.
 - Built and reviewed for iOS 17 / Swift 5.9 / Xcode 16 with default concurrency settings. If you enable strict/Swift 6 concurrency, the `@State` store initializer in `AliciaApp` may need a small adjustment.

@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import AVFoundation
 
 @MainActor
 @Observable
@@ -47,17 +48,67 @@ final class AppStore {
     }
 
     // MARK: Studio player
+    // Real playback (AVPlayer) when the track carries a backend URL;
+    // the simulated ticker remains the fallback for sample data.
+    private var player: AVPlayer?
+    private var timeObserver: Any?
+    private var endObserver: NSObjectProtocol?
+
     func play(_ track: Track) {
         if nowPlaying?.id != track.id { progress = 0 }
         nowPlaying = track
         isPlaying = true
-        startTicker()
+        if let f = track.fileName, f.hasPrefix("http"), let url = URL(string: f) {
+            startPlayer(url: url)
+        } else {
+            stopPlayer()
+            startTicker()
+        }
     }
 
     func togglePlay() {
         guard nowPlaying != nil else { return }
         isPlaying.toggle()
-        isPlaying ? startTicker() : ticker?.cancel()
+        if let player {
+            isPlaying ? player.play() : player.pause()
+        } else {
+            isPlaying ? startTicker() : ticker?.cancel()
+        }
+    }
+
+    private func startPlayer(url: URL) {
+        ticker?.cancel()
+        stopPlayer()
+        try? AVAudioSession.sharedInstance().setCategory(.playback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        let item = AVPlayerItem(url: url)
+        let p = AVPlayer(playerItem: item)
+        player = p
+        timeObserver = p.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            MainActor.assumeIsolated {
+                guard let self, let d = self.nowPlaying?.duration, d > 0 else { return }
+                self.progress = min(1, time.seconds / d)
+            }
+        }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification,
+            object: item, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.next() }
+        }
+        p.play()
+    }
+
+    private func stopPlayer() {
+        if let timeObserver { player?.removeTimeObserver(timeObserver) }
+        timeObserver = nil
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = nil
+        player?.pause()
+        player = nil
     }
 
     func next() {

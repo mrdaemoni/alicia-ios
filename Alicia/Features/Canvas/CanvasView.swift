@@ -83,10 +83,29 @@ struct ArtworkCell: View {
                                : AnyShapeStyle(Color.white.opacity(0.08)))
                 .aspectRatio(1, contentMode: .fit)
                 .overlay(
-                    Image(systemName: art.symbol)
-                        .font(.system(size: 40, weight: .light))
-                        .foregroundStyle(byAlicia ? .white : .secondary)
+                    Group {
+                        if let url = art.imageURL {
+                            // Real render from the backend (Alicia's drawing)
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image.resizable().scaledToFill()
+                                case .failure:
+                                    Image(systemName: "wifi.slash")
+                                        .font(.system(size: 32, weight: .light))
+                                        .foregroundStyle(.secondary)
+                                default:
+                                    ProgressView()
+                                }
+                            }
+                        } else {
+                            Image(systemName: art.symbol)
+                                .font(.system(size: 40, weight: .light))
+                                .foregroundStyle(byAlicia ? .white : .secondary)
+                        }
+                    }
                 )
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             Text(art.title).font(.subheadline.weight(.semibold)).lineLimit(1)
             HStack(spacing: 5) {
                 Image(systemName: byAlicia ? "sparkles" : "hand.draw")

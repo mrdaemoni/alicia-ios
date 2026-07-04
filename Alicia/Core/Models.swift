@@ -35,6 +35,9 @@ struct Artwork: Identifiable, Hashable {
     var note: String
     var symbol: String
     var author: Author
+    /// Remote render of the piece (Alicia's real drawings, served by the
+    /// backend). Nil for sample data — cells fall back to `symbol`.
+    var imageURL: URL? = nil
 }
 
 /// A single vital in Alicia's health dashboard.

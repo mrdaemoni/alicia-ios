@@ -30,34 +30,32 @@ Alicia/
 - **State:** single `@MainActor @Observable final class AppStore` (`Core/AppStore.swift`). Injected with `.environment(store)` in `AliciaApp`, read via `@Environment(AppStore.self)`. Holds messages, thoughts, tracks, gallery, health, and the (simulated) player state.
 - **Design:** `Theme` enum centralizes colors and the frosted `.card()` look so all tabs feel like one app. Forces `.preferredColorScheme(.dark)` in `AliciaApp` (remove that line to follow the system).
 
-## The networking seam — the main thing to build next
+## The networking seam — LIVE (wired 2026-07-03)
 
-Everything the UI needs flows through **one protocol**, `Core/AliciaService.swift`:
+Everything the UI needs flows through **one protocol**, `Core/AliciaService.swift`.
+`Core/LiveAliciaService.swift` implements it against the backend's iOS API —
+`skills/ios_api.py` in the `alicia` repo (github.com/mrdaemoni/alicia), a
+token-authed HTTP/SSE server on port **8766** started from `alicia.py:main()`.
+Auth: `Authorization: Bearer <ALICIA_IOS_TOKEN>`; media URLs carry `?token=`
+instead (AVPlayer/AsyncImage can't set headers). Chat is SSE (`{"t": token}`
+events) and **shares conversation_history with Telegram** — one relationship,
+two surfaces. L4-classified messages are redirected to Telegram by the backend.
 
-```swift
-protocol AliciaService {
-    func stream(_ prompt: String) -> AsyncStream<String>   // token stream (LLM/SSE)
-    func thoughts() async -> [Thought]
-    func tracks() async -> [Track]
-    func gallery() async -> [Artwork]
-    func health() async -> [HealthMetric]
-    func complement(_ title: String) async -> Artwork
-}
-```
+Service selection is config-driven (`Core/Config.swift`): UserDefaults
+(`alicia.baseURL`/`alicia.token`) → bundled `Secrets.plist` (gitignored; copy
+`Secrets.example.plist`) → falls back to `MockAliciaService` + SampleData.
 
-`MockAliciaService` returns `SampleData` and fakes streaming so the app runs with no backend. **To go live:** write a `LiveAliciaService` (URLSession; `stream` maps naturally onto SSE / chunked responses against Alicia's Python backend), then change ONE line in `App/AliciaApp.swift`:
+## Current state
 
-```swift
-@State private var store = AppStore(service: LiveAliciaService(baseURL: ...))
-```
-
-No view changes required.
-
-## Known simplifications (intentional, for the scaffold)
-
-- **Audio is simulated** — `AppStore.startTicker()` advances the progress bar with a timer; no real files play. Wire `AVAudioPlayer`/`AVPlayer` here and load from `Track.fileName` (bundle or URL) for real playback.
-- **Canvas is one tab** with a segmented control. Split `CanvasView` into `DrawView` + `GalleryView` and add cases to `AppSection` if you want two separate tabs.
-- **Gallery/health/thoughts** are sample data via the mock service.
+- **Audio is real** — `AppStore` drives AVPlayer for tracks with http URLs
+  (backend serves wavs with Range support); the old ticker remains the
+  fallback for sample tracks.
+- **Gallery renders real drawings** — `Artwork.imageURL` + `AsyncImage` in
+  `ArtworkCell`; symbol placeholder when nil.
+- **ATS**: root `Info.plist` (merged via `INFOPLIST_FILE`) allows plain-HTTP —
+  backend is private-network only (tailnet/LAN).
+- **Canvas is one tab** with a segmented control. Split `CanvasView` into
+  `DrawView` + `GalleryView` and add cases to `AppSection` if you want two tabs.
 
 ## Recommended libraries to add (from the research pass)
 
