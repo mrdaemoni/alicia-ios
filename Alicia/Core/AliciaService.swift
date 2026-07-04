@@ -15,6 +15,8 @@ protocol AliciaService {
     func proactive(limit: Int) async -> [ProactiveMessage]
     /// React to one of her replies with an emoji. Feeds her learning loops.
     func react(messageID: Int, emoji: String) async
+    /// React to a proactive message — attaches to its circulation entry.
+    func react(proactiveID: String, emoji: String) async
     /// Ask Alicia to respond to a drawing you made. `imageData` is the
     /// canvas as PNG so she can see what you actually drew.
     func complement(_ title: String, imageData: Data?) async -> Artwork
@@ -42,6 +44,7 @@ struct MockAliciaService: AliciaService {
     func health() async -> [HealthMetric] { SampleData.health }
     func proactive(limit: Int) async -> [ProactiveMessage] { [] }
     func react(messageID: Int, emoji: String) async {}
+    func react(proactiveID: String, emoji: String) async {}
 
     func complement(_ title: String, imageData: Data?) async -> Artwork {
         try? await Task.sleep(for: .milliseconds(700))

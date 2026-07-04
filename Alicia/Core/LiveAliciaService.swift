@@ -127,6 +127,13 @@ struct LiveAliciaService: AliciaService {
             for: request("/api/react", method: "POST", body: body))
     }
 
+    func react(proactiveID: String, emoji: String) async {
+        guard let body = try? JSONSerialization.data(
+            withJSONObject: ["proactive_id": proactiveID, "emoji": emoji]) else { return }
+        _ = try? await URLSession.shared.data(
+            for: request("/api/react", method: "POST", body: body))
+    }
+
     private struct ProactiveDTO: Decodable {
         var id, date, text, kind, archetype: String
     }

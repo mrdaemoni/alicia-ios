@@ -47,7 +47,8 @@ final class AppStore {
                             proactiveLabel: [m.kind.replacingOccurrences(of: "_", with: " "),
                                              m.archetype]
                                 .filter { !$0.isEmpty }
-                                .joined(separator: " · "))
+                                .joined(separator: " · "),
+                            proactiveID: m.id)
                 }
             }
         }
@@ -77,13 +78,17 @@ final class AppStore {
         }
     }
 
-    /// React to one of Alicia's replies. Optimistic UI; the backend feeds
-    /// it into her reaction→archetype learning loop.
+    /// React to one of Alicia's messages. Optimistic UI; the backend feeds
+    /// chat replies into her reaction→archetype loop and proactive
+    /// messages into their circulation entry.
     func react(to message: Message, with emoji: String) {
         guard let i = messages.firstIndex(where: { $0.id == message.id }) else { return }
         messages[i].reaction = emoji
-        guard let mid = message.messageID else { return }
-        Task { await service.react(messageID: mid, emoji: emoji) }
+        if let mid = message.messageID {
+            Task { await service.react(messageID: mid, emoji: emoji) }
+        } else if let pid = message.proactiveID {
+            Task { await service.react(proactiveID: pid, emoji: emoji) }
+        }
     }
 
     // Voice-note playback (separate from the Studio player so a voice note

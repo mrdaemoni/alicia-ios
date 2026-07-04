@@ -14,6 +14,10 @@ struct TalkView: View {
             .sectionBackground()
             .navigationTitle("Talk")
             .navigationBarTitleDisplayMode(.inline)
+            // While typing, the keyboard owns the bottom edge — hide the
+            // tab bar so it can't float over / collide with the keyboard.
+            .toolbar(focused ? .hidden : .visible, for: .tabBar)
+            .animation(.easeOut(duration: 0.2), value: focused)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -151,8 +155,9 @@ struct MessageBubble: View {
             }
         }
         .contextMenu {
-            // React to her replies only — reactions are her learning signal.
-            if !isMe, message.messageID != nil {
+            // React to her messages — chat replies feed the archetype loop,
+            // proactive messages feed their circulation entry.
+            if !isMe, message.messageID != nil || message.proactiveID != nil {
                 ForEach(Self.reactions, id: \.self) { emoji in
                     Button {
                         store.react(to: message, with: emoji)

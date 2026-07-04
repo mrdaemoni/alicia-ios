@@ -15,6 +15,9 @@ struct Message: Identifiable, Hashable {
     /// Non-nil for proactive messages pulled from her circulation feed
     /// (e.g. "morning · ariadne") — rendered as a small caption.
     var proactiveLabel: String? = nil
+    /// Circulation decision id — reactions on proactive messages attach to
+    /// this (per-synthesis reception signal), not a chat message id.
+    var proactiveID: String? = nil
 }
 
 /// One event in a streamed chat reply.
