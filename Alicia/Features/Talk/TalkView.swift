@@ -159,10 +159,10 @@ struct ProactiveWhisper: View {
             store.selectedSection = .mind
         } label: {
             HStack(spacing: 7) {
-                Image("ArtRabbit")
-                    .resizable().scaledToFill()
+                Image("RabbitMark")
+                    .resizable().scaledToFit()
                     .frame(width: 14, height: 14)
-                    .clipShape(Circle())
+                    .foregroundStyle(Theme.accentSoft)
                 Text(message.proactiveLabel ?? "from her")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.accentSoft)
@@ -225,7 +225,7 @@ struct MessageBubble: View {
             VStack(alignment: isMe ? .trailing : .leading, spacing: 4) {
                 if let label = message.proactiveLabel, !label.isEmpty {
                     HStack(spacing: 5) {
-                        Image("ArtRabbit")
+                        Image("RabbitMark")
                             .resizable()
                             .scaledToFill()
                             .frame(width: 15, height: 15)

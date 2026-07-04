@@ -39,11 +39,15 @@ struct MindView: View {
     private var stateHeader: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                Image("ArtRabbit")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 56, height: 56)
-                    .clipShape(Circle())
+                // Her mark — the rabbit silhouette on the sea-slate circle.
+                ZStack {
+                    Circle().fill(Theme.accentGradient).frame(width: 56, height: 56)
+                    Image("RabbitMark")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 32, height: 32)
+                        .foregroundStyle(.white)
+                }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Present and warm")
                         .font(.title3.weight(.semibold))
@@ -125,10 +129,10 @@ struct SaidCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 HStack(spacing: 5) {
-                    Image("ArtRabbit")
-                        .resizable().scaledToFill()
+                    Image("RabbitMark")
+                        .resizable().scaledToFit()
                         .frame(width: 14, height: 14)
-                        .clipShape(Circle())
+                        .foregroundStyle(Theme.accentSoft)
                     Text(label.isEmpty ? "from her" : label)
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(Theme.accentSoft)

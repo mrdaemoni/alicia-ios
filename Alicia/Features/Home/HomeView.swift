@@ -193,10 +193,10 @@ struct ProactiveReplyCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 5) {
-                Image("ArtRabbit")
-                    .resizable().scaledToFill()
+                Image("RabbitMark")
+                    .resizable().scaledToFit()
                     .frame(width: 15, height: 15)
-                    .clipShape(Circle())
+                    .foregroundStyle(Theme.accentSoft)
                 Text(label.isEmpty ? "from Alicia" : label)
             }
             .font(.caption.weight(.semibold))
