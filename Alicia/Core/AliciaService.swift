@@ -27,6 +27,9 @@ protocol AliciaService {
     /// Start/end a thinking mode ("start_walk"/"end_walk"). Returns her
     /// acknowledgment message, or nil on failure.
     func modeAction(_ action: String, topic: String) async -> String?
+    /// Home-screen greeting grounded in the live conversation; nil offline
+    /// (the view falls back to a time-of-day line).
+    func greeting() async -> String?
 }
 
 /// In-memory stand-in so the app runs with zero backend.
@@ -64,4 +67,5 @@ struct MockAliciaService: AliciaService {
     func episodeNotes(label: String) async -> String { "" }
     func modeState() async -> (mode: String, words: Int) { ("idle", 0) }
     func modeAction(_ action: String, topic: String) async -> String? { nil }
+    func greeting() async -> String? { nil }
 }

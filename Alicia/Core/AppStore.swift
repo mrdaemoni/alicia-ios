@@ -17,6 +17,8 @@ final class AppStore {
     var nowPlaying: Track?
     var isPlaying = false
     var progress: Double = 0        // 0...1 through the current track
+    var playbackRate: Float = 1.0   // 1× → 1.5× → 2× (cycleRate)
+    var isScrubbing = false         // finger on the scrub slider
 
     private let service: AliciaService
     private var ticker: Task<Void, Never>?
@@ -37,8 +39,10 @@ final class AppStore {
         async let h = service.health()
         async let p = service.proactive(limit: 6)
         async let m = service.modeState()
+        async let gr = service.greeting()
         (thoughts, tracks, gallery, health) = await (t, tr, g, h)
         (thinkingMode, walkWords) = await m
+        greeting = await gr ?? greeting
         let pro = await p
         if !pro.isEmpty {
             ProactiveNotifier.markSeen(pro)
@@ -66,6 +70,8 @@ final class AppStore {
     // Thinking modes (walk/drive) — shared state machine with Telegram.
     var thinkingMode = "idle"
     var walkWords = 0
+    /// Live greeting for the Us page (nil → time-of-day fallback).
+    var greeting: String?
     var isWalking: Bool { thinkingMode == "walk" }
 
     /// Start or end a walk. Her acknowledgment lands in the timeline.
@@ -159,11 +165,47 @@ final class AppStore {
         guard nowPlaying != nil else { return }
         isPlaying.toggle()
         if let player {
-            isPlaying ? player.play() : player.pause()
+            if isPlaying {
+                player.play()
+                player.rate = playbackRate
+            } else {
+                player.pause()
+            }
         } else {
             isPlaying ? startTicker() : ticker?.cancel()
         }
         publishNowPlaying()
+    }
+
+    /// 1× → 1.5× → 2× → 1×.
+    func cycleRate() {
+        playbackRate = playbackRate >= 2.0 ? 1.0 : (playbackRate >= 1.5 ? 2.0 : 1.5)
+        if isPlaying { player?.rate = playbackRate }
+        publishNowPlaying()
+    }
+
+    /// Live scrub: the slider moves `progress` freely while the finger is
+    /// down (the time observer stands back), then `commitScrub` seeks.
+    func scrub(to fraction: Double) {
+        isScrubbing = true
+        progress = min(1, max(0, fraction))
+    }
+
+    func commitScrub() {
+        defer { isScrubbing = false }
+        guard let player, let d = nowPlaying?.duration, d > 0 else { return }
+        let target = progress * d
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+        updateNowPlayingElapsed(target)
+    }
+
+    /// Jump ±15s (player bar's back/forward).
+    func skip(_ delta: Double) {
+        guard let player, let d = nowPlaying?.duration, d > 0 else { return }
+        let target = min(d, max(0, player.currentTime().seconds + delta))
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+        progress = target / d
+        updateNowPlayingElapsed(target)
     }
 
     private func startPlayer(url: URL) {
@@ -180,6 +222,7 @@ final class AppStore {
         ) { [weak self] time in
             MainActor.assumeIsolated {
                 guard let self, let d = self.nowPlaying?.duration, d > 0 else { return }
+                guard !self.isScrubbing else { return }   // finger owns the bar
                 self.progress = min(1, time.seconds / d)
                 self.updateNowPlayingElapsed(time.seconds)
             }
@@ -191,6 +234,7 @@ final class AppStore {
             MainActor.assumeIsolated { self?.next() }
         }
         p.play()
+        p.rate = playbackRate
         configureRemoteCommandsOnce()
         publishNowPlaying()
     }
@@ -246,7 +290,7 @@ final class AppStore {
             MPMediaItemPropertyAlbumTitle: track.series.isEmpty
                 ? "Made for Hector" : track.series,
             MPMediaItemPropertyPlaybackDuration: track.duration,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(playbackRate) : 0.0,
         ]
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = progress * track.duration
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info

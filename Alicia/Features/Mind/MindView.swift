@@ -17,26 +17,27 @@ struct MindView: View {
                 .padding(16)
             }
             .refreshable { await store.load() }
-            .sectionBackground()
+            // The face emerging from the grain — her page.
+            .artBackground("ArtFace", opacity: 0.22)
             .navigationTitle("Alicia")
+            .toolbarBackground(.hidden, for: .navigationBar)
         }
     }
 
     private var stateHeader: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                ZStack {
-                    Circle().fill(Theme.accentGradient).frame(width: 56, height: 56)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
+                Image("ArtRabbit")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 56, height: 56)
+                    .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Present and warm")
                         .font(.title3.weight(.semibold))
                     Text("Working on a new composition")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.inkSoft)
                 }
                 Spacer()
             }
@@ -44,7 +45,7 @@ struct MindView: View {
                 LiveDot()
                 Text("Thinking…")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.inkSoft)
             }
         }
         .card(padding: 18)
@@ -62,12 +63,12 @@ struct ThoughtCard: View {
                 Spacer()
                 Text(thought.date, style: .time)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.inkSoft)
             }
             Text(thought.title).font(.headline)
             Text(thought.body)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

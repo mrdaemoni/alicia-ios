@@ -216,6 +216,18 @@ struct LiveAliciaService: AliciaService {
         } catch { return nil }
     }
 
+    private struct GreetingDTO: Decodable { var greeting: String }
+
+    func greeting() async -> String? {
+        do {
+            let (data, resp) = try await URLSession.shared.data(
+                for: request("/api/greeting"))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            let g = try JSONDecoder().decode(GreetingDTO.self, from: data).greeting
+            return g.isEmpty ? nil : g
+        } catch { return nil }
+    }
+
     private struct ArtworkDTO: Decodable {
         var title, note, symbol, author: String
         var imageURL: String?

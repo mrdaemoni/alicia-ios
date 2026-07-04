@@ -1,11 +1,16 @@
 import SwiftUI
 
-/// The five sections of Alicia. Health lives inside Home (status strip →
+/// The five sections of Alicia. Health lives inside Us (status strip →
 /// full vitals) so the tab bar stays at five and iOS never folds tabs
 /// into a "More" item.
+///
+/// Names and icons follow the ink-on-paper identity: line-art symbols
+/// (never filled) that echo the drawings — the sun over the sea from
+/// `memories`, a spoken line, a single quiet spark, the waveform, the
+/// contour scribble of the sketches themselves.
 enum AppSection: String, CaseIterable, Identifiable {
-    case home    = "Home"
-    case talk    = "Talk"
+    case us      = "Us"
+    case dialogue = "Dialogue"
     case mind    = "Alicia"
     case studio  = "Studio"
     case canvas  = "Canvas"
@@ -14,17 +19,17 @@ enum AppSection: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .home:   return "house.fill"
-        case .talk:   return "bubble.left.and.bubble.right.fill"
-        case .mind:   return "sparkles"
-        case .studio: return "waveform"
-        case .canvas: return "paintbrush.pointed.fill"
+        case .us:      return "sun.horizon"
+        case .dialogue: return "quote.bubble"
+        case .mind:    return "sparkle"
+        case .studio:  return "waveform"
+        case .canvas:  return "scribble.variable"
         }
     }
 }
 
 struct RootView: View {
-    @State private var selection: AppSection = .home
+    @State private var selection: AppSection = .us
 
     var body: some View {
         TabView(selection: $selection) {
@@ -34,16 +39,18 @@ struct RootView: View {
                     .tabItem { Label(section.rawValue, systemImage: section.symbol) }
             }
         }
+        // Serif body type everywhere — the sketchbook voice.
+        .fontDesign(.serif)
     }
 
     @ViewBuilder
     private func tab(for section: AppSection) -> some View {
         switch section {
-        case .home:   HomeView()
-        case .talk:   TalkView()
-        case .mind:   MindView()
-        case .studio: StudioView()
-        case .canvas: CanvasView()
+        case .us:       HomeView()
+        case .dialogue: TalkView()
+        case .mind:     MindView()
+        case .studio:   StudioView()
+        case .canvas:   CanvasView()
         }
     }
 }

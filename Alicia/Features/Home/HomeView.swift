@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// The landing tab: a morning-style welcome, the latest thing she said,
-/// what her day has looked like, and a glanceable status strip.
+/// Us — the landing page. Hector's `memories` drawing (the figure before
+/// the sea) washes down from the top of the page; beneath it: her greeting,
+/// the latest thing she said, what her day held, and a quiet status strip.
 struct HomeView: View {
     @Environment(AppStore.self) private var store
 
+    /// Her line, when the backend has one — grounded in what you two are
+    /// actually talking about. Time-of-day only as the offline fallback.
     private var greeting: String {
+        if let live = store.greeting, !live.isEmpty { return live }
         switch Calendar.current.component(.hour, from: .now) {
         case 5..<12:  return "Good morning, Hector"
         case 12..<18: return "Good afternoon, Hector"
@@ -54,27 +58,32 @@ struct HomeView: View {
                 .padding(.bottom, 24)
             }
             .refreshable { await store.load() }
-            .sectionBackground()
-            .navigationTitle("Home")
+            .artBackground("ArtMemories", drift: true)
+            .navigationTitle("Us")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
         }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(greeting)
-                .font(.largeTitle.weight(.bold))
+                .font(.system(.largeTitle, design: .serif, weight: .semibold))
+                .foregroundStyle(Theme.ink)
             if let season = seasonThought {
                 Text(season.body)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.system(.subheadline, design: .serif))
+                    .italic()
+                    .foregroundStyle(Theme.ink.opacity(0.65))
             } else {
                 Text(Date.now.formatted(date: .complete, time: .omitted))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.system(.subheadline, design: .serif))
+                    .italic()
+                    .foregroundStyle(Theme.ink.opacity(0.65))
             }
         }
-        .padding(.top, 8)
+        // Clear the drawing's focal band before the content begins.
+        .padding(.top, 148)
     }
 
     private func nowPlayingChip(_ track: Track) -> some View {
@@ -86,7 +95,7 @@ struct HomeView: View {
                 .background(Theme.accentGradient, in: Circle())
             VStack(alignment: .leading, spacing: 1) {
                 Text(track.title).font(.footnote.weight(.semibold)).lineLimit(1)
-                Text(track.mood).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(track.mood).font(.caption2).foregroundStyle(Theme.inkSoft).lineLimit(1)
             }
             Spacer()
             Button { store.togglePlay() } label: {
@@ -127,7 +136,7 @@ struct HomeView: View {
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.inkSoft.opacity(0.75))
                 }
                 ForEach(store.health.prefix(4)) { metric in
                     HStack(spacing: 10) {
@@ -139,7 +148,7 @@ struct HomeView: View {
                         Spacer()
                         Text(metric.display)
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.inkSoft)
                         ProgressView(value: metric.value)
                             .tint(metric.color)
                             .frame(width: 64)

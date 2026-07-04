@@ -11,8 +11,9 @@ struct TalkView: View {
                 messageList
                 composer
             }
-            .sectionBackground()
-            .navigationTitle("Talk")
+            // The bone-carving lines run the whole page behind the words.
+            .artBackground("ArtBone", opacity: 0.14, full: true)
+            .navigationTitle("Dialogue")
             .navigationBarTitleDisplayMode(.inline)
             // While typing, the keyboard owns the bottom edge — hide the
             // tab bar so it can't float over / collide with the keyboard.
@@ -29,7 +30,7 @@ struct TalkView: View {
                               systemImage: "figure.walk")
                             .labelStyle(.titleAndIcon)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(store.isWalking ? Theme.accentSoft : .secondary)
+                            .foregroundStyle(store.isWalking ? Theme.accentSoft : Theme.inkSoft)
                     }
                     .accessibilityLabel(store.isWalking ? "End walk" : "Start walk")
                 }
@@ -82,8 +83,7 @@ struct TalkView: View {
                 .focused($focused)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(Theme.card, in: Capsule())
-                .overlay(Capsule().strokeBorder(Theme.stroke))
+                .background(Color.white.opacity(0.30), in: Capsule())
 
             Button {
                 store.send(draft)
@@ -100,7 +100,7 @@ struct TalkView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
+        .background(Theme.paper.opacity(0.55))
     }
 }
 
@@ -125,9 +125,16 @@ struct MessageBubble: View {
             if isMe { Spacer(minLength: 40) }
             VStack(alignment: isMe ? .trailing : .leading, spacing: 4) {
                 if let label = message.proactiveLabel, !label.isEmpty {
-                    Label(label, systemImage: "sparkles")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.accentSoft)
+                    HStack(spacing: 5) {
+                        Image("ArtRabbit")
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 15, height: 15)
+                            .clipShape(Circle())
+                        Text(label)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(Theme.accentSoft)
                 }
                 bubble
             }
@@ -138,7 +145,7 @@ struct MessageBubble: View {
     private var bubble: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Text(message.text.isEmpty ? AttributedString("…") : rendered)
-                .foregroundStyle(isMe ? .white : .primary)
+                .foregroundStyle(Theme.ink)
 
             if let voiceURL = message.voiceURL {
                 Button {
@@ -153,18 +160,15 @@ struct MessageBubble: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        // Transparent washes — the drawing stays visible through the words.
         .background {
             if isMe {
-                Theme.accentGradient
+                Theme.accent.opacity(0.16)
             } else {
-                Theme.card
+                Color.white.opacity(0.22)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(isMe ? .clear : Theme.stroke)
-        )
         .overlay(alignment: isMe ? .bottomLeading : .bottomTrailing) {
             if let reaction = message.reaction {
                 Text(reaction)

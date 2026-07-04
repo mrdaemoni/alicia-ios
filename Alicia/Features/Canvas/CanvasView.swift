@@ -65,7 +65,7 @@ struct CanvasView: View {
                     store.requestComplement(for: "Sketch", image: png)
                     mode = .gallery
                 } label: {
-                    Label("Ask Alicia to reply", systemImage: "sparkles")
+                    Label("Ask Alicia to reply", systemImage: "hare.fill")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .foregroundStyle(.white)
@@ -113,7 +113,7 @@ struct ArtworkCell: View {
                                 case .failure:
                                     Image(systemName: "wifi.slash")
                                         .font(.system(size: 32, weight: .light))
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(Theme.inkSoft)
                                 default:
                                     ProgressView()
                                 }
@@ -121,18 +121,18 @@ struct ArtworkCell: View {
                         } else {
                             Image(systemName: art.symbol)
                                 .font(.system(size: 40, weight: .light))
-                                .foregroundStyle(byAlicia ? .white : .secondary)
+                                .foregroundStyle(byAlicia ? .white : Theme.inkSoft)
                         }
                     }
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             Text(art.title).font(.subheadline.weight(.semibold)).lineLimit(1)
             HStack(spacing: 5) {
-                Image(systemName: byAlicia ? "sparkles" : "hand.draw")
+                Image(systemName: byAlicia ? "hare.fill" : "hand.draw")
                     .font(.caption2)
                 Text(art.note).font(.caption2)
             }
-            .foregroundStyle(byAlicia ? Theme.accentSoft : .secondary)
+            .foregroundStyle(byAlicia ? Theme.accentSoft : Theme.inkSoft)
             .lineLimit(1)
         }
         .card(padding: 10, radius: 20)

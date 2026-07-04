@@ -85,5 +85,7 @@ struct HealthMetric: Identifiable, Hashable {
 }
 
 extension HealthMetric {
-    var color: Color { Color(hue: hue, saturation: 0.65, brightness: 0.95) }
+    /// Ink-wash rendering: muted saturation and depth so gauges read like
+    /// pigment on paper, not neon on glass.
+    var color: Color { Color(hue: hue, saturation: 0.38, brightness: 0.52) }
 }

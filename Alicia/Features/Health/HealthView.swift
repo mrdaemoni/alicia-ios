@@ -34,7 +34,7 @@ struct HealthView: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text("All systems nominal").font(.headline)
-                Text("Last check just now").font(.caption).foregroundStyle(.secondary)
+                Text("Last check just now").font(.caption).foregroundStyle(Theme.inkSoft)
             }
             Spacer()
         }
@@ -59,7 +59,7 @@ struct MetricTile: View {
                 .tint(metric.color)
             Text(metric.name)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.inkSoft)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 14, radius: 20)

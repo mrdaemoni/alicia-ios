@@ -10,6 +10,26 @@ struct AliciaApp: App {
     init() {
         // Must happen before launch finishes.
         ProactiveNotifier.register()
+
+        // Ink-on-paper typography: navigation titles in serif to match the
+        // hand-drawn sketchbook identity (body text gets .fontDesign(.serif)
+        // in RootView; UIKit-owned nav bars need the appearance proxy).
+        if let large = UIFontDescriptor
+            .preferredFontDescriptor(withTextStyle: .largeTitle)
+            .withDesign(.serif) {
+            UINavigationBar.appearance().largeTitleTextAttributes = [
+                .font: UIFont(descriptor: large, size: 34),
+                .foregroundColor: UIColor(Theme.ink),
+            ]
+        }
+        if let title = UIFontDescriptor
+            .preferredFontDescriptor(withTextStyle: .headline)
+            .withDesign(.serif) {
+            UINavigationBar.appearance().titleTextAttributes = [
+                .font: UIFont(descriptor: title, size: 17),
+                .foregroundColor: UIColor(Theme.ink),
+            ]
+        }
     }
 
     var body: some Scene {
@@ -17,7 +37,9 @@ struct AliciaApp: App {
             RootView()
                 .environment(store)
                 .tint(Theme.accent)
-                .preferredColorScheme(.dark)
+                // Paper wants light: the drawings are ink on bone, and the
+                // whole app is now that sketchbook.
+                .preferredColorScheme(.light)
                 .task {
                     ProactiveNotifier.requestPermission()
                     ProactiveNotifier.schedule()
