@@ -1,6 +1,8 @@
 import SwiftUI
 
 /// Alicia's vitals — a calm dashboard of how she's running.
+/// Lives inside Home's NavigationStack (pushed from the status strip), so
+/// it deliberately has no NavigationStack of its own.
 struct HealthView: View {
     @Environment(AppStore.self) private var store
 
@@ -8,20 +10,18 @@ struct HealthView: View {
                            GridItem(.flexible(), spacing: 14)]
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    statusBanner
-                    LazyVGrid(columns: columns, spacing: 14) {
-                        ForEach(store.health) { MetricTile(metric: $0) }
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                statusBanner
+                LazyVGrid(columns: columns, spacing: 14) {
+                    ForEach(store.health) { MetricTile(metric: $0) }
                 }
-                .padding(16)
             }
-            .refreshable { await store.load() }
-            .sectionBackground()
-            .navigationTitle("Health")
+            .padding(16)
         }
+        .refreshable { await store.load() }
+        .sectionBackground()
+        .navigationTitle("Health")
     }
 
     private var statusBanner: some View {

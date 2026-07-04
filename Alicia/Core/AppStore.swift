@@ -1,6 +1,7 @@
 import SwiftUI
 import Observation
 import AVFoundation
+import MediaPlayer
 
 @MainActor
 @Observable
@@ -35,7 +36,9 @@ final class AppStore {
         async let g = service.gallery()
         async let h = service.health()
         async let p = service.proactive(limit: 6)
+        async let m = service.modeState()
         (thoughts, tracks, gallery, health) = await (t, tr, g, h)
+        (thinkingMode, walkWords) = await m
         let pro = await p
         if !pro.isEmpty {
             ProactiveNotifier.markSeen(pro)
@@ -60,6 +63,22 @@ final class AppStore {
         didSet { UserDefaults.standard.set(voiceReplies, forKey: "alicia.voiceReplies") }
     }
 
+    // Thinking modes (walk/drive) — shared state machine with Telegram.
+    var thinkingMode = "idle"
+    var walkWords = 0
+    var isWalking: Bool { thinkingMode == "walk" }
+
+    /// Start or end a walk. Her acknowledgment lands in the timeline.
+    func toggleWalk() {
+        Task {
+            let action = isWalking ? "end_walk" : "start_walk"
+            if let message = await service.modeAction(action, topic: "") {
+                messages.append(Message(sender: .alicia, text: message))
+            }
+            (thinkingMode, walkWords) = await service.modeState()
+        }
+    }
+
     func send(_ text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
@@ -75,7 +94,16 @@ final class AppStore {
                 case .done(let mid):  messages[idx].messageID = mid
                 }
             }
+            // During a walk the backend accumulates instead of chatting —
+            // keep the word counter fresh.
+            if isWalking { (thinkingMode, walkWords) = await service.modeState() }
         }
+    }
+
+    /// Shownotes markdown for an episode (Studio detail page).
+    func episodeNotes(for track: Track) async -> String {
+        guard let label = track.label else { return "" }
+        return await service.episodeNotes(label: label)
     }
 
     /// React to one of Alicia's messages. Optimistic UI; the backend feeds
@@ -110,7 +138,13 @@ final class AppStore {
     private var endObserver: NSObjectProtocol?
 
     func play(_ track: Track) {
-        if nowPlaying?.id != track.id { progress = 0 }
+        // Re-tapping the current track (e.g. opening its detail page)
+        // must not restart it from zero.
+        if nowPlaying?.id == track.id, player != nil {
+            if !isPlaying { isPlaying = true; player?.play() }
+            return
+        }
+        progress = 0
         nowPlaying = track
         isPlaying = true
         if let f = track.fileName, f.hasPrefix("http"), let url = URL(string: f) {
@@ -129,6 +163,7 @@ final class AppStore {
         } else {
             isPlaying ? startTicker() : ticker?.cancel()
         }
+        publishNowPlaying()
     }
 
     private func startPlayer(url: URL) {
@@ -146,6 +181,7 @@ final class AppStore {
             MainActor.assumeIsolated {
                 guard let self, let d = self.nowPlaying?.duration, d > 0 else { return }
                 self.progress = min(1, time.seconds / d)
+                self.updateNowPlayingElapsed(time.seconds)
             }
         }
         endObserver = NotificationCenter.default.addObserver(
@@ -155,6 +191,72 @@ final class AppStore {
             MainActor.assumeIsolated { self?.next() }
         }
         p.play()
+        configureRemoteCommandsOnce()
+        publishNowPlaying()
+    }
+
+    // MARK: system now-playing (lock screen + Dynamic Island)
+    // Publishing MPNowPlayingInfo while playing with the `audio` background
+    // mode gives the system media UI — including the Dynamic Island — with
+    // artwork-free metadata and working transport controls.
+    private var remoteCommandsConfigured = false
+
+    private func configureRemoteCommandsOnce() {
+        guard !remoteCommandsConfigured else { return }
+        remoteCommandsConfigured = true
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.nowPlaying != nil else { return }
+                if !self.isPlaying { self.togglePlay() }
+            }
+            return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.nowPlaying != nil else { return }
+                if self.isPlaying { self.togglePlay() }
+            }
+            return .success
+        }
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.next() }
+            return .success
+        }
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated { self?.previous() }
+            return .success
+        }
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let e = event as? MPChangePlaybackPositionCommandEvent,
+                      let p = self.player else { return }
+                p.seek(to: CMTime(seconds: e.positionTime, preferredTimescale: 600))
+            }
+            return .success
+        }
+    }
+
+    private func publishNowPlaying() {
+        guard let track = nowPlaying else { return }
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: track.title,
+            MPMediaItemPropertyArtist: "Alicia",
+            MPMediaItemPropertyAlbumTitle: track.series.isEmpty
+                ? "Made for Hector" : track.series,
+            MPMediaItemPropertyPlaybackDuration: track.duration,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+        ]
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = progress * track.duration
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    private func updateNowPlayingElapsed(_ seconds: Double) {
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = seconds
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     private func stopPlayer() {

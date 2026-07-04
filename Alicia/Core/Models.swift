@@ -54,6 +54,11 @@ struct Track: Identifiable, Hashable {
     var duration: TimeInterval
     var symbol: String          // SF Symbol used as artwork placeholder
     var fileName: String?       // bundled/downloaded audio file, when available
+    // Podcast metadata (0/nil for non-episode tracks e.g. sample data)
+    var season: Int = 0
+    var episode: Int = 0
+    var label: String? = nil    // "S11E04" — keys the shownotes lookup
+    var series: String = ""
 }
 
 /// A drawing — either one you made or one Alicia made for you.

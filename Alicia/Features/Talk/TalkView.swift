@@ -19,6 +19,20 @@ struct TalkView: View {
             .toolbar(focused ? .hidden : .visible, for: .tabBar)
             .animation(.easeOut(duration: 0.2), value: focused)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    // Walk mode — same session as Telegram's /walk. While
+                    // active, everything typed is kept, not answered.
+                    Button {
+                        store.toggleWalk()
+                    } label: {
+                        Label(store.isWalking ? "\(store.walkWords)w" : "Walk",
+                              systemImage: "figure.walk")
+                            .labelStyle(.titleAndIcon)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(store.isWalking ? Theme.accentSoft : .secondary)
+                    }
+                    .accessibilityLabel(store.isWalking ? "End walk" : "Start walk")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         store.voiceReplies.toggle()
@@ -46,6 +60,10 @@ struct TalkView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+            // Drag down through the messages pulls the keyboard away with
+            // the gesture; a tap anywhere outside the composer dismisses it.
+            .scrollDismissesKeyboard(.interactively)
+            .onTapGesture { focused = false }
             .refreshable { await store.load() }
             .onChange(of: store.messages.last?.text) {
                 withAnimation(.easeOut(duration: 0.2)) {
@@ -57,7 +75,9 @@ struct TalkView: View {
 
     private var composer: some View {
         HStack(spacing: 10) {
-            TextField("Message Alicia…", text: $draft, axis: .vertical)
+            TextField(store.isWalking ? "Walking — I'll keep everything…"
+                                      : "Message Alicia…",
+                      text: $draft, axis: .vertical)
                 .lineLimit(1...5)
                 .focused($focused)
                 .padding(.horizontal, 14)

@@ -161,14 +161,59 @@ struct LiveAliciaService: AliciaService {
         var title, mood, symbol: String
         var duration: Double
         var fileName: String?
+        var season: Int?
+        var episode: Int?
+        var label: String?
+        var series: String?
     }
 
     func tracks() async -> [Track] {
         await fetch("/api/tracks", as: [TrackDTO].self).map {
             Track(title: $0.title, mood: $0.mood, duration: $0.duration,
                   symbol: $0.symbol,
-                  fileName: $0.fileName.flatMap { mediaURL($0)?.absoluteString })
+                  fileName: $0.fileName.flatMap { mediaURL($0)?.absoluteString },
+                  season: $0.season ?? 0,
+                  episode: $0.episode ?? 0,
+                  label: $0.label,
+                  series: $0.series ?? "")
         }
+    }
+
+    private struct NotesDTO: Decodable { var label, markdown: String }
+
+    func episodeNotes(label: String) async -> String {
+        do {
+            let (data, resp) = try await URLSession.shared.data(
+                for: request("/api/episode/\(label)"))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return "" }
+            return try JSONDecoder().decode(NotesDTO.self, from: data).markdown
+        } catch { return "" }
+    }
+
+    private struct ModeDTO: Decodable { var mode: String; var words: Int }
+
+    func modeState() async -> (mode: String, words: Int) {
+        do {
+            let (data, resp) = try await URLSession.shared.data(
+                for: request("/api/mode"))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return ("idle", 0) }
+            let m = try JSONDecoder().decode(ModeDTO.self, from: data)
+            return (m.mode, m.words)
+        } catch { return ("idle", 0) }
+    }
+
+    private struct ModeActionDTO: Decodable { var ok: Bool; var message: String? }
+
+    func modeAction(_ action: String, topic: String) async -> String? {
+        do {
+            var payload: [String: Any] = ["action": action]
+            if !topic.isEmpty { payload["topic"] = topic }
+            let body = try JSONSerialization.data(withJSONObject: payload)
+            let (data, resp) = try await URLSession.shared.data(
+                for: request("/api/mode", method: "POST", body: body))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return try JSONDecoder().decode(ModeActionDTO.self, from: data).message
+        } catch { return nil }
     }
 
     private struct ArtworkDTO: Decodable {

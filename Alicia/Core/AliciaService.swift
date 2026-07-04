@@ -20,6 +20,13 @@ protocol AliciaService {
     /// Ask Alicia to respond to a drawing you made. `imageData` is the
     /// canvas as PNG so she can see what you actually drew.
     func complement(_ title: String, imageData: Data?) async -> Artwork
+    /// Shownotes markdown for a podcast episode ("S11E04"). Empty if none.
+    func episodeNotes(label: String) async -> String
+    /// Current thinking-mode state — ("walk"|"drive"|"idle", word count).
+    func modeState() async -> (mode: String, words: Int)
+    /// Start/end a thinking mode ("start_walk"/"end_walk"). Returns her
+    /// acknowledgment message, or nil on failure.
+    func modeAction(_ action: String, topic: String) async -> String?
 }
 
 /// In-memory stand-in so the app runs with zero backend.
@@ -53,4 +60,8 @@ struct MockAliciaService: AliciaService {
                        symbol: "sparkle",
                        author: .alicia)
     }
+
+    func episodeNotes(label: String) async -> String { "" }
+    func modeState() async -> (mode: String, words: Int) { ("idle", 0) }
+    func modeAction(_ action: String, topic: String) async -> String? { nil }
 }
