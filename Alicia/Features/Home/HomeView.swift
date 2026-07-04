@@ -60,7 +60,15 @@ struct HomeView: View {
                 .padding(.bottom, 24)
             }
             .refreshable { await store.load() }
-            .artBackground("ArtMemories", drift: true)
+            // The living field — the fromfutureself.com contour waves,
+            // breathing slowly behind the whole page.
+            .background {
+                ZStack {
+                    Theme.backdrop
+                    ContourWaves()
+                }
+                .ignoresSafeArea()
+            }
             .navigationTitle("Us")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -84,8 +92,8 @@ struct HomeView: View {
                     .foregroundStyle(Theme.ink.opacity(0.65))
             }
         }
-        // Clear the drawing's focal band before the content begins.
-        .padding(.top, 148)
+        // Let the wave field breathe above the greeting.
+        .padding(.top, 96)
     }
 
     private func nowPlayingChip(_ track: Track) -> some View {

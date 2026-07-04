@@ -19,6 +19,10 @@
 	     like "backend down". Tailscale doesn't need it, LAN does. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Alicia connects to her backend on your Mac Mini over your home network or tailnet.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Talk to Alicia — the mic in the composer dictates straight into your message.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Your voice is transcribed on-device so you can speak to Alicia instead of typing.</string>
 	<!-- Only the modes the app actually uses: background refresh polls her
 	     proactive-message feed for local notifications; audio keeps a
 	     podcast playing when backgrounded. Unused modes (voip,

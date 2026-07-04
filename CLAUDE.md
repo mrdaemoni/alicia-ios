@@ -83,3 +83,9 @@ See `docs/RESEARCH.md` for the full report + rationale. When ready, add via SPM:
 3. Real audio playback in Studio.
 4. Add `exyte/Chat` + streaming markdown to Talk.
 5. Wire the Canvas "Ask Alicia to reply" to the backend and render returned images in the gallery (Nuke).
+
+## Version tag
+
+`AppVersion.tag` (DesignSystem/ContourWaves.swift) shows on the Alicia tab so
+Hector can tell which build his phone runs. **Bump it (v8 → v9 → …) and its
+date in every change that ships.** Current: v8 (2026-07-04).

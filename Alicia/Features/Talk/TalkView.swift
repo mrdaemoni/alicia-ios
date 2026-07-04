@@ -3,6 +3,8 @@ import SwiftUI
 struct TalkView: View {
     @Environment(AppStore.self) private var store
     @State private var draft = ""
+    @State private var speech = SpeechTranscriber()
+    @State private var dictationBase = ""
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -83,24 +85,39 @@ struct TalkView: View {
     }
 
     private var composer: some View {
-        HStack(spacing: 10) {
-            TextField(store.isWalking ? "Walking — I'll keep everything…"
-                                      : "Message Alicia…",
+        HStack(spacing: 8) {
+            TextField(speech.isRecording ? "Listening…"
+                      : store.isWalking ? "Walking — talk or type…"
+                                        : "Message Alicia…",
                       text: $draft, axis: .vertical)
+                .font(.subheadline)
                 .lineLimit(1...5)
                 .focused($focused)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
                 .background(Color.white.opacity(0.30), in: Capsule())
+
+            // Voice in — live on-device transcription into the draft.
+            // Works the same in walk mode (accumulates) and regular chat.
+            Button {
+                toggleDictation()
+            } label: {
+                Image(systemName: speech.isRecording ? "waveform.circle.fill" : "mic")
+                    .font(.system(size: speech.isRecording ? 26 : 17, weight: .semibold))
+                    .symbolEffect(.variableColor.iterative, isActive: speech.isRecording)
+                    .foregroundStyle(speech.isRecording ? Theme.rose : Theme.accentSoft)
+                    .frame(width: 34, height: 34)
+            }
+            .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
 
             Button {
                 store.send(draft)
                 draft = ""
             } label: {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
+                    .frame(width: 34, height: 34)
                     .background(Theme.accentGradient, in: Circle())
             }
             .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -109,6 +126,25 @@ struct TalkView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Theme.paper.opacity(0.55))
+        .onChange(of: speech.transcript) { _, new in
+            if speech.isRecording || !new.isEmpty {
+                draft = dictationBase.isEmpty ? new
+                      : dictationBase + (new.isEmpty ? "" : " " + new)
+            }
+        }
+    }
+
+    private func toggleDictation() {
+        if speech.isRecording {
+            speech.stop()
+            return
+        }
+        focused = false
+        dictationBase = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            guard await speech.requestAuthorization() else { return }
+            try? speech.start()
+        }
     }
 }
 
@@ -150,17 +186,37 @@ struct ProactiveWhisper: View {
 struct MessageBubble: View {
     @Environment(AppStore.self) private var store
     let message: Message
+    @State private var expanded = false
     private var isMe: Bool { message.sender == .me }
 
     /// Emoji palette mirroring what her reaction loop scores on Telegram.
     private static let reactions = ["❤️", "🔥", "🧠", "👍", "🤔", "👎"]
 
+    /// A long message from her that isn't asking or answering directly —
+    /// a report. Reports open folded to their first breath; direct speech
+    /// (anything that ends in a question, or short) stays full-size.
+    private var isReport: Bool {
+        guard !isMe, message.text.count > 350 else { return false }
+        let tail = message.text.suffix(120)
+        return !tail.contains("?")
+    }
+
+    private var displayText: String {
+        guard isReport, !expanded else { return message.text }
+        // Fold at the first paragraph break past a minimum, else hard-cut.
+        if let cut = message.text.range(of: "\n\n", range:
+                message.text.index(message.text.startIndex, offsetBy: 120)..<message.text.endIndex) {
+            return String(message.text[..<cut.lowerBound])
+        }
+        return String(message.text.prefix(220)) + "…"
+    }
+
     /// Markdown-rendered body (falls back to plain text on parse failure).
     private var rendered: AttributedString {
         (try? AttributedString(
-            markdown: message.text,
+            markdown: displayText,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-        ?? AttributedString(message.text)
+        ?? AttributedString(displayText)
     }
 
     var body: some View {
@@ -187,8 +243,21 @@ struct MessageBubble: View {
 
     private var bubble: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            Text(message.text.isEmpty ? AttributedString("…") : rendered)
-                .foregroundStyle(Theme.ink)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(message.text.isEmpty ? AttributedString("…") : rendered)
+                    .foregroundStyle(Theme.ink)
+                if isReport {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+                    } label: {
+                        Label(expanded ? "less" : "the rest",
+                              systemImage: expanded ? "chevron.up" : "text.alignleft")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.accentSoft)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
 
             if let voiceURL = message.voiceURL {
                 Button {

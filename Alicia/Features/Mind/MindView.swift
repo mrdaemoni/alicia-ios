@@ -8,6 +8,12 @@ struct MindView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    // Build tag — so the phone build is identifiable at a
+                    // glance. Bumped on every shipped app change.
+                    Text("\(AppVersion.tag) · \(AppVersion.date)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(Theme.inkSoft.opacity(0.8))
+                        .padding(.top, -6)
                     stateHeader
                     if !store.proactiveFeed.isEmpty {
                         Text("What she's been saying")
