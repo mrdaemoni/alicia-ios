@@ -1,0 +1,37 @@
+# Xcode build
+build/
+DerivedData/
+*.moved-aside
+
+# Xcode per-user state (machine-specific — never commit)
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+
+# Xcode legacy per-user files
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+# Swift Package Manager
+.build/
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+Packages/
+Package.resolved
+
+# Dependency managers (only if you add them later)
+Pods/
+Carthage/Build/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Misc
+*.log
