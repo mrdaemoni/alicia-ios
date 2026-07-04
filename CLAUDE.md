@@ -1,91 +1,147 @@
 # CLAUDE.md — Alicia iOS
 
-Context handoff for continuing this project in Claude Code. This app was scaffolded in a Cowork session; everything below reflects that starting state.
+Context handoff for continuing this project in Claude Code. Everything below
+reflects the app as of **v8 (2026-07-04)** — verify against the code, this doc
+has drifted before.
 
 ## What this is
 
-A native **pure-SwiftUI** iOS app for "Alicia," a personal AI agent (whose backend is a separate Python service — currently Telegram-based). The app is Hector's interface to Alicia. Target **iOS 17.0**, Swift 5.9+, Xcode 16. **Zero third-party dependencies** right now — it builds and runs on the simulator as-is. Runs on the iPhone 17 simulator; verified building and running with a working live preview.
+A native **pure-SwiftUI** iOS app for "Alicia," Hector's personal AI agent.
+The backend is the separate Python service in the `alicia` repo
+(github.com/mrdaemoni/alicia — also reachable via Telegram; one relationship,
+two surfaces). Target **iOS 17.0**, Swift 5.9+, Xcode 16, **zero third-party
+dependencies**. Runs live against the backend on a real iPhone; falls back to
+mock data so the repo stays runnable for anyone who clones it.
 
-## The five sections (tabs)
+## The five tabs
 
-Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`:
+Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`
+(kept at five so iOS never folds tabs into "More"):
 
-1. **Talk** (`Features/Talk/TalkView.swift`) — Hector messaging Alicia. Native bubbles + composer; Alicia's replies stream in token-by-token.
-2. **Alicia** (`Features/Mind/MindView.swift`) — her introspection: mood/focus header, a live "thinking" pulse, cards of recent thoughts.
-3. **Studio** (`Features/Studio/StudioView.swift`) — Spotify-style player for audio she makes (wav/mp3): playlist + tappable tracks + persistent now-playing bar.
-4. **Canvas** (`Features/Canvas/CanvasView.swift` + `PencilCanvas.swift`) — one tab, segmented **My Canvas** (real PencilKit drawing) / **Alicia's Gallery** (grid of her + your drawings). "Ask Alicia to reply" seeds a gallery item.
-5. **Health** (`Features/Health/HealthView.swift`) — her vitals dashboard (presence, mood, memory, responsiveness…) as gauge tiles.
+1. **Us** (`Features/Home/HomeView.swift`) — landing page: her live greeting
+   (`/api/greeting`), latest proactive message with an inline reply field
+   (`ProactiveReplyCard`), a day-thought card, now-playing chip, and a status
+   strip that pushes **Health** (`Features/Health/HealthView.swift` — vitals
+   gauges; deliberately no NavigationStack of its own).
+2. **Dialogue** (`Features/Talk/TalkView.swift`) — chat. SSE token streaming,
+   emoji reactions, optional voice-note replies, mic dictation in the
+   composer, and a **Walk** toolbar button (same session as Telegram's
+   `/walk`: while walking, input is accumulated, not answered).
+3. **Alicia** (`Features/Mind/MindView.swift`) — her space: mode/state header,
+   the version tag, her recent proactive messages ("What she's been saying"),
+   and thought cards. Timeline opens seeded from the proactive feed.
+4. **Studio** (`Features/Studio/StudioView.swift`) — podcast library grouped
+   by season, episode detail pages with shownotes (`/api/episode/<label>`),
+   persistent player bar with scrubbing, ±15s skip, and 1×/1.5×/2× rate.
+5. **Canvas** (`Features/Canvas/CanvasView.swift` + `PencilCanvas.swift`) —
+   segmented **My Canvas** (PencilKit) / **Alicia's Gallery**. "Ask Alicia to
+   reply" uploads the drawing as PNG; her vision pass sees it and a rendered
+   complement lands in the gallery.
 
 ## Architecture
 
 ```
 Alicia/
-  App/            AliciaApp (@main entry) · RootView (TabView)
-  DesignSystem/   Theme.swift  (palette, .card() modifier, backdrop gradient)
-  Core/           Models.swift · AliciaService.swift · AppStore.swift · SampleData.swift
-  Features/       Talk · Mind · Studio · Canvas · Health
-  Assets.xcassets AppIcon + AccentColor
+  App/            AliciaApp (@main) · RootView (TabView, AppSection)
+  DesignSystem/   Theme.swift · ContourWaves.swift (animated home bg + AppVersion)
+  Core/           Models · AliciaService (protocol + mock) · LiveAliciaService
+                  · Config · AppStore · SpeechTranscriber · ProactiveNotifier
+                  · SampleData
+  Features/       Home · Talk · Mind · Studio · Canvas · Health
+  Assets.xcassets AppIcon · AccentColor · Art* (Hector's drawings)
 ```
 
-- **State:** single `@MainActor @Observable final class AppStore` (`Core/AppStore.swift`). Injected with `.environment(store)` in `AliciaApp`, read via `@Environment(AppStore.self)`. Holds messages, thoughts, tracks, gallery, health, and the (simulated) player state.
-- **Design:** `Theme` enum centralizes colors and the frosted `.card()` look so all tabs feel like one app. Forces `.preferredColorScheme(.dark)` in `AliciaApp` (remove that line to follow the system).
+- **State:** single `@MainActor @Observable final class AppStore`
+  (`Core/AppStore.swift`), injected via `.environment(store)`. Holds the
+  timeline, proactive feed, tracks, gallery, health, walk-mode state, and the
+  real audio player. `scenePhase → .active` refetches everything.
+- **Design — ink on paper:** `DesignSystem/Theme.swift`. The language comes
+  from Hector's own drawings (bundled as `Art*` assets): warm bone paper,
+  near-black ink, one sea-slate accent, serif type everywhere
+  (`.fontDesign(.serif)` + UINavigationBar appearance), frameless
+  translucent cards, `.artBackground()` washes a drawing behind each page.
+  The app forces **`.preferredColorScheme(.light)`** — paper wants light.
+  The Us page breathes under `ContourWaves` (the fromfutureself.com contour
+  field, marching squares at 12 fps).
 
-## The networking seam — LIVE (wired 2026-07-03)
+## The networking seam — LIVE
 
-Everything the UI needs flows through **one protocol**, `Core/AliciaService.swift`.
-`Core/LiveAliciaService.swift` implements it against the backend's iOS API —
-`skills/ios_api.py` in the `alicia` repo (github.com/mrdaemoni/alicia), a
-token-authed HTTP/SSE server on port **8766** started from `alicia.py:main()`.
-Auth: `Authorization: Bearer <ALICIA_IOS_TOKEN>`; media URLs carry `?token=`
-instead (AVPlayer/AsyncImage can't set headers). Chat is SSE (`{"t": token}`
-events) and **shares conversation_history with Telegram** — one relationship,
-two surfaces. L4-classified messages are redirected to Telegram by the backend.
+Everything flows through one protocol, `Core/AliciaService.swift`.
+`Core/LiveAliciaService.swift` implements it against the backend's iOS API
+(`skills/ios_api.py` in the `alicia` repo), a token-authed HTTP/SSE server on
+port **8766** (Mac Mini; home Wi-Fi or Tailscale). Auth is
+`Authorization: Bearer <token>`; media URLs carry `?token=` instead
+(AVPlayer/AsyncImage can't set headers). L4-classified messages are redirected
+to Telegram by the backend. Endpoints in use:
 
-Service selection is config-driven (`Core/Config.swift`): UserDefaults
-(`alicia.baseURL`/`alicia.token`) → bundled `Secrets.plist` (gitignored; copy
-`Secrets.example.plist`) → falls back to `MockAliciaService` + SampleData.
+| Endpoint | For |
+|---|---|
+| `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds a voice-note URL |
+| `GET /api/thoughts` · `/api/tracks` · `/api/gallery` · `/api/health` | tab data |
+| `GET /api/proactive?limit=` | her proactive messages (feed + notifications + timeline seed) |
+| `POST /api/react` | emoji reactions, by `message_id` or `proactive_id` |
+| `POST /api/reply` | reply to a proactive message (lands in capture/history/memory) |
+| `GET /api/greeting` | Us-page greeting |
+| `GET/POST /api/mode` | walk/drive thinking-mode state + start/end |
+| `GET /api/episode/<label>` | shownotes markdown |
+| `POST /api/complement` (base64 PNG, 120 s timeout) | drawing reply w/ vision |
 
-## Current state
+All fetches degrade gracefully — errors return empty/nil, never throw to views.
 
-- **Audio is real** — `AppStore` drives AVPlayer for tracks with http URLs
-  (backend serves wavs with Range support); the old ticker remains the
-  fallback for sample tracks.
-- **Gallery renders real drawings** — `Artwork.imageURL` + `AsyncImage` in
-  `ArtworkCell`; symbol placeholder when nil.
-- **ATS**: root `Info.plist` (merged via `INFOPLIST_FILE`) allows plain-HTTP —
-  backend is private-network only (tailnet/LAN).
-- **Canvas is one tab** with a segmented control. Split `CanvasView` into
-  `DrawView` + `GalleryView` and add cases to `AppSection` if you want two tabs.
+## Config / secrets
 
-## Recommended libraries to add (from the research pass)
+Service selection is config-driven (`Core/Config.swift`), first hit wins:
 
-See `docs/RESEARCH.md` for the full report + rationale. When ready, add via SPM:
-- **Talk:** `exyte/Chat` (chat surface), `microsoft/SwiftStreamingMarkdown` (streamed AI markdown), `swift-markdown-ui` (markdown theme), `kitlangton/OmenTextField` (composer).
-- **Studio / Canvas gallery:** `Nuke` (async image + caching) once there's real cover art / rendered images.
-- Drawing generative side: `swifty-creatives` (Metal) + native SwiftUI shader effects.
+1. UserDefaults `alicia.baseURL` / `alicia.token` (debugger-set; no settings UI yet).
+2. Bundled `Secrets.plist` — **gitignored**; copy `Secrets.example.plist` and fill in.
+3. Neither → **silent fallback to `MockAliciaService`** + SampleData. If the
+   app looks alive but ignores the backend, check this first.
+
+ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
+
+## Audio & notifications
+
+- **Audio is real** — `AppStore` drives AVPlayer for http-URL tracks (backend
+  serves wavs with Range support), publishes `MPNowPlayingInfo` + remote
+  commands, so lock screen / Dynamic Island transport works (`audio`
+  background mode). The old simulated ticker survives only as the fallback
+  for sample tracks. Voice notes use a separate AVPlayer so they never steal
+  the podcast position.
+- **Notifications** (`Core/ProactiveNotifier.swift`) — no APNs; a
+  `BGAppRefreshTask` (`com.alicia.app.refresh`) polls `/api/proactive` and
+  posts **local** notifications for unseen messages. iOS controls the timing,
+  so it's best-effort. Seen-tracking is shared with the foreground load path.
+- **Voice input** (`Core/SpeechTranscriber.swift`) — on-device SFSpeech
+  dictation straight into the Dialogue composer.
 
 ## How to build / run
 
-- Open `Alicia.xcodeproj` in Xcode 16+. Set a signing Team only for a physical device (simulator needs none).
-- Scheme "Alicia", destination an iPhone simulator (e.g. iPhone 17), Run. Or CLI:
+- Open `Alicia.xcodeproj` in Xcode 16+. Signing Team needed only for a
+  physical device (already set up for Hector's iPhone).
+- Scheme "Alicia", iPhone simulator destination, Run. Or CLI:
   `xcodebuild -scheme Alicia -destination 'platform=iOS Simulator,name=iPhone 17' build`
 
 ## Conventions
 
-- Pure SwiftUI, iOS 17 APIs (`@Observable`, `Gauge`, `symbolEffect`, `onChange` two-param, `TextField(axis:)`).
-- Keep the `AliciaService` seam clean — views should never call the network directly, only `AppStore`.
-- The custom section enum is `AppSection` (not `Section`) to avoid colliding with SwiftUI's `Section`.
-
-## Next steps (suggested order)
-
-1. Commit is already made; push to `github.com/mrdaemoni/alicia-ios`.
-2. Implement `LiveAliciaService` against Alicia's backend (start with `stream`).
-3. Real audio playback in Studio.
-4. Add `exyte/Chat` + streaming markdown to Talk.
-5. Wire the Canvas "Ask Alicia to reply" to the backend and render returned images in the gallery (Nuke).
+- Pure SwiftUI, iOS 17 APIs (`@Observable`, `Gauge`, `symbolEffect`,
+  two-param `onChange`, `TextField(axis:)`). No third-party packages.
+- Keep the `AliciaService` seam clean — views never touch the network, only
+  `AppStore`.
+- The section enum is `AppSection` (not `Section`) to avoid SwiftUI's `Section`.
+- Tab icons are line-art SF Symbols (never filled) to match the ink identity.
 
 ## Version tag
 
 `AppVersion.tag` (DesignSystem/ContourWaves.swift) shows on the Alicia tab so
 Hector can tell which build his phone runs. **Bump it (v8 → v9 → …) and its
 date in every change that ships.** Current: v8 (2026-07-04).
+
+## Actually pending
+
+- In-app settings screen for `alicia.baseURL`/`alicia.token` (today:
+  debugger or Secrets.plist only).
+- Canvas drawings aren't persisted between launches (`PKDrawing` lives in
+  `@State`).
+- `docs/RESEARCH.md` (library research from the scaffold session) is
+  historical — the zero-dependency approach won; consult it only if a real
+  need for a chat/markdown/image library appears.
