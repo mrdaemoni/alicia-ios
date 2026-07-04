@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.alicia.app.refresh</string>
+	</array>
 	<!-- The Alicia backend speaks plain HTTP on a private network (home
 	     Wi-Fi / Tailscale tailnet, port 8766) — never the open internet.
 	     ATS would otherwise block http:// to anything but localhost. -->
@@ -10,15 +14,17 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<!-- Required for LAN access (e.g. the Mac's .local hostname); without
+	     it iOS silently denies local-network traffic and the app looks
+	     like "backend down". Tailscale doesn't need it, LAN does. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Alicia connects to her backend on your Mac Mini over your home network or tailnet.</string>
-	<!-- Background refresh polls her proactive-message feed and posts local
-	     notifications; audio keeps a podcast playing when the app is
-	     backgrounded. -->
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>com.alicia.app.refresh</string>
-	</array>
+	<!-- Only the modes the app actually uses: background refresh polls her
+	     proactive-message feed for local notifications; audio keeps a
+	     podcast playing when backgrounded. Unused modes (voip,
+	     push-to-talk, location, …) expect entitlements the personal
+	     provisioning profile doesn't carry — they can break device
+	     launches and would fail App Store review. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
