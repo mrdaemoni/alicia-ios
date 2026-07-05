@@ -254,6 +254,17 @@ struct LiveAliciaService: AliciaService {
         } catch { return nil }
     }
 
+    private struct QuoteDTO: Decodable { var text: String; var author: String }
+
+    func quote() async -> (text: String, author: String)? {
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: request("/api/quote"))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            let q = try JSONDecoder().decode(QuoteDTO.self, from: data)
+            return q.text.isEmpty ? nil : (q.text, q.author)
+        } catch { return nil }
+    }
+
     private struct FeaturedDTO: Decodable {
         var title, excerpt, body, date: String
     }

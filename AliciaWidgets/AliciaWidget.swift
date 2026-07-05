@@ -61,10 +61,18 @@ struct AliciaWidgetView: View {
         switch family {
         case .systemSmall:
             VStack(alignment: .leading, spacing: 6) {
-                Text("ALICIA")
-                    .font(.system(size: 8, design: .monospaced).weight(.semibold))
-                    .tracking(1.6)
-                    .foregroundStyle(Ink.soft)
+                HStack(spacing: 4) {
+                    if let rabbit = UIImage(named: "rabbit") {
+                        Image(uiImage: rabbit)
+                            .resizable().renderingMode(.template).scaledToFit()
+                            .frame(width: 11, height: 11)
+                            .foregroundStyle(Ink.ink)
+                    }
+                    Text("ALICIA")
+                        .font(.system(size: 8, design: .monospaced).weight(.semibold))
+                        .tracking(1.6)
+                        .foregroundStyle(Ink.soft)
+                }
                 Spacer(minLength: 0)
                 Text(entry.greeting)
                     .font(.system(size: 15, design: .serif).weight(.medium))
@@ -77,6 +85,12 @@ struct AliciaWidgetView: View {
         default:
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
+                    if let rabbit = UIImage(named: "rabbit") {
+                        Image(uiImage: rabbit)
+                            .resizable().renderingMode(.template).scaledToFit()
+                            .frame(width: 12, height: 12)
+                            .foregroundStyle(Ink.ink)
+                    }
                     Text("ALICIA")
                         .font(.system(size: 9, design: .monospaced).weight(.semibold))
                         .tracking(1.8)

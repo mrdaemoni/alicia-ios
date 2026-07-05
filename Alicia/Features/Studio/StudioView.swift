@@ -111,30 +111,43 @@ struct EpisodeDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 14) {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Theme.accentGradient)
-                        .frame(width: 72, height: 72)
-                        .overlay(
+            VStack(alignment: .leading, spacing: 16) {
+                // The episode's artwork, full-bleed, with her breathing form
+                // over it — every detail page an intentional plate.
+                ZStack(alignment: .bottomLeading) {
+                    Image(artTile(for: track))
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 190)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    LinearGradient(colors: [.clear, Theme.paper.opacity(0.9)],
+                                   startPoint: .center, endPoint: .bottom)
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    HStack(alignment: .bottom) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text((track.label ?? "").uppercased() + " · " + track.duration.asClock)
+                                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                                .tracking(1.6)
+                                .foregroundStyle(Theme.inkSoft)
+                            Text(track.title)
+                                .font(.system(size: 22, weight: .semibold, design: .serif))
+                                .foregroundStyle(Theme.ink)
+                        }
+                        Spacer()
+                        Button { store.togglePlay() } label: {
                             Image(systemName: store.isPlaying && store.nowPlaying?.id == track.id
-                                  ? "waveform" : "play.fill")
-                                .font(.title2)
-                                .foregroundStyle(.white)
-                                .symbolEffect(.variableColor.iterative,
-                                              isActive: store.isPlaying && store.nowPlaying?.id == track.id)
-                        )
-                        .onTapGesture { store.togglePlay() }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(track.title).font(.title3.weight(.bold))
-                        Text(track.mood).font(.caption).foregroundStyle(Theme.inkSoft)
-                        Text(track.duration.asClock)
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(Theme.inkSoft.opacity(0.75))
+                                  ? "pause.circle.fill" : "play.circle.fill")
+                                .font(.system(size: 40))
+                                .foregroundStyle(Theme.ink)
+                        }
                     }
-                    Spacer()
+                    .padding(14)
                 }
-                .card(padding: 12, radius: 20)
+                StippleIllustration(seed: (track.label ?? "x").count * 7 + track.episode,
+                                    dots: 500, animated: true)
+                    .frame(height: 44)
+                    .frame(maxWidth: .infinity)
 
                 if loading {
                     ProgressView("Fetching shownotes…")
@@ -168,6 +181,15 @@ struct EpisodeDetailView: View {
     }
 }
 
+
+/// Each episode gets one of Hector's artworks as its tile —
+/// deterministic by label so the pairing is stable.
+func artTile(for track: Track) -> String {
+    let key = track.label ?? track.title
+    let h = key.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+    return "ArtTile\(h % 10)"
+}
+
 struct TrackRow: View {
     let track: Track
     let isCurrent: Bool
@@ -175,14 +197,24 @@ struct TrackRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isCurrent ? AnyShapeStyle(Theme.accentGradient) : AnyShapeStyle(Theme.card))
+            ZStack(alignment: .bottomTrailing) {
+                Image(artTile(for: track))
+                    .resizable()
+                    .scaledToFill()
                     .frame(width: 52, height: 52)
-                Image(systemName: isPlaying ? "waveform" : track.symbol)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(isCurrent ? .white : .secondary)
-                    .symbolEffect(.variableColor.iterative, isActive: isPlaying)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(isCurrent ? Theme.accent : Theme.stroke,
+                                      lineWidth: isCurrent ? 1.6 : 0.7))
+                if isPlaying {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(Theme.accent, in: Circle())
+                        .offset(x: 5, y: 5)
+                        .symbolEffect(.variableColor.iterative, isActive: true)
+                }
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(track.title)

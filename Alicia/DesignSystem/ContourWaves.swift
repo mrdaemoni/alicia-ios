@@ -319,7 +319,16 @@ struct StippleIllustration: View {
                 return Double(state >> 11) / Double(UInt64(1) << 53)
             }
             let cx = size.width / 2, cy = size.height / 2
-            let R = min(size.width, size.height) * 0.42
+            // Her heart: a lub-dub every ~1.1 s when animated — two quick
+            // swells then rest, like a pulse felt at the wrist.
+            var beat = 0.0
+            if t > 0 {
+                let phase = (t * 0.9).truncatingRemainder(dividingBy: 1.0)
+                let lub = exp(-pow((phase - 0.12) * 14, 2))
+                let dub = exp(-pow((phase - 0.38) * 14, 2)) * 0.6
+                beat = (lub + dub) * 0.085
+            }
+            let R = min(size.width, size.height) * 0.42 * (1.0 + beat)
             let k3 = 2.0 + rnd() * 3.0        // lobes
             let k5 = 1.0 + rnd() * 4.0
             // The lobes drift very slowly when animated — a form breathing.
@@ -388,6 +397,6 @@ extension AppStore {
 /// at a glance whether his phone runs the latest build. BUMP THIS on every
 /// app change that ships (see CLAUDE.md).
 enum AppVersion {
-    static let tag = "v13"
+    static let tag = "v14"
     static let date = "Jul 5"
 }

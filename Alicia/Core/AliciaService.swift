@@ -39,6 +39,8 @@ protocol AliciaService {
                   anchor: CGPoint?) async -> (overlay: URL, caption: String)?
     /// The synthesis of the day (rotates at midnight); nil offline.
     func featured() async -> FeaturedSynthesis?
+    /// Quote of the moment (three rotations a day); nil offline.
+    func quote() async -> (text: String, author: String)?
 }
 
 /// In-memory stand-in so the app runs with zero backend.
@@ -85,6 +87,10 @@ struct MockAliciaService: AliciaService {
     func cocreate(image: Data, width: Int, height: Int,
                   anchor: CGPoint?) async -> (overlay: URL, caption: String)? {
         nil   // co-creation needs the live backend
+    }
+
+    func quote() async -> (text: String, author: String)? {
+        ("The end of a melody is not its goal.", "Friedrich Nietzsche")
     }
 
     func featured() async -> FeaturedSynthesis? {

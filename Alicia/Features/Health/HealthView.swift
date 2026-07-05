@@ -108,9 +108,9 @@ struct InkStroke: View {
             stroke.move(to: CGPoint(x: 0, y: midY + (rnd() - 0.5) * 2))
             for i in 1...segments {
                 let x = endX * Double(i) / Double(segments)
-                // The pen never quite rests — a living tremble.
-                let tremble = sin(t * 1.1 + Double(i) * 0.9 + Double(seed % 7)) * 0.9
-                let y = midY + (rnd() - 0.5) * 3.2 + tremble
+                // A wave travels down the stroke — the line is water.
+                let wave = sin(t * 2.6 - Double(i) * 0.85 + Double(seed % 7)) * 2.6
+                let y = midY + (rnd() - 0.5) * 2.0 + wave
                 stroke.addLine(to: CGPoint(x: x, y: y))
             }
             context.stroke(stroke, with: .color(Theme.ink.opacity(0.85)),

@@ -43,10 +43,12 @@ final class AppStore {
         async let m = service.modeState()
         async let gr = service.greeting()
         async let fs = service.featured()
+        async let qt = service.quote()
         (thoughts, tracks, gallery, health) = await (t, tr, g, h)
         (thinkingMode, walkWords) = await m
         greeting = await gr ?? greeting
         featured = await fs ?? featured
+        quote = await qt ?? quote
         publishWidgetCache()
         let pro = await p
         if !pro.isEmpty {
@@ -80,6 +82,9 @@ final class AppStore {
         }
         if let latest = proactiveFeed.first {
             shared.set(String(latest.text.prefix(200)), forKey: "widget.note")
+        }
+        if let quote {
+            shared.set("“" + quote.text + "”", forKey: "widget.quote")
         }
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -141,6 +146,44 @@ final class AppStore {
     var proactiveFeed: [ProactiveMessage] = []
     /// The synthesis of the day (Us page reading card).
     var featured: FeaturedSynthesis?
+    /// Quote of the moment (Us page; rotates thrice daily).
+    var quote: (text: String, author: String)?
+
+    /// Archetypes by how loudly they've been speaking lately (proactive
+    /// feed + diary tags), most active first.
+    var rankedArchetypes: [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for m in proactiveFeed where !m.archetype.isEmpty {
+            counts[m.archetype.lowercased(), default: 0] += 1
+        }
+        for t in thoughts where Archetypes.all[t.tag.lowercased()] != nil {
+            counts[t.tag.lowercased(), default: 0] += 1
+        }
+        let known = Archetypes.order
+        return known
+            .map { (name: $0, count: counts[$0] ?? 0) }
+            .sorted { $0.count > $1.count }
+    }
+
+    /// Today's listening: her active pick first, then the next unheard
+    /// episodes of the newest season.
+    var suggestedTracks: [Track] {
+        var out: [Track] = []
+        if let pick = tracks.first(where: { $0.mood.contains("today's pick") }) {
+            out.append(pick)
+        }
+        for t in tracks where !out.contains(t) {
+            out.append(t)
+            if out.count >= 3 { break }
+        }
+        return Array(out.prefix(3))
+    }
+
+    /// Deep link: jump to Studio and start the episode.
+    func playFromHome(_ track: Track) {
+        selectedSection = .studio
+        play(track)
+    }
     /// Programmatic tab switching (Dialogue chips → Alicia tab).
     var selectedSection: AppSection = .us
     /// Which proactive card the Alicia tab should scroll to on arrival

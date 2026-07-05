@@ -54,8 +54,21 @@ struct HomeView: View {
                         FeaturedSynthesisCard(featured: featured)
                     }
 
+                    if let quote = store.quote {
+                        QuoteCard(quote: quote)
+                    }
+
                     if let art = store.gallery.first(where: { $0.imageURL != nil }) {
                         BestDrawingCard(art: art)
+                    }
+
+                    if let top = store.rankedArchetypes.first,
+                       let arch = Archetypes.get(top.name) {
+                        ArchetypeCard(arch: arch, count: top.count)
+                    }
+
+                    if !store.suggestedTracks.isEmpty {
+                        EpisodeAskCard()
                     }
 
                     if let day = dayThought {
@@ -273,7 +286,7 @@ struct FeaturedSynthesisCard: View {
                         .tracking(1.6)
                         .foregroundStyle(Theme.inkSoft)
                     Spacer()
-                    StippleIllustration(dots: 700)
+                    StippleIllustration(dots: 700, animated: true)
                         .frame(width: 44, height: 44)
                 }
                 Text(featured.title)
@@ -372,7 +385,7 @@ struct SynthesisReader: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                StippleIllustration()
+                StippleIllustration(animated: true)
                     .frame(height: 140)
                     .frame(maxWidth: .infinity)
                 Text("SYNTHESIS · \(featured.date)")
@@ -510,6 +523,135 @@ struct BestDrawingCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 14, radius: 22)
+    }
+}
+
+/// The quote of the moment — copyable, editorial, centered.
+struct QuoteCard: View {
+    let quote: (text: String, author: String)
+    @State private var copied = false
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("QUOTE OF THE MOMENT")
+                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                .tracking(2.0)
+                .foregroundStyle(Theme.inkSoft)
+            Text("“" + quote.text + "”")
+                .font(.system(size: 17, design: .serif))
+                .italic()
+                .lineSpacing(5)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Theme.ink)
+            if !quote.author.isEmpty {
+                Text("— " + quote.author)
+                    .font(.system(size: 11, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            Button {
+                UIPasteboard.general.string = "“" + quote.text + "”"
+                    + (quote.author.isEmpty ? "" : " — " + quote.author)
+                withAnimation { copied = true }
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    withAnimation { copied = false }
+                }
+            } label: {
+                Text(copied ? "COPIED" : "COPY")
+                    .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                    .tracking(1.6)
+                    .underline()
+                    .foregroundStyle(copied ? Theme.mint : Theme.accent)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .card(padding: 18, radius: 20)
+    }
+}
+
+/// The voice speaking loudest right now — her body, her role; tapping
+/// opens her page on the Alicia tab.
+struct ArchetypeCard: View {
+    @Environment(AppStore.self) private var store
+    let arch: Archetype
+    let count: Int
+
+    var body: some View {
+        Button {
+            store.selectedSection = .mind
+        } label: {
+            HStack(spacing: 16) {
+                StippleIllustration(seed: arch.seed, dots: 1100, animated: true)
+                    .frame(width: 84, height: 84)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("THE VOICE OF THE MOMENT")
+                        .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                        .tracking(1.8)
+                        .foregroundStyle(Theme.inkSoft)
+                    Text(arch.name)
+                        .font(.system(size: 24, weight: .semibold, design: .serif))
+                        .foregroundStyle(Theme.ink)
+                    Text(arch.role)
+                        .font(.system(size: 13, design: .serif))
+                        .italic()
+                        .foregroundStyle(Theme.ink.opacity(0.7))
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            .card(padding: 14, radius: 20)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// "What am I listening to today?" — her top three, one tap to play.
+struct EpisodeAskCard: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("TODAY'S LISTENING")
+                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                .tracking(2.0)
+                .foregroundStyle(Theme.inkSoft)
+            Text("Which episode is today's walk?")
+                .font(.system(.headline, design: .serif))
+                .foregroundStyle(Theme.ink)
+            ForEach(store.suggestedTracks) { track in
+                Button {
+                    store.playFromHome(track)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "play.circle")
+                            .font(.title3)
+                            .foregroundStyle(Theme.accent)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(track.title)
+                                .font(.system(size: 14, design: .serif).weight(.medium))
+                                .foregroundStyle(Theme.ink)
+                                .lineLimit(1)
+                            Text((track.label ?? "") +
+                                 (track.mood.contains("today's pick") ? " · her pick" : ""))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                        Spacer()
+                        Text(track.duration.asClock)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 16, radius: 20)
     }
 }
 

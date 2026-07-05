@@ -9,14 +9,27 @@ struct MindView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        SectionHeader(title: "Alicia", kicker: "her inner weather")
-                        // Build tag — so the phone build is identifiable at a
-                        // glance. Bumped on every shipped app change.
-                        Text("\(AppVersion.tag) · \(AppVersion.date)")
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(Theme.inkSoft.opacity(0.8))
-                            .padding(.top, -6)
-                        stateHeader
+                        // Her name with her mark beside it — no state card.
+                        VStack(spacing: 5) {
+                            HStack(spacing: 10) {
+                                Image("RabbitMark")
+                                    .resizable().scaledToFit()
+                                    .frame(width: 26, height: 26)
+                                    .foregroundStyle(Theme.ink)
+                                Text("Alicia")
+                                    .font(.system(size: 30, weight: .semibold, design: .serif))
+                                    .foregroundStyle(Theme.ink)
+                            }
+                            Text("HER INNER WEATHER · \(AppVersion.tag)")
+                                .font(.system(size: 10, design: .monospaced))
+                                .tracking(2.0)
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 14)
+
+                        ArchetypeGallery()
+
                         if !store.proactiveFeed.isEmpty {
                             Text("What she's been saying")
                                 .font(.headline)
@@ -60,36 +73,6 @@ struct MindView: View {
         }
     }
 
-    private var stateHeader: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                // Her mark — the rabbit silhouette on the sea-slate circle.
-                ZStack {
-                    Circle().fill(Theme.accentGradient).frame(width: 56, height: 56)
-                    Image("RabbitMark")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 32, height: 32)
-                        .foregroundStyle(.white)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Present and warm")
-                        .font(.title3.weight(.semibold))
-                    Text("Working on a new composition")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.inkSoft)
-                }
-                Spacer()
-            }
-            HStack(spacing: 8) {
-                LiveDot()
-                Text("Thinking…")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.inkSoft)
-            }
-        }
-        .card(padding: 18)
-    }
 }
 
 struct ThoughtCard: View {

@@ -15,7 +15,9 @@ enum Theme {
     static let ink      = Color(red: 0.165, green: 0.153, blue: 0.137)  // warm near-black
     /// Secondary text: dark warm gray — pencil, not silver. System
     /// `.secondary` reads washed-out against the paper.
-    static let inkSoft  = Color(red: 0.322, green: 0.302, blue: 0.271)
+    // Secondary text/controls: the same near-black as the ink, only quieter
+    // through opacity — the warm gray didn't fit the engraving register.
+    static let inkSoft  = Color(red: 0.165, green: 0.153, blue: 0.137).opacity(0.78)
 
     // The one accent: sea-slate, from the blue thread in the spiral pieces.
     static let accent     = Color(red: 0.282, green: 0.380, blue: 0.475)

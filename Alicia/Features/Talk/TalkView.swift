@@ -182,8 +182,9 @@ struct ProactiveWhisper: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Color.white.opacity(0.16), in: Capsule())
-            // Left-aligned with her bubbles — impulses come from her side.
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Centered — a whisper across the page, distinct from the
+            // left-hugging speech bubbles.
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .buttonStyle(.plain)
     }
