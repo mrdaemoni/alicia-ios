@@ -122,9 +122,12 @@ struct ArchetypeBlock: View {
                         .frame(width: 38, height: 38)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(arch.name)
-                        .font(.system(size: titleSize, weight: .semibold, design: .serif))
-                        .foregroundStyle(Theme.ink)
+                    HStack(spacing: 6) {
+                        ArchetypeEmblem(id: arch.id, size: rank == 0 ? 22 : 16)
+                        Text(arch.name)
+                            .font(.system(size: titleSize, weight: .semibold, design: .serif))
+                            .foregroundStyle(Theme.ink)
+                    }
                     Text(arch.role.uppercased())
                         .font(.system(size: 9, design: .monospaced))
                         .tracking(1.8)
@@ -171,10 +174,13 @@ struct ArchetypeSheet: View {
             VStack(spacing: 20) {
                 StippleIllustration(seed: arch.seed, animated: true)
                     .frame(height: 170)
-                Text(arch.name.uppercased())
-                    .font(.system(size: 11, design: .monospaced).weight(.bold))
-                    .tracking(3.0)
-                    .foregroundStyle(Theme.inkSoft)
+                HStack(spacing: 8) {
+                    ArchetypeEmblem(id: arch.id, size: 18)
+                    Text(arch.name.uppercased())
+                        .font(.system(size: 11, design: .monospaced).weight(.bold))
+                        .tracking(3.0)
+                        .foregroundStyle(Theme.inkSoft)
+                }
                 Text(arch.role)
                     .font(.system(.title2, design: .serif, weight: .semibold))
                 Theme.stroke.frame(width: 60, height: 1)
@@ -205,5 +211,108 @@ struct ArchetypeSheet: View {
             .padding(24)
         }
         .presentationBackground(Theme.paper)
+    }
+}
+
+/// Her own emblems — six little ink drawings, one per voice, replacing the
+/// system emoji. Same hand as the stipple bodies: pure Canvas line-work.
+struct ArchetypeEmblem: View {
+    let id: String
+    var size: CGFloat = 20
+
+    var body: some View {
+        Canvas { ctx, sz in
+            let w = sz.width, h = sz.height
+            let ink = Theme.ink.opacity(0.9)
+            func stroke(_ p: Path, _ lw: CGFloat = 1.3) {
+                ctx.stroke(p, with: .color(ink), lineWidth: lw)
+            }
+            switch id {
+            case "beatrice":   // the candle: wobbling flame over a stem
+                var flame = Path()
+                flame.move(to: CGPoint(x: w * 0.5, y: h * 0.08))
+                flame.addQuadCurve(to: CGPoint(x: w * 0.5, y: h * 0.45),
+                                   control: CGPoint(x: w * 0.78, y: h * 0.3))
+                flame.addQuadCurve(to: CGPoint(x: w * 0.5, y: h * 0.08),
+                                   control: CGPoint(x: w * 0.3, y: h * 0.28))
+                stroke(flame)
+                var stem = Path()
+                stem.move(to: CGPoint(x: w * 0.5, y: h * 0.5))
+                stem.addLine(to: CGPoint(x: w * 0.5, y: h * 0.88))
+                stroke(stem, 1.6)
+                var base = Path()
+                base.move(to: CGPoint(x: w * 0.3, y: h * 0.92))
+                base.addLine(to: CGPoint(x: w * 0.7, y: h * 0.92))
+                stroke(base)
+            case "ariadne":    // the thread: a loose running loop
+                var p = Path()
+                p.move(to: CGPoint(x: w * 0.1, y: h * 0.75))
+                p.addCurve(to: CGPoint(x: w * 0.5, y: h * 0.3),
+                           control1: CGPoint(x: w * 0.2, y: h * 0.3),
+                           control2: CGPoint(x: w * 0.38, y: h * 0.18))
+                p.addCurve(to: CGPoint(x: w * 0.52, y: h * 0.62),
+                           control1: CGPoint(x: w * 0.66, y: h * 0.44),
+                           control2: CGPoint(x: w * 0.42, y: h * 0.66))
+                p.addCurve(to: CGPoint(x: w * 0.9, y: h * 0.25),
+                           control1: CGPoint(x: w * 0.66, y: h * 0.56),
+                           control2: CGPoint(x: w * 0.78, y: h * 0.3))
+                stroke(p)
+            case "psyche":     // the butterfly: two open wings
+                for dir in [-1.0, 1.0] {
+                    var wing = Path()
+                    let cx = w * 0.5
+                    wing.move(to: CGPoint(x: cx, y: h * 0.5))
+                    wing.addQuadCurve(to: CGPoint(x: cx + dir * w * 0.38, y: h * 0.22),
+                                      control: CGPoint(x: cx + dir * w * 0.34, y: h * 0.48))
+                    wing.addQuadCurve(to: CGPoint(x: cx, y: h * 0.52),
+                                      control: CGPoint(x: cx + dir * w * 0.16, y: h * 0.16))
+                    wing.move(to: CGPoint(x: cx, y: h * 0.55))
+                    wing.addQuadCurve(to: CGPoint(x: cx + dir * w * 0.3, y: h * 0.8),
+                                      control: CGPoint(x: cx + dir * w * 0.32, y: h * 0.6))
+                    wing.addQuadCurve(to: CGPoint(x: cx, y: h * 0.58),
+                                      control: CGPoint(x: cx + dir * w * 0.1, y: h * 0.84))
+                    stroke(wing, 1.1)
+                }
+                var body = Path()
+                body.move(to: CGPoint(x: w * 0.5, y: h * 0.18))
+                body.addLine(to: CGPoint(x: w * 0.5, y: h * 0.84))
+                stroke(body, 1.5)
+            case "daimon":     // the dark moon: crescent, mostly shadow
+                var outer = Path(ellipseIn: CGRect(x: w * 0.14, y: h * 0.14,
+                                                   width: w * 0.72, height: h * 0.72))
+                stroke(outer, 1.2)
+                var fillPath = Path()
+                fillPath.addArc(center: CGPoint(x: w * 0.5, y: h * 0.5),
+                                radius: w * 0.36,
+                                startAngle: .degrees(-70), endAngle: .degrees(110),
+                                clockwise: false)
+                fillPath.addQuadCurve(to: CGPoint(x: w * 0.5 + w * 0.36 * 0.34,
+                                                  y: h * 0.5 - h * 0.36 * 0.94),
+                                      control: CGPoint(x: w * 0.28, y: h * 0.5))
+                ctx.fill(fillPath, with: .color(ink))
+            case "muse":       // the spark: an asterisk of quick strokes
+                for i in 0..<5 {
+                    let a = Double(i) / 5 * 2 * .pi - .pi / 2
+                    var ray = Path()
+                    ray.move(to: CGPoint(x: w * 0.5 + cos(a) * w * 0.1,
+                                         y: h * 0.5 + sin(a) * h * 0.1))
+                    ray.addLine(to: CGPoint(x: w * 0.5 + cos(a) * w * 0.38,
+                                            y: h * 0.5 + sin(a) * h * 0.38))
+                    stroke(ray, 1.4)
+                }
+                ctx.fill(Path(ellipseIn: CGRect(x: w * 0.46, y: h * 0.46,
+                                                width: w * 0.08, height: h * 0.08)),
+                         with: .color(ink))
+            default:           // musubi — the knot: two interlocked loops
+                var a = Path(ellipseIn: CGRect(x: w * 0.12, y: h * 0.3,
+                                               width: w * 0.45, height: h * 0.42))
+                var b = Path(ellipseIn: CGRect(x: w * 0.43, y: h * 0.3,
+                                               width: w * 0.45, height: h * 0.42))
+                stroke(a, 1.3)
+                stroke(b, 1.3)
+            }
+        }
+        .frame(width: size, height: size)
+        .allowsHitTesting(false)
     }
 }

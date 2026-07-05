@@ -99,3 +99,17 @@ extension HealthMetric {
     /// pigment on paper, not neon on glass.
     var color: Color { Color(hue: hue, saturation: 0.38, brightness: 0.52) }
 }
+extension String {
+    /// Proactive messages arrive with her Telegram emoji prefix (🕯️, 🧵…).
+    /// The app draws its own emblems — shed leading pictographs here.
+    var strippedLeadingEmoji: String {
+        var scalars = unicodeScalars.drop(while: { s in
+            s.properties.isEmojiPresentation || s.properties.isEmoji &&
+            !("a"..."z").contains(Character(s).lowercased().first.map(String.init) ?? "0")
+            || s == " " || s == "\u{FE0F}"
+        })
+        return String(String.UnicodeScalarView(scalars))
+            .trimmingCharacters(in: .whitespaces)
+    }
+}
+

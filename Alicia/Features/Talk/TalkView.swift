@@ -129,7 +129,10 @@ struct TalkView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
-        .padding(.bottom, 12)
+        // The safe-area inset does not reliably push this VStack on device
+        // (the bar overlapped the field twice) — clear the word-bar
+        // explicitly whenever it's visible.
+        .padding(.bottom, store.composerFocused ? 12 : 58)
         .background(Theme.paper.opacity(0.55))
         .onChange(of: speech.transcript) { _, new in
             if speech.isRecording || !new.isEmpty {
@@ -172,7 +175,7 @@ struct ProactiveWhisper: View {
                 Text(message.proactiveLabel ?? "from her")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.accentSoft)
-                Text(message.text)
+                Text(message.text.strippedLeadingEmoji)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .lineLimit(1)

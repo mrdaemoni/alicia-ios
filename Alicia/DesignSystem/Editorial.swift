@@ -19,30 +19,29 @@ struct EditorialTabBar: View {
     }
 
     private var bar: some View {
-        VStack(spacing: 0) {
-            Theme.stroke.frame(height: 0.7)
-            HStack(spacing: 0) {
-                ForEach(AppSection.allCases) { section in
-                    Button {
-                        store.selectedSection = section
-                    } label: {
-                        Text(section.rawValue.uppercased())
-                            .font(.system(size: 10, design: .monospaced)
-                                .weight(store.selectedSection == section ? .bold : .regular))
-                            .tracking(0.8)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                            .foregroundStyle(store.selectedSection == section
-                                             ? Theme.ink : Theme.inkSoft.opacity(0.75))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 15)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+        HStack(spacing: 0) {
+            ForEach(AppSection.allCases) { section in
+                Button {
+                    store.selectedSection = section
+                } label: {
+                    Text(section.rawValue.uppercased())
+                        .font(.system(size: 10, design: .monospaced)
+                            .weight(store.selectedSection == section ? .bold : .regular))
+                        .tracking(0.8)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .foregroundStyle(store.selectedSection == section
+                                         ? Theme.paper : Theme.paper.opacity(0.55))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
-        .background(Theme.paper.opacity(0.97))
+        // Inverted and SOLID — ink to the very bottom edge (the home
+        // indicator region included), framing the whole app.
+        .background(Theme.ink.ignoresSafeArea(edges: .bottom))
     }
 }
 

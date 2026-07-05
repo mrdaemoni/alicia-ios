@@ -156,9 +156,9 @@ struct SaidCard: View {
                     .foregroundStyle(Theme.inkSoft)
             }
             Text((try? AttributedString(
-                    markdown: item.text,
+                    markdown: item.text.strippedLeadingEmoji,
                     options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                 ?? AttributedString(item.text))
+                 ?? AttributedString(item.text.strippedLeadingEmoji))
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
         }

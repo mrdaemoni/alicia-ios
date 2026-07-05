@@ -31,26 +31,30 @@ struct KnowledgeView: View {
                         }
                     }
 
-                    Text("THE THINKERS")
-                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                        .tracking(2.0)
-                        .foregroundStyle(Theme.inkSoft)
-                        .padding(.top, 10)
-
-                    // Theme filter — mono chips, Co-Star flat.
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            themeChip(nil, label: "ALL")
-                            ForEach(store.thinkerNetwork?.themes ?? [], id: \.self) { th in
-                                themeChip(th, label: th.uppercased())
-                            }
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("THE THINKERS")
+                            .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                            .tracking(2.0)
+                            .foregroundStyle(Theme.inkSoft)
+                        Spacer()
+                        NavigationLink {
+                            ThinkersPage()
+                        } label: {
+                            Text("SEE ALL \(store.thinkerNetwork?.thinkers.count ?? 0) →")
+                                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                                .tracking(1.4)
+                                .underline()
+                                .foregroundStyle(Theme.accent)
                         }
+                        .buttonStyle(.plain)
                     }
+                    .padding(.top, 10)
 
+                    // The anchors + the loudest themed voices, faces first.
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 14),
                                         GridItem(.flexible(), spacing: 14)],
                               spacing: 14) {
-                        ForEach(thinkers) { thinker in
+                        ForEach((store.thinkerNetwork?.thinkers ?? []).prefix(4)) { thinker in
                             ThinkerCell(thinker: thinker)
                                 .onTapGesture { openThinker = thinker }
                         }
@@ -314,3 +318,63 @@ struct ThinkerSheet: View {
         }
     }
 }
+
+/// The full network — every thinker in the vault, filterable by theme.
+struct ThinkersPage: View {
+    @Environment(AppStore.self) private var store
+    @State private var themeFilter: String?
+    @State private var openThinker: Thinker?
+
+    private var thinkers: [Thinker] {
+        let all = store.thinkerNetwork?.thinkers ?? []
+        guard let themeFilter else { return all }
+        return all.filter { $0.themes.contains(themeFilter) }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                SectionHeader(title: "The Thinkers",
+                              kicker: "\(thinkers.count) minds in the vault")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        chip(nil, label: "ALL")
+                        ForEach(store.thinkerNetwork?.themes ?? [], id: \.self) { th in
+                            chip(th, label: th.uppercased())
+                        }
+                    }
+                }
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 14),
+                                    GridItem(.flexible(), spacing: 14)],
+                          spacing: 14) {
+                    ForEach(thinkers) { thinker in
+                        ThinkerCell(thinker: thinker)
+                            .onTapGesture { openThinker = thinker }
+                    }
+                }
+            }
+            .padding(16)
+            .padding(.bottom, 24)
+        }
+        .waveBackground(.mind(mood: store.waveMood + 7), tinted: true)
+        .sheet(item: $openThinker) { t in ThinkerSheet(thinker: t) }
+    }
+
+    private func chip(_ value: String?, label: String) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) { themeFilter = value }
+        } label: {
+            Text(label)
+                .font(.system(size: 10, design: .monospaced)
+                    .weight(themeFilter == value ? .bold : .regular))
+                .tracking(1.4)
+                .foregroundStyle(themeFilter == value ? Theme.paper : Theme.ink)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(themeFilter == value ? Theme.ink : Color.white.opacity(0.3),
+                            in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
