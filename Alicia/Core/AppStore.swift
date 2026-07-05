@@ -41,9 +41,11 @@ final class AppStore {
         async let p = service.proactive(limit: 6)
         async let m = service.modeState()
         async let gr = service.greeting()
+        async let fs = service.featured()
         (thoughts, tracks, gallery, health) = await (t, tr, g, h)
         (thinkingMode, walkWords) = await m
         greeting = await gr ?? greeting
+        featured = await fs ?? featured
         let pro = await p
         if !pro.isEmpty {
             proactiveFeed = pro
@@ -63,6 +65,48 @@ final class AppStore {
         }
     }
 
+    // MARK: live proactive polling
+    // While the app runs, check her feed every minute: new items join the
+    // timeline as whispers, update the Us card, and post a banner. This is
+    // what makes her feel PRESENT on the phone — BG refresh alone (see
+    // ProactiveNotifier) fires far too rarely on a dev-signed build.
+    private var proactivePoll: Task<Void, Never>?
+
+    func startProactivePolling() {
+        proactivePoll?.cancel()
+        proactivePoll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                await self?.pollProactive()
+            }
+        }
+    }
+
+    func stopProactivePolling() {
+        proactivePoll?.cancel()
+        proactivePoll = nil
+    }
+
+    private func pollProactive() async {
+        let fresh = await service.proactive(limit: 6)
+        guard !fresh.isEmpty else { return }
+        let known = Set(proactiveFeed.map(\.id))
+        let new = fresh.filter { !known.contains($0.id) }
+        proactiveFeed = fresh
+        guard !new.isEmpty else { return }
+        for m in new.reversed() {
+            messages.append(Message(
+                sender: .alicia, text: m.text, date: m.date,
+                proactiveLabel: [m.kind.replacingOccurrences(of: "_", with: " "),
+                                 m.archetype]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · "),
+                proactiveID: m.id))
+            await ProactiveNotifier.notify(m)
+        }
+        ProactiveNotifier.markSeen(fresh)
+    }
+
     // MARK: Talk
     /// Whether Alicia's replies also arrive as voice notes.
     var voiceReplies = UserDefaults.standard.bool(forKey: "alicia.voiceReplies") {
@@ -76,6 +120,8 @@ final class AppStore {
     var greeting: String?
     /// Her recent proactive messages — Us reply card + Alicia-tab detail.
     var proactiveFeed: [ProactiveMessage] = []
+    /// The synthesis of the day (Us page reading card).
+    var featured: FeaturedSynthesis?
     /// Programmatic tab switching (Dialogue chips → Alicia tab).
     var selectedSection: AppSection = .us
     /// Which proactive card the Alicia tab should scroll to on arrival

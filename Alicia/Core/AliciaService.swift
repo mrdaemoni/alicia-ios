@@ -37,6 +37,8 @@ protocol AliciaService {
     /// stopped (normalized 0…1, nil if unknown); she draws from that point.
     func cocreate(image: Data, width: Int, height: Int,
                   anchor: CGPoint?) async -> (overlay: URL, caption: String)?
+    /// The synthesis of the day (rotates at midnight); nil offline.
+    func featured() async -> FeaturedSynthesis?
 }
 
 /// In-memory stand-in so the app runs with zero backend.
@@ -83,5 +85,13 @@ struct MockAliciaService: AliciaService {
     func cocreate(image: Data, width: Int, height: Int,
                   anchor: CGPoint?) async -> (overlay: URL, caption: String)? {
         nil   // co-creation needs the live backend
+    }
+
+    func featured() async -> FeaturedSynthesis? {
+        FeaturedSynthesis(
+            title: "The map is a promise the territory keeps breaking",
+            excerpt: "A sample synthesis so the card has a shape in mock mode — the live shelf holds nine hundred of these.",
+            body: "A sample synthesis so the card has a shape in mock mode.",
+            date: "2026-07-05")
     }
 }

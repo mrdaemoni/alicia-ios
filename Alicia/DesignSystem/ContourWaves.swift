@@ -11,6 +11,14 @@ struct ContourWaves: View {
         var anchorX, anchorY, ampX, ampY, driftX, driftY, phase, strength, falloff: Double
     }
 
+    /// Two vocabularies: the topographic contour sea, and expanding
+    /// ripples — rings spreading from drifting centers (squash < 1 turns
+    /// them into sonar ellipses, a sound-wave feel).
+    enum Pattern {
+        case contour
+        case ripple(squash: Double)
+    }
+
     /// Each tab gets a sister field — same sea, different weather.
     struct Config {
         var speed: Double        // drift multiplier
@@ -18,6 +26,7 @@ struct ContourWaves: View {
         var alphaScale: Double   // ink weight
         var seedOffset: Int      // reshapes the source layout
         var crossBoost: Double   // horizontal current (waveform feel)
+        var pattern: Pattern = .contour
 
         /// Us — the full balanced field.
         static func us(mood: Int = 0) -> Config {
@@ -29,15 +38,17 @@ struct ContourWaves: View {
             Config(speed: 0.45, levels: 4, alphaScale: 0.6,
                    seedOffset: 5 + mood, crossBoost: 0.5)
         }
-        /// Alicia — slow and layered like sediment; her inner weather.
+        /// Alicia — thought radiating outward: slow round ripples.
         static func mind(mood: Int = 0) -> Config {
-            Config(speed: 0.3, levels: 13, alphaScale: 1.1,
-                   seedOffset: 9 + mood, crossBoost: 0.8)
+            Config(speed: 0.35, levels: 13, alphaScale: 1.0,
+                   seedOffset: 9 + mood, crossBoost: 0.8,
+                   pattern: .ripple(squash: 1.0))
         }
-        /// Studio — a strong horizontal current; the page is a waveform.
+        /// Studio — sonar: fast ripples squashed into sound-wave ellipses.
         static func studio(mood: Int = 0) -> Config {
-            Config(speed: 1.15, levels: 5, alphaScale: 0.85,
-                   seedOffset: 13 + mood, crossBoost: 3.2)
+            Config(speed: 1.2, levels: 5, alphaScale: 0.9,
+                   seedOffset: 13 + mood, crossBoost: 3.2,
+                   pattern: .ripple(squash: 0.42))
         }
 
         /// The day breathes through every field: brisk mornings, still
@@ -138,6 +149,37 @@ struct ContourWaves: View {
                     let t = timeline.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: 86_400)
                         * config.speed * Config.timeOfDayFactor * season.speed
+
+                    // Ripples: rings spreading from four drifting centers.
+                    if case .ripple(let squash) = config.pattern {
+                        let centers = (Array(leftSources.prefix(2)) +
+                                       Array(rightSources.prefix(2))).map { s in
+                            CGPoint(
+                                x: s.anchorX + sin(t * s.driftX + s.phase) * s.ampX,
+                                y: s.anchorY + cos(t * s.driftY + s.phase) * s.ampY)
+                        }
+                        let spacing = 36.0
+                        let maxR = max(size.width, size.height) * 0.7
+                        let phase = (t * 10).truncatingRemainder(dividingBy: spacing)
+                        for c in centers {
+                            var r = phase
+                            while r < maxR {
+                                let fade = 1 - r / maxR
+                                let alpha = (0.08 + 0.18 * fade)
+                                    * config.alphaScale * Config.inkFactor
+                                var ring = Path()
+                                ring.addEllipse(in: CGRect(
+                                    x: c.x - r, y: c.y - r * squash,
+                                    width: 2 * r, height: 2 * r * squash))
+                                context.stroke(
+                                    ring,
+                                    with: .color(Theme.ink.opacity(min(0.5, alpha))),
+                                    lineWidth: 0.9)
+                                r += spacing
+                            }
+                        }
+                        return
+                    }
                     let cell = max(18.0, min(24.0, size.width / 18))
                     let cols = Int(size.width / cell) + 2
                     let rows = Int(size.height / cell) + 2
@@ -201,13 +243,106 @@ struct ContourWaves: View {
     }
 }
 
+extension Theme {
+    /// The hour's color, washed over the paper — dawn rose, midday clear,
+    /// dusk amber, night indigo. Low-alpha so the paper stays paper.
+    static var timeTint: LinearGradient {
+        let colors: [Color]
+        switch Calendar.current.component(.hour, from: .now) {
+        case 5..<8:   colors = [Color(red: 0.93, green: 0.62, blue: 0.55).opacity(0.20),
+                                .clear]                                    // dawn rose
+        case 8..<11:  colors = [Color(red: 0.95, green: 0.83, blue: 0.52).opacity(0.14),
+                                .clear]                                    // morning gold
+        case 11..<16: colors = [Color(red: 0.72, green: 0.82, blue: 0.86).opacity(0.10),
+                                .clear]                                    // midday sky
+        case 16..<19: colors = [Color(red: 0.90, green: 0.66, blue: 0.40).opacity(0.18),
+                                .clear]                                    // late ochre
+        case 19..<22: colors = [Color(red: 0.72, green: 0.44, blue: 0.42).opacity(0.22),
+                                Color(red: 0.28, green: 0.30, blue: 0.44).opacity(0.10)] // dusk
+        default:      colors = [Color(red: 0.25, green: 0.28, blue: 0.42).opacity(0.26),
+                                Color(red: 0.30, green: 0.26, blue: 0.38).opacity(0.10)] // night indigo
+        }
+        return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+    }
+}
+
+/// Fine paper grain — a static field of ink specks, like cold-press tooth.
+struct PaperGrain: View {
+    var density: Int = 1400
+    var body: some View {
+        Canvas { context, size in
+            var state: UInt64 = 0x9E3779B97F4A7C15
+            func rnd() -> Double {
+                state = state &* 6364136223846793005 &+ 1442695040888963407
+                return Double(state >> 11) / Double(UInt64(1) << 53)
+            }
+            for _ in 0..<density {
+                let x = rnd() * size.width
+                let y = rnd() * size.height
+                let r = 0.4 + rnd() * 0.9
+                let a = 0.03 + rnd() * 0.05
+                context.fill(
+                    Path(ellipseIn: CGRect(x: x, y: y, width: r, height: r)),
+                    with: .color(Theme.ink.opacity(a)))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// A generative engraving in the Co-Star register: a stippled form built
+/// from thousands of ink dots inside a noise-distorted blob. Seeded by the
+/// day of year, so the object on the page is never quite yesterday's.
+struct StippleIllustration: View {
+    var seed: Int = Calendar.current.ordinality(of: .day, in: .year, for: .now) ?? 1
+    var dots: Int = 2400
+
+    var body: some View {
+        Canvas { context, size in
+            var state = UInt64(truncatingIfNeeded: seed &* 2654435761 &+ 97)
+            func rnd() -> Double {
+                state = state &* 6364136223846793005 &+ 1442695040888963407
+                return Double(state >> 11) / Double(UInt64(1) << 53)
+            }
+            let cx = size.width / 2, cy = size.height / 2
+            let R = min(size.width, size.height) * 0.42
+            let k3 = 2.0 + rnd() * 3.0        // lobes
+            let k5 = 1.0 + rnd() * 4.0
+            let p3 = rnd() * .pi * 2, p5 = rnd() * .pi * 2
+            func edge(_ theta: Double) -> Double {
+                R * (0.66
+                     + 0.22 * sin(k3 * theta + p3)
+                     + 0.12 * sin(k5 * theta + p5))
+            }
+            for _ in 0..<dots {
+                let theta = rnd() * .pi * 2
+                // Bias density toward the rim — engraved shading.
+                let rho = pow(rnd(), 0.42) * edge(theta)
+                let x = cx + cos(theta) * rho
+                let y = cy + sin(theta) * rho * 0.92
+                let nearEdge = rho / edge(theta)
+                let r = 0.5 + rnd() * (0.6 + nearEdge * 0.9)
+                let a = 0.25 + nearEdge * 0.55 + rnd() * 0.15
+                context.fill(
+                    Path(ellipseIn: CGRect(x: x, y: y, width: r, height: r)),
+                    with: .color(Theme.ink.opacity(min(0.9, a))))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 extension View {
-    /// Paper + a breathing contour field behind a section.
-    func waveBackground(_ config: ContourWaves.Config) -> some View {
+    /// Paper + a breathing field behind a section. `tinted` washes the
+    /// hour's color over the paper and lays fine grain on top (Us page).
+    func waveBackground(_ config: ContourWaves.Config,
+                        tinted: Bool = false) -> some View {
         background {
             ZStack {
                 Theme.backdrop
+                if tinted { Theme.timeTint }
                 ContourWaves(config: config)
+                if tinted { PaperGrain() }
             }
             .ignoresSafeArea()
         }
@@ -231,6 +366,6 @@ extension AppStore {
 /// at a glance whether his phone runs the latest build. BUMP THIS on every
 /// app change that ships (see CLAUDE.md).
 enum AppVersion {
-    static let tag = "v11"
-    static let date = "Jul 4"
+    static let tag = "v12"
+    static let date = "Jul 5"
 }

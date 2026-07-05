@@ -254,6 +254,20 @@ struct LiveAliciaService: AliciaService {
         } catch { return nil }
     }
 
+    private struct FeaturedDTO: Decodable {
+        var title, excerpt, body, date: String
+    }
+
+    func featured() async -> FeaturedSynthesis? {
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: request("/api/featured"))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            let f = try JSONDecoder().decode(FeaturedDTO.self, from: data)
+            return FeaturedSynthesis(title: f.title, excerpt: f.excerpt,
+                                     body: f.body, date: f.date)
+        } catch { return nil }
+    }
+
     private struct GreetingDTO: Decodable { var greeting: String }
 
     func greeting() async -> String? {

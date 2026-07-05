@@ -29,6 +29,15 @@ enum ChatEvent {
 
 /// A proactive message Alicia sent on her own initiative (from the
 /// backend's circulation feed).
+/// The synthesis of the day — one finished thought from her shelf,
+/// rotating at midnight (Us page).
+struct FeaturedSynthesis: Hashable {
+    var title: String
+    var excerpt: String
+    var body: String
+    var date: String
+}
+
 struct ProactiveMessage: Identifiable, Hashable {
     let id: String
     var text: String

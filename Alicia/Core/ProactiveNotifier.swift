@@ -4,12 +4,17 @@ import UserNotifications
 
 /// Local-notification bridge for Alicia's proactive messages.
 ///
-/// No APNs (that needs a paid developer account + a push service): instead a
-/// `BGAppRefreshTask` opportunistically polls `/api/proactive` and posts a
-/// LOCAL notification for anything Hector hasn't seen. iOS decides the exact
-/// timing (more often the more the app is used), and the foreground path
-/// (`AppStore.load` → `markSeen`) keeps already-read messages from
-/// re-notifying.
+/// No APNs (that needs a paid developer account + a push service). Two paths
+/// cover her reaching out:
+///  1. **Live polling** while the app is running (foreground or briefly
+///     backgrounded) — `AppStore.startProactivePolling()` checks the feed
+///     every 60 s; new items join the timeline instantly and post a banner
+///     (shown even in-app via the center delegate below).
+///  2. **BGAppRefreshTask** for when the app is closed — re-armed on every
+///     background transition (it was only ever submitted once at launch,
+///     which is why no notification ever arrived). iOS still controls the
+///     timing and is stingy with dev-signed builds — Telegram remains the
+///     guaranteed channel; this is her presence on the phone.
 enum ProactiveNotifier {
     static let taskID = "com.alicia.app.refresh"
     private static let seenKey = "alicia.seenProactiveIDs"
@@ -21,16 +26,23 @@ enum ProactiveNotifier {
             guard let refresh = task as? BGAppRefreshTask else { return }
             handle(refresh)
         }
+        // Show banners even while the app is open — she should be able to
+        // tap Hector on the shoulder from another tab.
+        UNUserNotificationCenter.current().delegate = ForegroundBanner.shared
     }
 
     static func requestPermission() {
         UNUserNotificationCenter.current()
-            .requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+            .requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                if !granted {
+                    print("⚠️ notifications not authorized — check Settings → Alicia")
+                }
+            }
     }
 
     static func schedule() {
         let request = BGAppRefreshTaskRequest(identifier: taskID)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
         try? BGTaskScheduler.shared.submit(request)
     }
 
@@ -49,26 +61,45 @@ enum ProactiveNotifier {
         seen.formUnion(messages.map(\.id))
     }
 
+    static func unseen(of messages: [ProactiveMessage]) -> [ProactiveMessage] {
+        messages.filter { !seen.contains($0.id) }
+    }
+
+    /// Post a local notification for one proactive message (used by both
+    /// the background task and the live poll).
+    static func notify(_ m: ProactiveMessage) async {
+        let content = UNMutableNotificationContent()
+        content.title = "Alicia"
+        if !m.archetype.isEmpty { content.subtitle = m.archetype }
+        content.body = String(m.text.prefix(160))
+        content.sound = .default
+        try? await UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: m.id, content: content, trigger: nil))
+    }
+
     // MARK: background refresh
 
     private static func handle(_ task: BGAppRefreshTask) {
         schedule()   // always chain the next window
         let work = Task {
             let fresh = await AliciaConfig.makeService().proactive(limit: 10)
-            let unseen = fresh.filter { !seen.contains($0.id) }
-            for m in unseen.prefix(3) {
-                let content = UNMutableNotificationContent()
-                content.title = "Alicia"
-                content.body = m.text
-                content.sound = .default
-                try? await UNUserNotificationCenter.current().add(
-                    UNNotificationRequest(identifier: m.id,
-                                          content: content,
-                                          trigger: nil))
+            for m in unseen(of: fresh).prefix(3) {
+                await notify(m)
             }
             markSeen(fresh)
             task.setTaskCompleted(success: true)
         }
         task.expirationHandler = { work.cancel() }
+    }
+}
+
+/// Lets banners present while the app is foregrounded.
+final class ForegroundBanner: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = ForegroundBanner()
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
     }
 }

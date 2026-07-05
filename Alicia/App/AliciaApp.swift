@@ -45,11 +45,22 @@ struct AliciaApp: App {
                     ProactiveNotifier.schedule()
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active {
+                    switch phase {
+                    case .active:
                         // Reconnect: refetch everything when the app comes
                         // back to the foreground (backend may have restarted
-                        // or sent proactive messages since).
+                        // or sent proactive messages since), and start the
+                        // live poll that makes her presence real-time.
                         Task { await store.load() }
+                        store.startProactivePolling()
+                    case .background:
+                        // Re-arm background refresh EVERY time — submitting
+                        // once at launch (the old behavior) meant iOS never
+                        // had a fresh window and no notification ever fired.
+                        store.stopProactivePolling()
+                        ProactiveNotifier.schedule()
+                    default:
+                        break
                     }
                 }
         }

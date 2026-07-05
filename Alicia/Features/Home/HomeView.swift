@@ -48,6 +48,10 @@ struct HomeView: View {
                              body: word.text)
                     }
 
+                    if let featured = store.featured {
+                        FeaturedSynthesisCard(featured: featured)
+                    }
+
                     if let day = dayThought {
                         card(icon: "sun.horizon.fill",
                              title: day.title,
@@ -60,15 +64,9 @@ struct HomeView: View {
                 .padding(.bottom, 24)
             }
             .refreshable { await store.load() }
-            // The living field — the fromfutureself.com contour waves,
-            // breathing slowly behind the whole page.
-            .background {
-                ZStack {
-                    Theme.backdrop
-                    ContourWaves()
-                }
-                .ignoresSafeArea()
-            }
+            // The living field — contour waves under the hour's color and
+            // a fine paper grain. Dawn washes rose, night runs indigo.
+            .waveBackground(.us(mood: store.waveMood), tinted: true)
             .navigationTitle("Us")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -252,6 +250,71 @@ struct ProactiveReplyCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 14, radius: 20)
+    }
+}
+
+/// The synthesis of the day — an editorial reading card in the Co-Star
+/// register: mono-caps kicker, big serif display title, a stipple engraving,
+/// and the whole thing opens into a full reader.
+struct FeaturedSynthesisCard: View {
+    let featured: FeaturedSynthesis
+    @State private var reading = false
+
+    var body: some View {
+        Button { reading = true } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("FEATURED SYNTHESIS")
+                        .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                        .tracking(1.6)
+                        .foregroundStyle(Theme.inkSoft)
+                    Spacer()
+                    StippleIllustration(dots: 700)
+                        .frame(width: 44, height: 44)
+                }
+                Text(featured.title)
+                    .font(.system(.title3, design: .serif, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(featured.excerpt)
+                    .font(.system(.footnote, design: .serif))
+                    .foregroundStyle(Theme.ink.opacity(0.75))
+                    .lineLimit(4)
+                    .multilineTextAlignment(.leading)
+                Text("READ")
+                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                    .tracking(1.4)
+                    .underline()
+                    .foregroundStyle(Theme.accent)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card(padding: 16, radius: 20)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $reading) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    StippleIllustration()
+                        .frame(height: 150)
+                        .frame(maxWidth: .infinity)
+                    Text(featured.date)
+                        .font(.system(.caption2, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(Theme.inkSoft)
+                    Text(featured.title)
+                        .font(.system(.title2, design: .serif, weight: .semibold))
+                    Text((try? AttributedString(
+                            markdown: featured.body,
+                            options: .init(interpretedSyntax: .full)))
+                         ?? AttributedString(featured.body))
+                        .font(.system(.body, design: .serif))
+                        .lineSpacing(5)
+                }
+                .padding(22)
+            }
+            .presentationBackground(Theme.paper)
+        }
     }
 }
 
