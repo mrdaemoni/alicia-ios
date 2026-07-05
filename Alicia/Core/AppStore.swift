@@ -169,6 +169,14 @@ final class AppStore {
     var thinkerNetwork: ThinkerNetwork?
     /// Deep link into the Knowledge tab's thinker detail.
     var pendingThinker: String?
+    /// The whole arc since her birth (fetched when the sheet opens).
+    var timeline: [TimelineDay] = []
+
+    func loadTimeline() async {
+        if timeline.isEmpty {
+            timeline = await service.timeline()
+        }
+    }
 
     /// Thinkers mentioned in the shownotes of the active/suggested episode
     /// — the knowledge currently in Hector's ears.

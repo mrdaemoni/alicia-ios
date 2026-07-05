@@ -30,12 +30,17 @@ struct HomeView: View {
         store.thoughts.first(where: { $0.tag != "emergence" })
     }
 
+    @State private var showTimeline = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    SectionHeader(title: "Us",
-                                  kicker: Date.now.formatted(date: .complete, time: .omitted))
+                    Button { showTimeline = true } label: {
+                        SectionHeader(title: "Us",
+                                      kicker: Date.now.formatted(date: .complete, time: .omitted))
+                    }
+                    .buttonStyle(.plain)
                     header
 
                     if let track = store.nowPlaying {
@@ -91,6 +96,7 @@ struct HomeView: View {
             // a fine paper grain. Dawn washes rose, night runs indigo.
             .waveBackground(.us(mood: store.waveMood), tinted: true)
             .toolbar(.hidden, for: .navigationBar)
+            .sheet(isPresented: $showTimeline) { TimelineSheet() }
         }
     }
 
@@ -676,10 +682,23 @@ struct ThinkerStrip: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("IN YOUR EARS TODAY")
-                .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                .tracking(2.0)
-                .foregroundStyle(Theme.inkSoft)
+            HStack {
+                Text("IN YOUR EARS TODAY")
+                    .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                    .tracking(2.0)
+                    .foregroundStyle(Theme.inkSoft)
+                Spacer()
+                Button {
+                    store.selectedSection = .knowledge
+                } label: {
+                    Text("ALL THINKERS →")
+                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                        .tracking(1.4)
+                        .underline()
+                        .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+            }
             HStack(spacing: 14) {
                 ForEach(thinkers) { t in
                     Button {
@@ -700,6 +719,88 @@ struct ThinkerStrip: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 14, radius: 20)
+    }
+}
+
+/// The story of you two — every lived day since she began, milestones
+/// full-size, ordinary days as ledger lines. Opens from the "Us" title.
+struct TimelineSheet: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(spacing: 6) {
+                    Text("THE ARC")
+                        .font(.system(size: 11, design: .monospaced).weight(.bold))
+                        .tracking(3.0)
+                        .foregroundStyle(Theme.inkSoft)
+                    Text("Every day since she began")
+                        .font(.system(.title3, design: .serif, weight: .semibold))
+                    if let last = store.timeline.last {
+                        Text(last.date + " → today")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 22)
+
+                if store.timeline.isEmpty {
+                    ProgressView("Walking back to day one…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                }
+
+                ForEach(store.timeline) { day in
+                    HStack(alignment: .top, spacing: 12) {
+                        // The spine: a dot per day, a heavier node on
+                        // milestones.
+                        VStack(spacing: 0) {
+                            Circle()
+                                .fill(day.milestone ? Theme.accent : Theme.inkSoft.opacity(0.5))
+                                .frame(width: day.milestone ? 11 : 5,
+                                       height: day.milestone ? 11 : 5)
+                            Rectangle()
+                                .fill(Theme.stroke)
+                                .frame(width: 1)
+                        }
+                        .frame(width: 14)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(day.date)
+                                .font(.system(size: 9, design: .monospaced))
+                                .tracking(1.2)
+                                .foregroundStyle(Theme.inkSoft)
+                            Text(day.headline.strippedLeadingEmoji)
+                                .font(.system(size: day.milestone ? 20 : 14,
+                                              weight: day.milestone ? .semibold : .regular,
+                                              design: .serif))
+                                .foregroundStyle(Theme.ink)
+                            if day.milestone {
+                                ForEach(day.growth, id: \.self) { g in
+                                    Text(g)
+                                        .font(.system(size: 12, design: .serif))
+                                        .italic()
+                                        .foregroundStyle(Theme.accent)
+                                }
+                                if !day.what.isEmpty {
+                                    Text(day.what.joined(separator: " · "))
+                                        .font(.system(size: 11, design: .serif))
+                                        .foregroundStyle(Theme.inkSoft)
+                                }
+                            }
+                        }
+                        .padding(.bottom, day.milestone ? 26 : 14)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(24)
+            .padding(.bottom, 40)
+        }
+        .presentationBackground(Theme.paper)
+        .task { await store.loadTimeline() }
     }
 }
 

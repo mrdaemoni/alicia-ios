@@ -18,6 +18,13 @@ struct EditorialTabBar: View {
             .opacity(store.composerFocused ? 0 : 1)
     }
 
+    /// Bottom safe-area height (home indicator) — the ink swallows it.
+    private var bottomInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+            .first?.safeAreaInsets.bottom ?? 0
+    }
+
     private var bar: some View {
         HStack(spacing: 0) {
             ForEach(AppSection.allCases) { section in
@@ -39,9 +46,13 @@ struct EditorialTabBar: View {
                 .buttonStyle(.plain)
             }
         }
-        // Inverted and SOLID — ink to the very bottom edge (the home
-        // indicator region included), framing the whole app.
-        .background(Theme.ink.ignoresSafeArea(edges: .bottom))
+        .padding(.horizontal, 10)
+        // Swallow the home-indicator zone into the ink: explicit bottom
+        // padding sized to the window inset (ignoresSafeArea alone left a
+        // paper slit under the bar during scroll).
+        .padding(.bottom, bottomInset)
+        .background(Theme.ink)
+        .ignoresSafeArea(edges: .bottom)
     }
 }
 

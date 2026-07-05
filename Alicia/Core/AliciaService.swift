@@ -50,6 +50,17 @@ protocol AliciaService {
     func syntheses() async -> [FeaturedSynthesis]
     /// The vault's thinker network (curated master map).
     func thinkers() async -> ThinkerNetwork?
+    /// Every lived day since her birth, growth moments marked.
+    func timeline() async -> [TimelineDay]
+}
+
+struct TimelineDay: Decodable, Hashable, Identifiable {
+    var date: String
+    var headline: String
+    var what: [String]
+    var growth: [String]
+    var milestone: Bool
+    var id: String { date }
 }
 
 struct KnowingClaim: Decodable, Hashable {
@@ -148,6 +159,7 @@ struct MockAliciaService: AliciaService {
     func knowing() async -> KnowingState? { nil }
     func syntheses() async -> [FeaturedSynthesis] { [] }
     func thinkers() async -> ThinkerNetwork? { nil }
+    func timeline() async -> [TimelineDay] { [] }
 
     func featured() async -> FeaturedSynthesis? {
         FeaturedSynthesis(

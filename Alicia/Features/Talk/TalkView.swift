@@ -99,7 +99,8 @@ struct TalkView: View {
                 .focused($focused)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color.white.opacity(0.30), in: Capsule())
+                .foregroundStyle(Theme.ink)
+                .background(Theme.paper, in: Capsule())
 
             // Voice in — live on-device transcription into the draft.
             // Works the same in walk mode (accumulates) and regular chat.
@@ -109,7 +110,7 @@ struct TalkView: View {
                 Image(systemName: speech.isRecording ? "waveform.circle.fill" : "mic")
                     .font(.system(size: speech.isRecording ? 26 : 17, weight: .semibold))
                     .symbolEffect(.variableColor.iterative, isActive: speech.isRecording)
-                    .foregroundStyle(speech.isRecording ? Theme.rose : Theme.accentSoft)
+                    .foregroundStyle(speech.isRecording ? Theme.rose : Theme.paper.opacity(0.85))
                     .frame(width: 34, height: 34)
             }
             .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
@@ -120,9 +121,9 @@ struct TalkView: View {
             } label: {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.ink)
                     .frame(width: 34, height: 34)
-                    .background(Theme.ink, in: Circle())
+                    .background(Theme.paper, in: Circle())
             }
             .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
             .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
@@ -133,7 +134,8 @@ struct TalkView: View {
         // (the bar overlapped the field twice) — clear the word-bar
         // explicitly whenever it's visible.
         .padding(.bottom, store.composerFocused ? 12 : 58)
-        .background(Theme.paper.opacity(0.55))
+        // One piece with the word-bar: the composer sits IN the ink frame.
+        .background(Theme.ink)
         .onChange(of: speech.transcript) { _, new in
             if speech.isRecording || !new.isEmpty {
                 draft = dictationBase.isEmpty ? new
