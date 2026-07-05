@@ -13,7 +13,8 @@ final class AppStore {
     var gallery: [Artwork] = []
     var health: [HealthMetric] = []
 
-    // Player state (simulated — see Studio README note to wire real audio)
+    // Player state — real AVPlayer for backend tracks, ticker fallback for
+    // sample data (see "Studio player" below)
     var nowPlaying: Track?
     var isPlaying = false
     var progress: Double = 0        // 0...1 through the current track

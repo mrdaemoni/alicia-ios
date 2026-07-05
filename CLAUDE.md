@@ -1,8 +1,8 @@
 # CLAUDE.md — Alicia iOS
 
 Context handoff for continuing this project in Claude Code. Everything below
-reflects the app as of **v8 (2026-07-04)** — verify against the code, this doc
-has drifted before.
+reflects the app as of **v11 (2026-07-04)** — verify against the code, this
+doc has drifted before.
 
 ## What this is
 
@@ -26,17 +26,23 @@ Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`
 2. **Dialogue** (`Features/Talk/TalkView.swift`) — chat. SSE token streaming,
    emoji reactions, optional voice-note replies, mic dictation in the
    composer, and a **Walk** toolbar button (same session as Telegram's
-   `/walk`: while walking, input is accumulated, not answered).
-3. **Alicia** (`Features/Mind/MindView.swift`) — her space: mode/state header,
-   the version tag, her recent proactive messages ("What she's been saying"),
-   and thought cards. Timeline opens seeded from the proactive feed.
+   `/walk`: while walking, input is accumulated, not answered). Her proactive
+   messages appear as left-aligned "whisper" chips that deep-link to the
+   exact card on the Alicia tab (`pendingMindFocusID` + ScrollViewReader).
+3. **Alicia** (`Features/Mind/MindView.swift`) — her space: mode/state header
+   with her rabbit mark, the version tag, her recent proactive messages
+   ("What she's been saying"), and thought cards. Timeline opens seeded from
+   the proactive feed. Tab icon is `TabRabbit` (Hector's rabbit silhouette,
+   template-tinted), not an SF Symbol.
 4. **Studio** (`Features/Studio/StudioView.swift`) — podcast library grouped
    by season, episode detail pages with shownotes (`/api/episode/<label>`),
-   persistent player bar with scrubbing, ±15s skip, and 1×/1.5×/2× rate.
+   player bar with scrubbing, ±15s skip, and 1×/1.5×/2× rate — mounted as a
+   `safeAreaInset` on the NavigationStack so it survives detail pushes.
 5. **Canvas** (`Features/Canvas/CanvasView.swift` + `PencilCanvas.swift`) —
-   segmented **My Canvas** (PencilKit) / **Alicia's Gallery**. "Ask Alicia to
-   reply" uploads the drawing as PNG; her vision pass sees it and a rendered
-   complement lands in the gallery.
+   segmented **My Canvas** / **Alicia's Gallery**. **Co-creation**: "Alicia
+   continues" sends the flattened canvas + where the pencil stopped
+   (`/api/cocreate`); her returned stroke layers render *under* the live
+   PencilKit layer, so you draw on top of her and she on top of you.
 
 ## Architecture
 
@@ -59,10 +65,17 @@ Alicia/
   from Hector's own drawings (bundled as `Art*` assets): warm bone paper,
   near-black ink, one sea-slate accent, serif type everywhere
   (`.fontDesign(.serif)` + UINavigationBar appearance), frameless
-  translucent cards, `.artBackground()` washes a drawing behind each page.
-  The app forces **`.preferredColorScheme(.light)`** — paper wants light.
-  The Us page breathes under `ContourWaves` (the fromfutureself.com contour
-  field, marching squares at 12 fps).
+  translucent cards. The app forces **`.preferredColorScheme(.light)`** —
+  paper wants light.
+- **The living water:** every main page breathes under `ContourWaves`
+  (the fromfutureself.com contour field, marching squares at 12 fps).
+  Each tab gets a sister field via `.waveBackground(config)` — Us full,
+  Dialogue sparse, Alicia slow/dense, Studio a horizontal current. The
+  fields modulate with **time of day** (speed + ink weight, darker at
+  night), **season** (density + monthly re-seed), and **her mood**
+  (`AppStore.waveMood`, seeded from the latest proactive archetype). The
+  older `.artBackground()` drawing washes were replaced by the fields and
+  the modifier is currently unused.
 
 ## The networking seam — LIVE
 
@@ -84,7 +97,8 @@ to Telegram by the backend. Endpoints in use:
 | `GET /api/greeting` | Us-page greeting |
 | `GET/POST /api/mode` | walk/drive thinking-mode state + start/end |
 | `GET /api/episode/<label>` | shownotes markdown |
-| `POST /api/complement` (base64 PNG, 120 s timeout) | drawing reply w/ vision |
+| `POST /api/cocreate` (base64 PNG + size + anchor, 120 s timeout) | canvas co-creation: she draws from where the pencil stopped, returns an overlay layer + caption |
+| `POST /api/complement` (base64 PNG, 120 s timeout) | drawing reply w/ vision — superseded by cocreate in the UI; `requestComplement` is currently unused |
 
 All fetches degrade gracefully — errors return empty/nil, never throw to views.
 
@@ -102,11 +116,14 @@ ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
 ## Audio & notifications
 
 - **Audio is real** — `AppStore` drives AVPlayer for http-URL tracks (backend
-  serves wavs with Range support), publishes `MPNowPlayingInfo` + remote
-  commands, so lock screen / Dynamic Island transport works (`audio`
-  background mode). The old simulated ticker survives only as the fallback
-  for sample tracks. Voice notes use a separate AVPlayer so they never steal
-  the podcast position.
+  serves wavs with Range support), publishes `MPNowPlayingInfo` with spiral
+  artwork + full metadata + remote commands, so the lock screen / Dynamic
+  Island shows a real now-playing card (`audio` background mode). Long
+  episodes over the tailnet get a 60 s forward buffer and a
+  `playbackStalledNotification` observer that nudges playback back after a
+  network dip. The old simulated ticker survives only as the fallback for
+  sample tracks. Voice notes use a separate AVPlayer so they never steal the
+  podcast position.
 - **Notifications** (`Core/ProactiveNotifier.swift`) — no APNs; a
   `BGAppRefreshTask` (`com.alicia.app.refresh`) polls `/api/proactive` and
   posts **local** notifications for unseen messages. iOS controls the timing,
@@ -128,20 +145,24 @@ ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
 - Keep the `AliciaService` seam clean — views never touch the network, only
   `AppStore`.
 - The section enum is `AppSection` (not `Section`) to avoid SwiftUI's `Section`.
-- Tab icons are line-art SF Symbols (never filled) to match the ink identity.
+- Tab icons are line-art SF Symbols (never filled) to match the ink identity —
+  except the Alicia tab, which uses the `TabRabbit` template image.
 
 ## Version tag
 
 `AppVersion.tag` (DesignSystem/ContourWaves.swift) shows on the Alicia tab so
 Hector can tell which build his phone runs. **Bump it (v8 → v9 → …) and its
-date in every change that ships.** Current: v8 (2026-07-04).
+date in every change that ships.** Current: v11 (2026-07-04).
 
 ## Actually pending
 
 - In-app settings screen for `alicia.baseURL`/`alicia.token` (today:
   debugger or Secrets.plist only).
-- Canvas drawings aren't persisted between launches (`PKDrawing` lives in
-  `@State`).
+- Canvas drawings and co-creation overlays aren't persisted between launches
+  (`PKDrawing` in `@State`, overlays in `AppStore`).
+- Dead code candidates: `.artBackground()` (Theme.swift) and
+  `AppStore.requestComplement` — both superseded (wave fields / cocreate)
+  and no longer called.
 - `docs/RESEARCH.md` (library research from the scaffold session) is
   historical — the zero-dependency approach won; consult it only if a real
   need for a chat/markdown/image library appears.
