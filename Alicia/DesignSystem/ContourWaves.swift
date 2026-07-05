@@ -24,20 +24,20 @@ struct ContourWaves: View {
             Config(speed: 1.0, levels: 8, alphaScale: 1.0,
                    seedOffset: mood, crossBoost: 1.0)
         }
-        /// Dialogue — calmer, sparser; conversation wants quiet water.
+        /// Dialogue — barely-there water; the words carry the page.
         static func dialogue(mood: Int = 0) -> Config {
-            Config(speed: 0.6, levels: 5, alphaScale: 0.75,
-                   seedOffset: 5 + mood, crossBoost: 0.7)
+            Config(speed: 0.45, levels: 4, alphaScale: 0.6,
+                   seedOffset: 5 + mood, crossBoost: 0.5)
         }
-        /// Alicia — slow and dense; her inner weather, layered.
+        /// Alicia — slow and layered like sediment; her inner weather.
         static func mind(mood: Int = 0) -> Config {
-            Config(speed: 0.45, levels: 10, alphaScale: 0.9,
+            Config(speed: 0.3, levels: 13, alphaScale: 1.1,
                    seedOffset: 9 + mood, crossBoost: 0.8)
         }
-        /// Studio — the current runs horizontal, like a waveform.
+        /// Studio — a strong horizontal current; the page is a waveform.
         static func studio(mood: Int = 0) -> Config {
-            Config(speed: 0.8, levels: 6, alphaScale: 0.7,
-                   seedOffset: 13 + mood, crossBoost: 2.2)
+            Config(speed: 1.15, levels: 5, alphaScale: 0.85,
+                   seedOffset: 13 + mood, crossBoost: 3.2)
         }
 
         /// The day breathes through every field: brisk mornings, still
@@ -46,8 +46,30 @@ struct ContourWaves: View {
             switch Calendar.current.component(.hour, from: .now) {
             case 5..<11:  return 1.15
             case 11..<17: return 1.0
-            case 17..<22: return 0.7
-            default:      return 0.5
+            case 17..<22: return 0.65
+            default:      return 0.45
+            }
+        }
+
+        /// Night inks the lines darker — dusk gathers, morning rinses.
+        static var inkFactor: Double {
+            switch Calendar.current.component(.hour, from: .now) {
+            case 5..<11:  return 0.85
+            case 11..<17: return 1.0
+            case 17..<22: return 1.25
+            default:      return 1.5
+            }
+        }
+
+        /// The season lives in the field too: summer runs dense, winter
+        /// sparse and slow; the layout itself re-seeds every month.
+        static var season: (levelsDelta: Int, speed: Double, seed: Int) {
+            let month = Calendar.current.component(.month, from: .now)
+            switch month {
+            case 12, 1, 2: return (-2, 0.85, month)   // winter — spare, slow
+            case 3...5:    return (+1, 1.10, month)   // spring — quickening
+            case 6...8:    return (+2, 1.00, month)   // summer — full water
+            default:       return (0, 0.90, month)    // autumn — settling
             }
         }
     }
@@ -107,13 +129,15 @@ struct ContourWaves: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { timeline in
             Canvas { context, size in
+                    let season = Config.season
+                    let seed = config.seedOffset + season.seed
                     let leftSources = Self.buildSide(0, size: size,
-                                                     seedOffset: config.seedOffset)
+                                                     seedOffset: seed)
                     let rightSources = Self.buildSide(1, size: size,
-                                                      seedOffset: config.seedOffset)
+                                                      seedOffset: seed)
                     let t = timeline.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: 86_400)
-                        * config.speed * Config.timeOfDayFactor
+                        * config.speed * Config.timeOfDayFactor * season.speed
                     let cell = max(18.0, min(24.0, size.width / 18))
                     let cols = Int(size.width / cell) + 2
                     let rows = Int(size.height / cell) + 2
@@ -128,7 +152,7 @@ struct ContourWaves: View {
                         }
                     }
 
-                    let n = max(3, config.levels)
+                    let n = max(3, config.levels + season.levelsDelta)
                     let levels: [Double] = (0..<n).map { i in
                         -1.35 + 2.7 * Double(i) / Double(n - 1)
                     }
@@ -165,9 +189,10 @@ struct ContourWaves: View {
                         // Site palette: rgba(191,178,189) on #fffaff — here the
                         // ink tone on our bone paper. Phone screens wash out
                         // faster than the desktop canvas, so ink runs heavier.
-                        let alpha = (0.20 + 0.14 * ((level + 1.35) / 2.7)) * config.alphaScale
+                        let alpha = (0.20 + 0.14 * ((level + 1.35) / 2.7))
+                            * config.alphaScale * Config.inkFactor
                         context.stroke(path,
-                                       with: .color(Theme.ink.opacity(alpha)),
+                                       with: .color(Theme.ink.opacity(min(0.6, alpha))),
                                        lineWidth: 1.0)
                     }
             }
@@ -206,6 +231,6 @@ extension AppStore {
 /// at a glance whether his phone runs the latest build. BUMP THIS on every
 /// app change that ships (see CLAUDE.md).
 enum AppVersion {
-    static let tag = "v10"
+    static let tag = "v11"
     static let date = "Jul 4"
 }

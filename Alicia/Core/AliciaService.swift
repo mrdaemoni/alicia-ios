@@ -33,9 +33,10 @@ protocol AliciaService {
     /// Reply to one of her proactive messages. Lands as Tier-3 capture +
     /// shared history + memory on the backend; returns her answer.
     func reply(proactiveID: String, text: String) async -> String?
-    /// Co-creation: send the current canvas composite; she draws where you
-    /// left off. Returns her strokes as a transparent overlay + a caption.
-    func cocreate(image: Data, width: Int, height: Int) async -> (overlay: URL, caption: String)?
+    /// Co-creation: send the current canvas composite and where the pencil
+    /// stopped (normalized 0…1, nil if unknown); she draws from that point.
+    func cocreate(image: Data, width: Int, height: Int,
+                  anchor: CGPoint?) async -> (overlay: URL, caption: String)?
 }
 
 /// In-memory stand-in so the app runs with zero backend.
@@ -79,7 +80,8 @@ struct MockAliciaService: AliciaService {
         return "I hear you — say more when you're ready."
     }
 
-    func cocreate(image: Data, width: Int, height: Int) async -> (overlay: URL, caption: String)? {
+    func cocreate(image: Data, width: Int, height: Int,
+                  anchor: CGPoint?) async -> (overlay: URL, caption: String)? {
         nil   // co-creation needs the live backend
     }
 }

@@ -232,12 +232,18 @@ struct LiveAliciaService: AliciaService {
 
     private struct CocreateDTO: Decodable { var imageURL: String; var caption: String }
 
-    func cocreate(image: Data, width: Int, height: Int) async -> (overlay: URL, caption: String)? {
+    func cocreate(image: Data, width: Int, height: Int,
+                  anchor: CGPoint?) async -> (overlay: URL, caption: String)? {
         do {
-            let body = try JSONSerialization.data(withJSONObject: [
+            var payload: [String: Any] = [
                 "image": image.base64EncodedString(),
                 "width": width, "height": height,
-            ])
+            ]
+            if let anchor {
+                payload["anchor_x"] = Double(anchor.x)
+                payload["anchor_y"] = Double(anchor.y)
+            }
+            let body = try JSONSerialization.data(withJSONObject: payload)
             var req = request("/api/cocreate", method: "POST", body: body)
             req.timeoutInterval = 120   // vision + render can take a while
             let (data, resp) = try await URLSession.shared.data(for: req)

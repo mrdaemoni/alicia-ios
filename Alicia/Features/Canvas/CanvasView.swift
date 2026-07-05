@@ -86,7 +86,8 @@ struct CanvasView: View {
                 Button {
                     Task {
                         await store.aliciaContinues(
-                            composite: compositeImage(), canvasSize: canvasSize)
+                            composite: compositeImage(), canvasSize: canvasSize,
+                            anchor: lastPenPoint())
                     }
                 } label: {
                     if store.isCocreating {
@@ -114,6 +115,18 @@ struct CanvasView: View {
             // action buttons clear of it while the tools are up.
             .padding(.bottom, toolsVisible ? 32 : 8)
         }
+    }
+
+    /// Where the pencil stopped: the last point of the last stroke,
+    /// normalized to the canvas — her strokes begin there.
+    private func lastPenPoint() -> CGPoint? {
+        guard let stroke = drawing.strokes.last,
+              canvasSize.width > 0, canvasSize.height > 0 else { return nil }
+        let path = stroke.path
+        guard !path.isEmpty else { return nil }
+        let p = path[path.count - 1].location
+        return CGPoint(x: min(1, max(0, p.x / canvasSize.width)),
+                       y: min(1, max(0, p.y / canvasSize.height)))
     }
 
     /// Flatten paper + her overlays + his live strokes into one image —

@@ -77,6 +77,9 @@ final class AppStore {
     var proactiveFeed: [ProactiveMessage] = []
     /// Programmatic tab switching (Dialogue chips → Alicia tab).
     var selectedSection: AppSection = .us
+    /// Which proactive card the Alicia tab should scroll to on arrival
+    /// (set by a Dialogue whisper tap; cleared after the scroll).
+    var pendingMindFocusID: String?
     var isWalking: Bool { thinkingMode == "walk" }
 
     /// Start or end a walk. Her acknowledgment lands in the timeline.
@@ -415,13 +418,15 @@ final class AppStore {
     var cocreateCaption: String?
     var isCocreating = false
 
-    /// Send the flattened canvas; she draws where he left off.
-    func aliciaContinues(composite: UIImage, canvasSize: CGSize) async {
+    /// Send the flattened canvas; she draws from where the pencil stopped.
+    func aliciaContinues(composite: UIImage, canvasSize: CGSize,
+                         anchor: CGPoint?) async {
         guard let png = composite.pngData(), !isCocreating else { return }
         isCocreating = true
         defer { isCocreating = false }
         guard let result = await service.cocreate(
-            image: png, width: Int(canvasSize.width), height: Int(canvasSize.height))
+            image: png, width: Int(canvasSize.width), height: Int(canvasSize.height),
+            anchor: anchor)
         else {
             cocreateCaption = "couldn't reach her — try again"
             return

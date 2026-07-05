@@ -157,6 +157,7 @@ struct ProactiveWhisper: View {
 
     var body: some View {
         Button {
+            store.pendingMindFocusID = message.proactiveID
             store.selectedSection = .mind
         } label: {
             HStack(spacing: 7) {

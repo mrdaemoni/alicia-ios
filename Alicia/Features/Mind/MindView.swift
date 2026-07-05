@@ -6,27 +6,37 @@ struct MindView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    // Build tag — so the phone build is identifiable at a
-                    // glance. Bumped on every shipped app change.
-                    Text("\(AppVersion.tag) · \(AppVersion.date)")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(Theme.inkSoft.opacity(0.8))
-                        .padding(.top, -6)
-                    stateHeader
-                    if !store.proactiveFeed.isEmpty {
-                        Text("What she's been saying")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        // Build tag — so the phone build is identifiable at a
+                        // glance. Bumped on every shipped app change.
+                        Text("\(AppVersion.tag) · \(AppVersion.date)")
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(Theme.inkSoft.opacity(0.8))
+                            .padding(.top, -6)
+                        stateHeader
+                        if !store.proactiveFeed.isEmpty {
+                            Text("What she's been saying")
+                                .font(.headline)
+                                .padding(.top, 4)
+                            ForEach(store.proactiveFeed) { item in
+                                SaidCard(item: item).id(item.id)
+                            }
+                        }
+                        Text("Recent thinking")
                             .font(.headline)
                             .padding(.top, 4)
-                        ForEach(store.proactiveFeed) { SaidCard(item: $0) }
+                        ForEach(store.thoughts) { ThoughtCard(thought: $0) }
                     }
-                    Text("Recent thinking")
-                        .font(.headline)
-                        .padding(.top, 4)
-                    ForEach(store.thoughts) { ThoughtCard(thought: $0) }
+                    .padding(16)
                 }
-                .padding(16)
+                // A Dialogue whisper landed us here — go straight to that
+                // exact card (arrival and later taps alike).
+                .onAppear { scrollToPending(proxy) }
+                .onChange(of: store.pendingMindFocusID) { _, _ in
+                    scrollToPending(proxy)
+                }
             }
             .refreshable { await store.load() }
             // The face emerging from the grain — her page.
@@ -35,6 +45,18 @@ struct MindView: View {
             .waveBackground(.mind(mood: store.waveMood))
             .navigationTitle("Alicia")
             .toolbarBackground(.hidden, for: .navigationBar)
+        }
+    }
+
+    private func scrollToPending(_ proxy: ScrollViewProxy) {
+        guard let id = store.pendingMindFocusID else { return }
+        // Give the tab switch one beat to settle before scrolling.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(80))
+            withAnimation(.easeInOut(duration: 0.45)) {
+                proxy.scrollTo(id, anchor: .top)
+            }
+            store.pendingMindFocusID = nil
         }
     }
 
