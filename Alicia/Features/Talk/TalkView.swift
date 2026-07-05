@@ -130,10 +130,7 @@ struct TalkView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
-        // The safe-area inset does not reliably push this VStack on device
-        // (the bar overlapped the field twice) — clear the word-bar
-        // explicitly whenever it's visible.
-        .padding(.bottom, store.composerFocused ? 12 : 58)
+        .padding(.bottom, 12)
         // One piece with the word-bar: the composer sits IN the ink frame.
         .background(Theme.ink)
         .onChange(of: speech.transcript) { _, new in
@@ -158,39 +155,43 @@ struct TalkView: View {
     }
 }
 
-/// A proactive message reduced to one quiet line. Tapping it opens the
-/// Alicia tab, where her thinking lives in full.
+/// A proactive message as an editorial interlude — no bubble, no wash:
+/// a mono-caps rule with her emblem, and the line itself in serif italic,
+/// centered like a section break in a book. Tapping opens the Alicia tab.
 struct ProactiveWhisper: View {
     @Environment(AppStore.self) private var store
     let message: Message
+
+    private var archetypeID: String {
+        let label = (message.proactiveLabel ?? "").lowercased()
+        return Archetypes.order.first(where: { label.contains($0) }) ?? "musubi"
+    }
 
     var body: some View {
         Button {
             store.pendingMindFocusID = message.proactiveID
             store.selectedSection = .mind
         } label: {
-            HStack(spacing: 7) {
-                Image("RabbitMark")
-                    .resizable().scaledToFit()
-                    .frame(width: 14, height: 14)
-                    .foregroundStyle(Theme.accentSoft)
-                Text(message.proactiveLabel ?? "from her")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.accentSoft)
-                Text(message.text.strippedLeadingEmoji)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .lineLimit(1)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Theme.inkSoft.opacity(0.6))
+            VStack(spacing: 7) {
+                HStack(spacing: 9) {
+                    Theme.stroke.frame(height: 0.7)
+                    ArchetypeEmblem(id: archetypeID, size: 15)
+                    Text((message.proactiveLabel ?? "from her").uppercased())
+                        .font(.system(size: 8.5, design: .monospaced).weight(.semibold))
+                        .tracking(1.8)
+                        .foregroundStyle(Theme.ink.opacity(0.65))
+                        .fixedSize()
+                    Theme.stroke.frame(height: 0.7)
+                }
+                Text("“" + message.text.strippedLeadingEmoji.prefix(90) + "”")
+                    .font(.system(size: 13, design: .serif))
+                    .italic()
+                    .foregroundStyle(Theme.ink.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
             }
-            .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(Color.white.opacity(0.16), in: Capsule())
-            // Centered — a whisper across the page, distinct from the
-            // left-hugging speech bubbles.
-            .frame(maxWidth: .infinity, alignment: .center)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

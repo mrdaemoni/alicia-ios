@@ -47,12 +47,11 @@ struct EditorialTabBar: View {
             }
         }
         .padding(.horizontal, 10)
-        // Swallow the home-indicator zone into the ink: explicit bottom
-        // padding sized to the window inset (ignoresSafeArea alone left a
-        // paper slit under the bar during scroll).
+        // The bar owns the true bottom edge now (RootView ignores the
+        // bottom safe area) — pad the label row clear of the home
+        // indicator and fill the whole band with ink.
         .padding(.bottom, bottomInset)
         .background(Theme.ink)
-        .ignoresSafeArea(edges: .bottom)
     }
 }
 

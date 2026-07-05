@@ -33,15 +33,22 @@ struct RootView: View {
 
     var body: some View {
         @Bindable var store = store
-        TabView(selection: $store.selectedSection) {
-            ForEach(AppSection.allCases) { section in
-                tab(for: section)
-                    .tag(section)
-                    // The system bar is replaced by the editorial word-bar.
-                    .toolbar(.hidden, for: .tabBar)
+        // A hard layout, not a safe-area inset: the inset mechanism
+        // repeatedly failed on device (bar floating above the bottom,
+        // covering the composer). Content and bar are siblings — the bar
+        // owns the bottom edge, period.
+        VStack(spacing: 0) {
+            TabView(selection: $store.selectedSection) {
+                ForEach(AppSection.allCases) { section in
+                    tab(for: section)
+                        .tag(section)
+                        // The system bar is replaced by the editorial word-bar.
+                        .toolbar(.hidden, for: .tabBar)
+                }
             }
+            EditorialTabBar()
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) { EditorialTabBar() }
+        .ignoresSafeArea(edges: .bottom)
         // Serif body type everywhere — the sketchbook voice.
         .fontDesign(.serif)
     }
