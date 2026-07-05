@@ -254,6 +254,10 @@ struct LiveAliciaService: AliciaService {
         } catch { return nil }
     }
 
+    func archetypes() async -> [ArchetypeStat] {
+        await fetch("/api/archetypes", as: [ArchetypeStat].self)
+    }
+
     private struct QuoteDTO: Decodable { var text: String; var author: String }
 
     func quote() async -> (text: String, author: String)? {

@@ -41,6 +41,16 @@ protocol AliciaService {
     func featured() async -> FeaturedSynthesis?
     /// Quote of the moment (three rotations a day); nil offline.
     func quote() async -> (text: String, author: String)?
+    /// The real voice ranking from her archetype loop (7-day attributions
+    /// + evidence-weighted effectiveness). Empty offline.
+    func archetypes() async -> [ArchetypeStat]
+}
+
+/// One voice's live loop state.
+struct ArchetypeStat: Decodable, Hashable {
+    var name: String
+    var count: Int
+    var effectiveness: Double
 }
 
 /// In-memory stand-in so the app runs with zero backend.
@@ -92,6 +102,8 @@ struct MockAliciaService: AliciaService {
     func quote() async -> (text: String, author: String)? {
         ("The end of a melody is not its goal.", "Friedrich Nietzsche")
     }
+
+    func archetypes() async -> [ArchetypeStat] { [] }
 
     func featured() async -> FeaturedSynthesis? {
         FeaturedSynthesis(

@@ -89,6 +89,7 @@ struct ArchetypeGallery: View {
 }
 
 struct ArchetypeBlock: View {
+    @Environment(AppStore.self) private var store
     let arch: Archetype
     let rank: Int
     let count: Int
@@ -130,10 +131,17 @@ struct ArchetypeBlock: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
                 Spacer(minLength: 0)
-                if count > 0 {
-                    Text("×\(count)")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Theme.accent)
+                VStack(alignment: .trailing, spacing: 2) {
+                    if count > 0 {
+                        Text("×\(count) this week")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Theme.accent)
+                    }
+                    if let eff = store.effectiveness(of: arch.id) {
+                        Text(String(format: "lands %.2f×", eff))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(Theme.inkSoft)
+                    }
                 }
             }
             Text(arch.manifesto)

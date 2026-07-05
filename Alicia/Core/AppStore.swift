@@ -44,11 +44,14 @@ final class AppStore {
         async let gr = service.greeting()
         async let fs = service.featured()
         async let qt = service.quote()
+        async let ar = service.archetypes()
         (thoughts, tracks, gallery, health) = await (t, tr, g, h)
         (thinkingMode, walkWords) = await m
         greeting = await gr ?? greeting
         featured = await fs ?? featured
         quote = await qt ?? quote
+        let stats = await ar
+        if !stats.isEmpty { archetypeStats = stats }
         publishWidgetCache()
         let pro = await p
         if !pro.isEmpty {
@@ -148,10 +151,16 @@ final class AppStore {
     var featured: FeaturedSynthesis?
     /// Quote of the moment (Us page; rotates thrice daily).
     var quote: (text: String, author: String)?
+    /// Live loop state per voice from /api/archetypes (empty offline).
+    var archetypeStats: [ArchetypeStat] = []
 
-    /// Archetypes by how loudly they've been speaking lately (proactive
-    /// feed + diary tags), most active first.
+    /// Voices ranked by the REAL loop when the backend answers (7-day
+    /// attributions, effectiveness tiebreak); falls back to counting the
+    /// local proactive feed in mock/offline mode.
     var rankedArchetypes: [(name: String, count: Int)] {
+        if !archetypeStats.isEmpty {
+            return archetypeStats.map { (name: $0.name, count: $0.count) }
+        }
         var counts: [String: Int] = [:]
         for m in proactiveFeed where !m.archetype.isEmpty {
             counts[m.archetype.lowercased(), default: 0] += 1
@@ -159,10 +168,14 @@ final class AppStore {
         for t in thoughts where Archetypes.all[t.tag.lowercased()] != nil {
             counts[t.tag.lowercased(), default: 0] += 1
         }
-        let known = Archetypes.order
-        return known
+        return Archetypes.order
             .map { (name: $0, count: counts[$0] ?? 0) }
             .sorted { $0.count > $1.count }
+    }
+
+    /// Landing multiplier for a voice ("1.09×"), when the loop has one.
+    func effectiveness(of name: String) -> Double? {
+        archetypeStats.first(where: { $0.name == name.lowercased() })?.effectiveness
     }
 
     /// Today's listening: her active pick first, then the next unheard
