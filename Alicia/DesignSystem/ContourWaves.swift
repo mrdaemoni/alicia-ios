@@ -11,6 +11,49 @@ struct ContourWaves: View {
         var anchorX, anchorY, ampX, ampY, driftX, driftY, phase, strength, falloff: Double
     }
 
+    /// Each tab gets a sister field — same sea, different weather.
+    struct Config {
+        var speed: Double        // drift multiplier
+        var levels: Int          // contour density
+        var alphaScale: Double   // ink weight
+        var seedOffset: Int      // reshapes the source layout
+        var crossBoost: Double   // horizontal current (waveform feel)
+
+        /// Us — the full balanced field.
+        static func us(mood: Int = 0) -> Config {
+            Config(speed: 1.0, levels: 8, alphaScale: 1.0,
+                   seedOffset: mood, crossBoost: 1.0)
+        }
+        /// Dialogue — calmer, sparser; conversation wants quiet water.
+        static func dialogue(mood: Int = 0) -> Config {
+            Config(speed: 0.6, levels: 5, alphaScale: 0.75,
+                   seedOffset: 5 + mood, crossBoost: 0.7)
+        }
+        /// Alicia — slow and dense; her inner weather, layered.
+        static func mind(mood: Int = 0) -> Config {
+            Config(speed: 0.45, levels: 10, alphaScale: 0.9,
+                   seedOffset: 9 + mood, crossBoost: 0.8)
+        }
+        /// Studio — the current runs horizontal, like a waveform.
+        static func studio(mood: Int = 0) -> Config {
+            Config(speed: 0.8, levels: 6, alphaScale: 0.7,
+                   seedOffset: 13 + mood, crossBoost: 2.2)
+        }
+
+        /// The day breathes through every field: brisk mornings, still
+        /// nights. Applied on top of the section speed.
+        static var timeOfDayFactor: Double {
+            switch Calendar.current.component(.hour, from: .now) {
+            case 5..<11:  return 1.15
+            case 11..<17: return 1.0
+            case 17..<22: return 0.7
+            default:      return 0.5
+            }
+        }
+    }
+
+    var config: Config = .us()
+
     /// Deterministic "randomness" — a fixed unit-interval table, so the
     /// field needs no @State/onAppear lifecycle (which never fired inside
     /// a .background container) and every launch breathes the same sea.
@@ -19,12 +62,12 @@ struct ContourWaves: View {
         0.12, 0.95, 0.27, 0.61, 0.38, 0.86, 0.03, 0.70, 0.52, 0.24,
         0.79, 0.15, 0.58, 0.44,
     ]
-    private static func j(_ n: Int) -> Double { jitter[n % jitter.count] }
+    private static func j(_ n: Int) -> Double { jitter[abs(n) % jitter.count] }
 
-    private static func buildSide(_ side: Int, size: CGSize) -> [Source] {
+    private static func buildSide(_ side: Int, size: CGSize, seedOffset: Int) -> [Source] {
         (0..<6).map { i in
             let fi = Double(i)
-            let base = side * 6 + i
+            let base = side * 6 + i + seedOffset
             func r(_ k: Int, _ lo: Double, _ hi: Double) -> Double {
                 lo + (hi - lo) * j(base * 4 + k)
             }
@@ -55,19 +98,22 @@ struct ContourWaves: View {
                 value += direction * s.falloff / (d + 120)
             }
         }
-        let cross = sin(y * 0.011 + t * 0.6) * 0.55
+        let cross = (sin(y * 0.011 + t * 0.6) * 0.55
                   + cos(x * 0.008 - t * 0.55) * 0.45
-                  + sin((x + y) * 0.0036 + t * 0.35) * 0.35
+                  + sin((x + y) * 0.0036 + t * 0.35) * 0.35) * config.crossBoost
         return value * 0.58 + cross
     }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { timeline in
             Canvas { context, size in
-                    let leftSources = Self.buildSide(0, size: size)
-                    let rightSources = Self.buildSide(1, size: size)
+                    let leftSources = Self.buildSide(0, size: size,
+                                                     seedOffset: config.seedOffset)
+                    let rightSources = Self.buildSide(1, size: size,
+                                                      seedOffset: config.seedOffset)
                     let t = timeline.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: 86_400)
+                        * config.speed * Config.timeOfDayFactor
                     let cell = max(18.0, min(24.0, size.width / 18))
                     let cols = Int(size.width / cell) + 2
                     let rows = Int(size.height / cell) + 2
@@ -82,7 +128,10 @@ struct ContourWaves: View {
                         }
                     }
 
-                    let levels: [Double] = [-1.35, -0.95, -0.55, -0.18, 0.18, 0.55, 0.95, 1.35]
+                    let n = max(3, config.levels)
+                    let levels: [Double] = (0..<n).map { i in
+                        -1.35 + 2.7 * Double(i) / Double(n - 1)
+                    }
                     for level in levels {
                         var path = Path()
                         for r in 0..<(rows - 1) {
@@ -116,7 +165,7 @@ struct ContourWaves: View {
                         // Site palette: rgba(191,178,189) on #fffaff — here the
                         // ink tone on our bone paper. Phone screens wash out
                         // faster than the desktop canvas, so ink runs heavier.
-                        let alpha = 0.20 + 0.14 * ((level + 1.35) / 2.7)
+                        let alpha = (0.20 + 0.14 * ((level + 1.35) / 2.7)) * config.alphaScale
                         context.stroke(path,
                                        with: .color(Theme.ink.opacity(alpha)),
                                        lineWidth: 1.0)
@@ -127,10 +176,36 @@ struct ContourWaves: View {
     }
 }
 
+extension View {
+    /// Paper + a breathing contour field behind a section.
+    func waveBackground(_ config: ContourWaves.Config) -> some View {
+        background {
+            ZStack {
+                Theme.backdrop
+                ContourWaves(config: config)
+            }
+            .ignoresSafeArea()
+        }
+    }
+}
+
+extension AppStore {
+    /// A stable seed from her current weather — the dominant archetype of
+    /// the latest proactive message (falls back to day-of-year). The wave
+    /// fields literally reshape with her mood.
+    var waveMood: Int {
+        let key = proactiveFeed.first?.archetype ?? ""
+        if key.isEmpty {
+            return Calendar.current.ordinality(of: .day, in: .year, for: .now) ?? 0
+        }
+        return key.unicodeScalars.reduce(0) { $0 + Int($1.value) }
+    }
+}
+
 /// App-wide version tag, shown small on the Alicia tab so Hector can tell
 /// at a glance whether his phone runs the latest build. BUMP THIS on every
 /// app change that ships (see CLAUDE.md).
 enum AppVersion {
-    static let tag = "v9"
+    static let tag = "v10"
     static let date = "Jul 4"
 }

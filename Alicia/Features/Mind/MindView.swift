@@ -30,7 +30,9 @@ struct MindView: View {
             }
             .refreshable { await store.load() }
             // The face emerging from the grain — her page.
-            .artBackground("ArtFace", opacity: 0.22)
+            // Sister field to Us: slow and dense — her inner weather. Seeded
+            // by her current archetype, so her page reshapes with her mood.
+            .waveBackground(.mind(mood: store.waveMood))
             .navigationTitle("Alicia")
             .toolbarBackground(.hidden, for: .navigationBar)
         }

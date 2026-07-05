@@ -13,39 +13,40 @@ struct StudioView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        playlistHeader
-                        ForEach(seasons, id: \.number) { season in
-                            if season.number > 0 {
-                                Text("Season \(season.number)")
-                                    .font(.headline)
-                                    .foregroundStyle(Theme.accentSoft)
-                                    .padding(.top, 8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    playlistHeader
+                    ForEach(seasons, id: \.number) { season in
+                        if season.number > 0 {
+                            Text("Season \(season.number)")
+                                .font(.headline)
+                                .foregroundStyle(Theme.accentSoft)
+                                .padding(.top, 8)
+                        }
+                        ForEach(season.tracks) { track in
+                            NavigationLink(value: track) {
+                                TrackRow(track: track,
+                                         isCurrent: store.nowPlaying?.id == track.id,
+                                         isPlaying: store.isPlaying && store.nowPlaying?.id == track.id)
                             }
-                            ForEach(season.tracks) { track in
-                                NavigationLink(value: track) {
-                                    TrackRow(track: track,
-                                             isCurrent: store.nowPlaying?.id == track.id,
-                                             isPlaying: store.isPlaying && store.nowPlaying?.id == track.id)
-                                }
-                                .buttonStyle(.plain)
-                            }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .padding(16)
-                    .padding(.bottom, 92)   // room for the player bar
                 }
-                if store.nowPlaying != nil { PlayerBar() }
+                .padding(16)
             }
             .navigationDestination(for: Track.self) { track in
                 EpisodeDetailView(track: track)
             }
             .refreshable { await store.load() }
-            // The spiral runs behind the whole library — same story, same ink.
-            .artBackground("ArtSpiral", opacity: 0.10, full: true)
+            // Sister field to Us: the current runs horizontal — a waveform.
+            .waveBackground(.studio(mood: store.waveMood))
             .navigationTitle("Studio")
+        }
+        // Inset on the NavigationStack itself — the bar stays put when an
+        // episode detail is pushed (it used to vanish under the push).
+        .safeAreaInset(edge: .bottom) {
+            if store.nowPlaying != nil { PlayerBar() }
         }
     }
 

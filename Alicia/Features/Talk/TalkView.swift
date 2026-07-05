@@ -14,7 +14,8 @@ struct TalkView: View {
                 composer
             }
             // The bone-carving lines run the whole page behind the words.
-            .artBackground("ArtBone", opacity: 0.14, full: true)
+            // Sister field to Us: calmer, sparser — quiet water under words.
+            .waveBackground(.dialogue(mood: store.waveMood))
             .navigationTitle("Dialogue")
             .navigationBarTitleDisplayMode(.inline)
             // While typing, the keyboard owns the bottom edge — hide the
@@ -177,7 +178,8 @@ struct ProactiveWhisper: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Color.white.opacity(0.16), in: Capsule())
-            .frame(maxWidth: .infinity)
+            // Left-aligned with her bubbles — impulses come from her side.
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
     }

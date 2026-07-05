@@ -168,6 +168,7 @@ final class AppStore {
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var stallObserver: NSObjectProtocol?
 
     func play(_ track: Track) {
         // Re-tapping the current track (e.g. opening its detail page)
@@ -237,11 +238,27 @@ final class AppStore {
     private func startPlayer(url: URL) {
         ticker?.cancel()
         stopPlayer()
+        isScrubbing = false   // a scrub abandoned mid-switch froze the bar
         try? AVAudioSession.sharedInstance().setCategory(.playback)
         try? AVAudioSession.sharedInstance().setActive(true)
         let item = AVPlayerItem(url: url)
+        // Long episodes over the tailnet: buffer generously and ride out
+        // stalls instead of pausing forever (the "stopped around minute 10"
+        // bug — a transient network dip mid-episode).
+        item.preferredForwardBufferDuration = 60
         let p = AVPlayer(playerItem: item)
+        p.automaticallyWaitsToMinimizeStalling = true
         player = p
+        stallObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.playbackStalledNotification,
+            object: item, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isPlaying else { return }
+                // Nudge playback back into motion once the buffer refills.
+                self.player?.playImmediately(atRate: self.playbackRate)
+            }
+        }
         timeObserver = p.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
@@ -308,16 +325,32 @@ final class AppStore {
         }
     }
 
+    /// Spiral artwork for the system player, rendered once. With artwork +
+    /// full metadata the lock screen / Dynamic Island shows a real
+    /// now-playing card (title, Alicia, series · episode, art) instead of a
+    /// bare speaker glyph.
+    private static let nowPlayingArtwork: MPMediaItemArtwork? = {
+        guard let image = UIImage(named: "ArtSpiral") else { return nil }
+        return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+    }()
+
     private func publishNowPlaying() {
         guard let track = nowPlaying else { return }
+        let album = [track.series.isEmpty ? "Made for Hector" : track.series,
+                     track.label ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: "Alicia",
-            MPMediaItemPropertyAlbumTitle: track.series.isEmpty
-                ? "Made for Hector" : track.series,
+            MPMediaItemPropertyAlbumTitle: album,
             MPMediaItemPropertyPlaybackDuration: track.duration,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(playbackRate) : 0.0,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]
+        if let artwork = Self.nowPlayingArtwork {
+            info[MPMediaItemPropertyArtwork] = artwork
+        }
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = progress * track.duration
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
@@ -325,7 +358,7 @@ final class AppStore {
     private func updateNowPlayingElapsed(_ seconds: Double) {
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = seconds
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackRate) : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
@@ -334,6 +367,8 @@ final class AppStore {
         timeObserver = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = nil
+        if let stallObserver { NotificationCenter.default.removeObserver(stallObserver) }
+        stallObserver = nil
         player?.pause()
         player = nil
     }
@@ -371,5 +406,39 @@ final class AppStore {
             let art = await service.complement(title, imageData: image)
             gallery.insert(art, at: 0)
         }
+    }
+
+    // MARK: Canvas co-creation
+    /// Her stroke layers, oldest first — rendered beneath PencilKit so
+    /// Hector keeps drawing on top of her, she on top of him.
+    var canvasOverlays: [UIImage] = []
+    var cocreateCaption: String?
+    var isCocreating = false
+
+    /// Send the flattened canvas; she draws where he left off.
+    func aliciaContinues(composite: UIImage, canvasSize: CGSize) async {
+        guard let png = composite.pngData(), !isCocreating else { return }
+        isCocreating = true
+        defer { isCocreating = false }
+        guard let result = await service.cocreate(
+            image: png, width: Int(canvasSize.width), height: Int(canvasSize.height))
+        else {
+            cocreateCaption = "couldn't reach her — try again"
+            return
+        }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: result.overlay)
+            if let image = UIImage(data: data) {
+                canvasOverlays.append(image)
+                cocreateCaption = result.caption
+            }
+        } catch {
+            cocreateCaption = "couldn't fetch her strokes — try again"
+        }
+    }
+
+    func clearCanvasCocreation() {
+        canvasOverlays = []
+        cocreateCaption = nil
     }
 }

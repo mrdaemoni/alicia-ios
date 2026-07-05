@@ -8,6 +8,7 @@ struct CanvasView: View {
     @State private var mode: Mode = .draw
     @State private var drawing = PKDrawing()
     @State private var toolsVisible = true
+    @State private var canvasSize: CGSize = .zero
 
     var body: some View {
         NavigationStack {
@@ -43,14 +44,39 @@ struct CanvasView: View {
 
     private var drawSurface: some View {
         VStack(spacing: 14) {
-            PencilCanvas(drawing: $drawing, isActive: mode == .draw && toolsVisible)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.stroke))
-                .padding(.horizontal, 16)
+            // The shared sheet: her overlay strokes live UNDER the live
+            // PencilKit layer, so Hector always draws on top of her last
+            // move — and she on top of his. GeometryReader gives the true
+            // canvas size for compositing.
+            GeometryReader { geo in
+                ZStack {
+                    ForEach(Array(store.canvasOverlays.enumerated()), id: \.offset) { _, layer in
+                        Image(uiImage: layer)
+                            .resizable()
+                            .scaledToFill()
+                    }
+                    PencilCanvas(drawing: $drawing, isActive: mode == .draw && toolsVisible)
+                }
+                .onAppear { canvasSize = geo.size }
+                .onChange(of: geo.size) { _, new in canvasSize = new }
+            }
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.stroke))
+            .padding(.horizontal, 16)
+
+            if let caption = store.cocreateCaption {
+                Text("🐇 \(caption)")
+                    .font(.caption)
+                    .italic()
+                    .foregroundStyle(Theme.inkSoft)
+                    .transition(.opacity)
+            }
 
             HStack(spacing: 12) {
                 Button(role: .destructive) {
                     drawing = PKDrawing()
+                    store.clearCanvasCocreation()
                 } label: {
                     Label("Clear", systemImage: "trash")
                         .frame(maxWidth: .infinity)
@@ -58,25 +84,51 @@ struct CanvasView: View {
                         .background(Theme.card, in: Capsule())
                 }
                 Button {
-                    // Ship the actual canvas so she sees what was drawn.
-                    let png = drawing.bounds.isEmpty
-                        ? nil
-                        : drawing.image(from: drawing.bounds, scale: 2).pngData()
-                    store.requestComplement(for: "Sketch", image: png)
-                    mode = .gallery
+                    Task {
+                        await store.aliciaContinues(
+                            composite: compositeImage(), canvasSize: canvasSize)
+                    }
                 } label: {
-                    Label("Ask Alicia to reply", systemImage: "hare.fill")
+                    if store.isCocreating {
+                        HStack(spacing: 8) {
+                            ProgressView().tint(.white)
+                            Text("she's drawing…")
+                        }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .foregroundStyle(.white)
                         .background(Theme.accentGradient, in: Capsule())
+                    } else {
+                        Label("Alicia continues", systemImage: "hare.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .foregroundStyle(.white)
+                            .background(Theme.accentGradient, in: Capsule())
+                    }
                 }
+                .disabled(store.isCocreating)
             }
             .font(.subheadline.weight(.semibold))
             .padding(.horizontal, 16)
             // The docked tool picker rises slightly above the tab bar; keep the
             // action buttons clear of it while the tools are up.
             .padding(.bottom, toolsVisible ? 32 : 8)
+        }
+    }
+
+    /// Flatten paper + her overlays + his live strokes into one image —
+    /// what she "sees" when deciding where to draw next.
+    private func compositeImage() -> UIImage {
+        let size = canvasSize == .zero ? CGSize(width: 390, height: 500) : canvasSize
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { ctx in
+            UIColor(Theme.paper).setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            for layer in store.canvasOverlays {
+                layer.draw(in: CGRect(origin: .zero, size: size))
+            }
+            let img = drawing.image(from: CGRect(origin: .zero, size: size), scale: 1)
+            img.draw(in: CGRect(origin: .zero, size: size))
         }
     }
 

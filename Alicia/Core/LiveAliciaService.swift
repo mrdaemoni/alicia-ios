@@ -230,6 +230,24 @@ struct LiveAliciaService: AliciaService {
         } catch { return nil }
     }
 
+    private struct CocreateDTO: Decodable { var imageURL: String; var caption: String }
+
+    func cocreate(image: Data, width: Int, height: Int) async -> (overlay: URL, caption: String)? {
+        do {
+            let body = try JSONSerialization.data(withJSONObject: [
+                "image": image.base64EncodedString(),
+                "width": width, "height": height,
+            ])
+            var req = request("/api/cocreate", method: "POST", body: body)
+            req.timeoutInterval = 120   // vision + render can take a while
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            let r = try JSONDecoder().decode(CocreateDTO.self, from: data)
+            guard let url = mediaURL(r.imageURL) else { return nil }
+            return (url, r.caption)
+        } catch { return nil }
+    }
+
     private struct GreetingDTO: Decodable { var greeting: String }
 
     func greeting() async -> String? {
