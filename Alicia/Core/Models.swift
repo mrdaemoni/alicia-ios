@@ -31,7 +31,8 @@ enum ChatEvent {
 /// backend's circulation feed).
 /// The synthesis of the day — one finished thought from her shelf,
 /// rotating at midnight (Us page).
-struct FeaturedSynthesis: Hashable {
+struct FeaturedSynthesis: Hashable, Identifiable {
+    var id: String { title }
     var title: String
     var excerpt: String
     var body: String

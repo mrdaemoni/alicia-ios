@@ -44,6 +44,47 @@ protocol AliciaService {
     /// The real voice ranking from her archetype loop (7-day attributions
     /// + evidence-weighted effectiveness). Empty offline.
     func archetypes() async -> [ArchetypeStat]
+    /// What she knows of Hector — now / recently / long term. Nil offline.
+    func knowing() async -> KnowingState?
+    /// The freshest syntheses off the shelf, readable in full.
+    func syntheses() async -> [FeaturedSynthesis]
+    /// The vault's thinker network (curated master map).
+    func thinkers() async -> ThinkerNetwork?
+}
+
+struct KnowingClaim: Decodable, Hashable {
+    var claim: String
+    var dimension: String
+    var confidence: Double
+}
+
+struct KnowingLongterm: Decodable, Hashable {
+    var learnings: Int
+    var dimensions: [String]
+    var memory_rules: Int
+    var days: Int
+}
+
+struct KnowingState: Decodable, Hashable {
+    var now: [KnowingClaim]
+    var recent: [KnowingClaim]
+    var recent_count: Int
+    var longterm: KnowingLongterm
+}
+
+struct Thinker: Decodable, Hashable, Identifiable {
+    var name: String
+    var anchor: Bool
+    var tagline: String
+    var themes: [String]
+    var works: String
+    var relation: String
+    var id: String { name }
+}
+
+struct ThinkerNetwork: Decodable {
+    var themes: [String]
+    var thinkers: [Thinker]
 }
 
 /// One voice's live loop state.
@@ -104,6 +145,9 @@ struct MockAliciaService: AliciaService {
     }
 
     func archetypes() async -> [ArchetypeStat] { [] }
+    func knowing() async -> KnowingState? { nil }
+    func syntheses() async -> [FeaturedSynthesis] { [] }
+    func thinkers() async -> ThinkerNetwork? { nil }
 
     func featured() async -> FeaturedSynthesis? {
         FeaturedSynthesis(

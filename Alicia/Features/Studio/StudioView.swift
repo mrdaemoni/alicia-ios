@@ -11,12 +11,39 @@ struct StudioView: View {
             .sorted { $0.number > $1.number }
     }
 
+    @State private var drawing = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    SectionHeader(title: "Studio",
-                                  kicker: "memories of my future self")
+                    ZStack {
+                        SectionHeader(title: drawing ? "Canvas" : "Studio",
+                                      kicker: drawing ? "drawn together"
+                                                      : "memories of my future self")
+                        HStack {
+                            Spacer()
+                            // Canvas lives inside Studio now — the pencil
+                            // toggles between listening and drawing with her.
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    drawing.toggle()
+                                }
+                            } label: {
+                                Image(systemName: drawing ? "waveform" : "pencil.and.outline")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Theme.ink)
+                            }
+                            .accessibilityLabel(drawing ? "Back to Studio" : "Draw with me")
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 14)
+                    }
+                    if drawing {
+                        CanvasBody()
+                            .frame(minHeight: 560)
+                    }
+                    if !drawing {
                     playlistHeader
                     ForEach(seasons, id: \.number) { season in
                         if season.number > 0 {
@@ -34,6 +61,7 @@ struct StudioView: View {
                             .buttonStyle(.plain)
                         }
                     }
+                    }
                 }
                 .padding(16)
             }
@@ -42,7 +70,7 @@ struct StudioView: View {
             }
             .refreshable { await store.load() }
             // Sister field to Us: the current runs horizontal — a waveform.
-            .waveBackground(.studio(mood: store.waveMood))
+            .waveBackground(.studio(mood: store.waveMood), tinted: true)
             .toolbar(.hidden, for: .navigationBar)
         }
         // Inset on the NavigationStack itself — the bar stays put when an

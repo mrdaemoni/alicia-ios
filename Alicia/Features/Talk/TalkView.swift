@@ -48,7 +48,7 @@ struct TalkView: View {
                 composer
             }
             // Sister field to Us: calmer, sparser — quiet water under words.
-            .waveBackground(.dialogue(mood: store.waveMood))
+            .waveBackground(.dialogue(mood: store.waveMood), tinted: true)
             .toolbar(.hidden, for: .navigationBar)
             .animation(.easeOut(duration: 0.2), value: focused)
             .onChange(of: focused) { _, now in store.composerFocused = now }
@@ -122,13 +122,14 @@ struct TalkView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 34, height: 34)
-                    .background(Theme.accentGradient, in: Circle())
+                    .background(Theme.ink, in: Circle())
             }
             .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
             .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
         .background(Theme.paper.opacity(0.55))
         .onChange(of: speech.transcript) { _, new in
             if speech.isRecording || !new.isEmpty {

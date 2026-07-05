@@ -45,6 +45,8 @@ final class AppStore {
         async let fs = service.featured()
         async let qt = service.quote()
         async let ar = service.archetypes()
+        async let kn = service.knowing()
+        async let sy = service.syntheses()
         (thoughts, tracks, gallery, health) = await (t, tr, g, h)
         (thinkingMode, walkWords) = await m
         greeting = await gr ?? greeting
@@ -52,7 +54,14 @@ final class AppStore {
         quote = await qt ?? quote
         let stats = await ar
         if !stats.isEmpty { archetypeStats = stats }
+        knowing = await kn ?? knowing
+        let shelf = await sy
+        if !shelf.isEmpty { syntheses = shelf }
+        if thinkerNetwork == nil {
+            thinkerNetwork = await service.thinkers()
+        }
         publishWidgetCache()
+        Task { await refreshEpisodeThinkers() }
         let pro = await p
         if !pro.isEmpty {
             proactiveFeed = pro
@@ -153,6 +162,30 @@ final class AppStore {
     var quote: (text: String, author: String)?
     /// Live loop state per voice from /api/archetypes (empty offline).
     var archetypeStats: [ArchetypeStat] = []
+    /// What she knows of Hector — three horizons (Us page eye card).
+    var knowing: KnowingState?
+    /// The Knowledge tab's synthesis shelf + thinker network.
+    var syntheses: [FeaturedSynthesis] = []
+    var thinkerNetwork: ThinkerNetwork?
+    /// Deep link into the Knowledge tab's thinker detail.
+    var pendingThinker: String?
+
+    /// Thinkers mentioned in the shownotes of the active/suggested episode
+    /// — the knowledge currently in Hector's ears.
+    var episodeThinkers: [Thinker] = []
+
+    func refreshEpisodeThinkers() async {
+        guard let net = thinkerNetwork else { return }
+        guard let track = nowPlaying ?? suggestedTracks.first else { return }
+        let notes = await episodeNotes(for: track)
+        guard !notes.isEmpty else { episodeThinkers = []; return }
+        let lower = notes.lowercased()
+        episodeThinkers = net.thinkers.filter { t in
+            let last = t.name.split(separator: " ").last.map(String.init) ?? t.name
+            return last.count > 3 && lower.contains(last.lowercased())
+        }
+        .prefix(3).map { $0 }
+    }
 
     /// Voices ranked by the REAL loop when the backend answers (7-day
     /// attributions, effectiveness tiebreak); falls back to counting the

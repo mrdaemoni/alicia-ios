@@ -258,6 +258,33 @@ struct LiveAliciaService: AliciaService {
         await fetch("/api/archetypes", as: [ArchetypeStat].self)
     }
 
+    func knowing() async -> KnowingState? {
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: request("/api/knowing"))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return try JSONDecoder().decode(KnowingState.self, from: data)
+        } catch { return nil }
+    }
+
+    private struct SynthesisDTO: Decodable {
+        var title, date, excerpt, body: String
+    }
+
+    func syntheses() async -> [FeaturedSynthesis] {
+        await fetch("/api/syntheses", as: [SynthesisDTO].self).map {
+            FeaturedSynthesis(title: $0.title, excerpt: $0.excerpt,
+                              body: $0.body, date: $0.date)
+        }
+    }
+
+    func thinkers() async -> ThinkerNetwork? {
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: request("/api/thinkers"))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return try JSONDecoder().decode(ThinkerNetwork.self, from: data)
+        } catch { return nil }
+    }
+
     private struct QuoteDTO: Decodable { var text: String; var author: String }
 
     func quote() async -> (text: String, author: String)? {

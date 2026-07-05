@@ -9,12 +9,13 @@ struct EditorialTabBar: View {
     @Environment(AppStore.self) private var store
 
     var body: some View {
-        if store.composerFocused {
-            // Keyboard up: the words yield the bottom edge.
-            EmptyView()
-        } else {
-            bar
-        }
+        // Collapse by height (not by removing the view) — swapping to
+        // EmptyView glitched the safe-area inset and let the bar overlap
+        // the Dialogue composer on device.
+        bar
+            .frame(height: store.composerFocused ? 0 : nil)
+            .clipped()
+            .opacity(store.composerFocused ? 0 : 1)
     }
 
     private var bar: some View {
@@ -26,9 +27,11 @@ struct EditorialTabBar: View {
                         store.selectedSection = section
                     } label: {
                         Text(section.rawValue.uppercased())
-                            .font(.system(size: 10.5, design: .monospaced)
+                            .font(.system(size: 10, design: .monospaced)
                                 .weight(store.selectedSection == section ? .bold : .regular))
-                            .tracking(1.3)
+                            .tracking(0.8)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                             .foregroundStyle(store.selectedSection == section
                                              ? Theme.ink : Theme.inkSoft.opacity(0.75))
                             .frame(maxWidth: .infinity)

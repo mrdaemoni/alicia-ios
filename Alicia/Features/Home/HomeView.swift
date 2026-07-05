@@ -58,17 +58,21 @@ struct HomeView: View {
                         QuoteCard(quote: quote)
                     }
 
-                    if let art = store.gallery.first(where: { $0.imageURL != nil }) {
-                        BestDrawingCard(art: art)
-                    }
+                    BestDrawingCard(candidates: store.gallery.filter { $0.imageURL != nil })
 
                     if let top = store.rankedArchetypes.first,
                        let arch = Archetypes.get(top.name) {
                         ArchetypeCard(arch: arch, count: top.count)
                     }
 
+                    KnowingCard()
+
                     if !store.suggestedTracks.isEmpty {
                         EpisodeAskCard()
+                    }
+
+                    if !store.episodeThinkers.isEmpty {
+                        ThinkerStrip(thinkers: store.episodeThinkers)
                     }
 
                     if let day = dayThought {
@@ -117,7 +121,7 @@ struct HomeView: View {
                 .symbolEffect(.variableColor.iterative, isActive: store.isPlaying)
                 .foregroundStyle(.white)
                 .frame(width: 34, height: 34)
-                .background(Theme.accentGradient, in: Circle())
+                .background(Theme.ink, in: Circle())
             VStack(alignment: .leading, spacing: 1) {
                 Text(track.title).font(.footnote.weight(.semibold)).lineLimit(1)
                 Text(track.mood).font(.caption2).foregroundStyle(Theme.inkSoft).lineLimit(1)
@@ -259,7 +263,7 @@ struct ProactiveReplyCard: View {
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 32, height: 32)
-                            .background(Theme.accentGradient, in: Circle())
+                            .background(Theme.ink, in: Circle())
                     }
                 }
                 .disabled(sending || draft.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -494,19 +498,28 @@ struct FlexWrap: Layout {
 /// caption as the label. The rotation of the drawing algorithm now leads
 /// ink-on-bone, so these read as part of the same page.
 struct BestDrawingCard: View {
-    let art: Artwork
+    /// Newest-first candidates; a failed/pruned image falls through to the
+    /// next instead of leaving an empty frame (the "nothing rendered" bug).
+    let candidates: [Artwork]
+    @State private var idx = 0
+
+    private var art: Artwork? {
+        candidates.indices.contains(idx) ? candidates[idx] : nil
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("FROM HER HAND")
-                .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                .tracking(2.0)
-                .foregroundStyle(Theme.inkSoft)
-            if let url = art.imageURL {
+        if let art, let url = art.imageURL {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("FROM HER HAND")
+                    .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                    .tracking(2.0)
+                    .foregroundStyle(Theme.inkSoft)
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFill()
+                    case .failure:
+                        Color.clear.onAppear { idx += 1 }
                     default:
                         Rectangle().fill(Theme.paperDeep)
                     }
@@ -514,15 +527,15 @@ struct BestDrawingCard: View {
                 .frame(height: 230)
                 .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                Text(art.title)
+                    .font(.system(.footnote, design: .serif))
+                    .italic()
+                    .foregroundStyle(Theme.ink.opacity(0.7))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            Text(art.title)
-                .font(.system(.footnote, design: .serif))
-                .italic()
-                .foregroundStyle(Theme.ink.opacity(0.7))
-                .frame(maxWidth: .infinity, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card(padding: 14, radius: 22)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card(padding: 14, radius: 22)
     }
 }
 
@@ -652,6 +665,41 @@ struct EpisodeAskCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 16, radius: 20)
+    }
+}
+
+/// The minds inside today's episode — tap a face to open their page in
+/// Knowledge.
+struct ThinkerStrip: View {
+    @Environment(AppStore.self) private var store
+    let thinkers: [Thinker]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("IN YOUR EARS TODAY")
+                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                .tracking(2.0)
+                .foregroundStyle(Theme.inkSoft)
+            HStack(spacing: 14) {
+                ForEach(thinkers) { t in
+                    Button {
+                        store.pendingThinker = t.name
+                        store.selectedSection = .knowledge
+                    } label: {
+                        VStack(spacing: 6) {
+                            WikiPortrait(name: t.name, size: 64)
+                            Text(t.name.split(separator: " ").last.map(String.init) ?? t.name)
+                                .font(.system(size: 11, design: .serif).weight(.medium))
+                                .foregroundStyle(Theme.ink)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 14, radius: 20)
     }
 }
 

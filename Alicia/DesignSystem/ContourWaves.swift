@@ -249,18 +249,18 @@ extension Theme {
     static var timeTint: LinearGradient {
         let colors: [Color]
         switch Calendar.current.component(.hour, from: .now) {
-        case 5..<8:   colors = [Color(red: 0.93, green: 0.62, blue: 0.55).opacity(0.20),
-                                .clear]                                    // dawn rose
-        case 8..<11:  colors = [Color(red: 0.95, green: 0.83, blue: 0.52).opacity(0.14),
-                                .clear]                                    // morning gold
-        case 11..<16: colors = [Color(red: 0.72, green: 0.82, blue: 0.86).opacity(0.10),
-                                .clear]                                    // midday sky
-        case 16..<19: colors = [Color(red: 0.90, green: 0.66, blue: 0.40).opacity(0.18),
-                                .clear]                                    // late ochre
-        case 19..<22: colors = [Color(red: 0.72, green: 0.44, blue: 0.42).opacity(0.22),
-                                Color(red: 0.28, green: 0.30, blue: 0.44).opacity(0.10)] // dusk
-        default:      colors = [Color(red: 0.25, green: 0.28, blue: 0.42).opacity(0.26),
-                                Color(red: 0.30, green: 0.26, blue: 0.38).opacity(0.10)] // night indigo
+        case 5..<8:   colors = [Color(red: 0.93, green: 0.58, blue: 0.50).opacity(0.38),
+                                Color(red: 0.95, green: 0.80, blue: 0.60).opacity(0.10)] // dawn rose
+        case 8..<11:  colors = [Color(red: 0.95, green: 0.80, blue: 0.45).opacity(0.30),
+                                Color(red: 0.95, green: 0.88, blue: 0.66).opacity(0.08)] // morning gold
+        case 11..<16: colors = [Color(red: 0.62, green: 0.76, blue: 0.83).opacity(0.26),
+                                Color(red: 0.80, green: 0.86, blue: 0.86).opacity(0.07)] // midday sky
+        case 16..<19: colors = [Color(red: 0.90, green: 0.60, blue: 0.32).opacity(0.34),
+                                Color(red: 0.92, green: 0.76, blue: 0.52).opacity(0.10)] // late ochre
+        case 19..<22: colors = [Color(red: 0.66, green: 0.38, blue: 0.38).opacity(0.40),
+                                Color(red: 0.28, green: 0.30, blue: 0.44).opacity(0.16)] // dusk
+        default:      colors = [Color(red: 0.22, green: 0.25, blue: 0.42).opacity(0.44),
+                                Color(red: 0.30, green: 0.26, blue: 0.38).opacity(0.18)] // night indigo
         }
         return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
     }
@@ -397,6 +397,6 @@ extension AppStore {
 /// at a glance whether his phone runs the latest build. BUMP THIS on every
 /// app change that ships (see CLAUDE.md).
 enum AppVersion {
-    static let tag = "v15"
+    static let tag = "v16"
     static let date = "Jul 5"
 }

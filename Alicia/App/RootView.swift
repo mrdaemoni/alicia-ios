@@ -13,7 +13,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case dialogue = "Dialogue"
     case mind    = "Alicia"
     case studio  = "Studio"
-    case canvas  = "Canvas"
+    case knowledge = "Knowledge"
 
     var id: String { rawValue }
 
@@ -23,7 +23,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .dialogue: return "quote.bubble"
         case .mind:    return "hare"
         case .studio:  return "waveform"
-        case .canvas:  return "scribble.variable"
+        case .knowledge: return "books.vertical"
         }
     }
 }
@@ -53,7 +53,7 @@ struct RootView: View {
         case .dialogue: TalkView()
         case .mind:     MindView()
         case .studio:   StudioView()
-        case .canvas:   CanvasView()
+        case .knowledge: KnowledgeView()
         }
     }
 }

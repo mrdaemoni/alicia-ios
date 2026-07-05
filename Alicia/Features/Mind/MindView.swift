@@ -38,10 +38,15 @@ struct MindView: View {
                                 SaidCard(item: item).id(item.id)
                             }
                         }
-                        Text("Recent thinking")
-                            .font(.headline)
-                            .padding(.top, 4)
-                        ForEach(store.thoughts) { ThoughtCard(thought: $0) }
+                        Text("RECENT THINKING")
+                            .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                            .tracking(2.0)
+                            .foregroundStyle(Theme.inkSoft)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 10)
+                        ForEach(Array(store.thoughts.enumerated()), id: \.element.id) { i, th in
+                            EditorialThought(thought: th, rank: i)
+                        }
                     }
                     .padding(16)
                 }
@@ -56,7 +61,7 @@ struct MindView: View {
             // The face emerging from the grain — her page.
             // Sister field to Us: slow and dense — her inner weather. Seeded
             // by her current archetype, so her page reshapes with her mood.
-            .waveBackground(.mind(mood: store.waveMood))
+            .waveBackground(.mind(mood: store.waveMood), tinted: true)
             .toolbar(.hidden, for: .navigationBar)
         }
     }
@@ -173,3 +178,89 @@ struct SaidCard: View {
         store.reactToProactive(id: item.id, emoji: emoji)
     }
 }
+
+/// Co-Star scale-play for her thinking: the freshest thought runs huge and
+/// centered; the rest step down through three distinct registers so no two
+/// neighbors read the same.
+struct EditorialThought: View {
+    let thought: Thought
+    let rank: Int
+
+    var body: some View {
+        Group {
+            switch rank % 3 {
+            case 0: hero
+            case 1: aside
+            default: ledger
+            }
+        }
+    }
+
+    /// Register 1 — display: huge centered serif, the day as a headline.
+    private var hero: some View {
+        VStack(spacing: 10) {
+            Text(thought.tag.uppercased())
+                .font(.system(size: 9, design: .monospaced).weight(.bold))
+                .tracking(2.2)
+                .foregroundStyle(Theme.accent)
+            Text(thought.title)
+                .font(.system(size: rank == 0 ? 30 : 24,
+                              weight: .semibold, design: .serif))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Theme.ink)
+            Text(thought.body)
+                .font(.system(size: 14, design: .serif))
+                .italic()
+                .lineSpacing(5)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Theme.ink.opacity(0.75))
+            Theme.stroke.frame(width: 70, height: 1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+    }
+
+    /// Register 2 — marginalia: right-aligned, quiet, like a note in the
+    /// margin of the page.
+    private var aside: some View {
+        VStack(alignment: .trailing, spacing: 5) {
+            Text(thought.title)
+                .font(.system(size: 18, weight: .medium, design: .serif))
+                .multilineTextAlignment(.trailing)
+            Text(thought.body)
+                .font(.system(size: 12, design: .serif))
+                .lineSpacing(4)
+                .multilineTextAlignment(.trailing)
+                .foregroundStyle(Theme.inkSoft)
+                .lineLimit(4)
+            Text(thought.tag.uppercased())
+                .font(.system(size: 8, design: .monospaced))
+                .tracking(1.8)
+                .foregroundStyle(Theme.accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.leading, 60)
+    }
+
+    /// Register 3 — ledger: mono date line + serif entry, like an account
+    /// of the day, left-set.
+    private var ledger: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(thought.date, style: .date)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(Theme.inkSoft)
+                Theme.stroke.frame(height: 0.7)
+            }
+            Text(thought.title)
+                .font(.system(size: 16, weight: .semibold, design: .serif))
+            Text(thought.body)
+                .font(.system(size: 13, design: .serif))
+                .lineSpacing(4)
+                .foregroundStyle(Theme.ink.opacity(0.8))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.trailing, 40)
+    }
+}
+

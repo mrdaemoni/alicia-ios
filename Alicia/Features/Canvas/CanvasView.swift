@@ -1,7 +1,8 @@
 import SwiftUI
 import PencilKit
 
-struct CanvasView: View {
+/// The shared drawing room — mounted inside Studio ("draw with me").
+struct CanvasBody: View {
     enum Mode: String, CaseIterable { case draw = "My Canvas", gallery = "Alicia's Gallery" }
 
     @Environment(AppStore.self) private var store
@@ -11,41 +12,17 @@ struct CanvasView: View {
     @State private var canvasSize: CGSize = .zero
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                ZStack {
-                    SectionHeader(title: "Canvas", kicker: "drawn together")
-                    if mode == .draw {
-                        HStack {
-                            Spacer()
-                            Button {
-                                withAnimation { toolsVisible.toggle() }
-                            } label: {
-                                Image(systemName: toolsVisible
-                                      ? "pencil.slash" : "pencil.and.outline")
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(Theme.inkSoft)
-                            }
-                            .accessibilityLabel(toolsVisible
-                                                ? "Hide drawing tools" : "Show drawing tools")
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 14)
-                    }
-                }
-                Picker("Mode", selection: $mode) {
-                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .padding(16)
-
-                switch mode {
-                case .draw:    drawSurface
-                case .gallery: gallery
-                }
+        VStack(spacing: 0) {
+            Picker("Mode", selection: $mode) {
+                ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
-            .sectionBackground()
-            .toolbar(.hidden, for: .navigationBar)
+            .pickerStyle(.segmented)
+            .padding(.vertical, 8)
+
+            switch mode {
+            case .draw:    drawSurface
+            case .gallery: gallery
+            }
         }
     }
 
@@ -212,8 +189,7 @@ struct ArtworkCell: View {
 }
 
 #Preview {
-    CanvasView()
+    CanvasBody()
         .environment(AppStore(service: MockAliciaService()))
         .tint(Theme.accent)
-        .preferredColorScheme(.dark)
 }
