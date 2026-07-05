@@ -10,45 +10,48 @@ struct TalkView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                ZStack {
+                    SectionHeader(
+                        title: "Dialogue",
+                        kicker: store.isWalking
+                            ? "walking · \(store.walkWords) words kept"
+                            : "one conversation · two doors")
+                    HStack {
+                        // Walk mode — same session as Telegram's /walk. While
+                        // active, everything typed is kept, not answered.
+                        Button {
+                            store.toggleWalk()
+                        } label: {
+                            Image(systemName: "figure.walk")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(store.isWalking
+                                                 ? Theme.accent : Theme.inkSoft)
+                        }
+                        .accessibilityLabel(store.isWalking ? "End walk" : "Start walk")
+                        Spacer()
+                        Button {
+                            store.voiceReplies.toggle()
+                        } label: {
+                            Image(systemName: store.voiceReplies
+                                  ? "speaker.wave.2.fill" : "speaker.slash")
+                                .font(.system(size: 14))
+                                .foregroundStyle(Theme.inkSoft)
+                                .symbolEffect(.bounce, value: store.voiceReplies)
+                        }
+                        .accessibilityLabel(store.voiceReplies
+                                            ? "Voice replies on" : "Voice replies off")
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 14)
+                }
                 messageList
                 composer
             }
-            // The bone-carving lines run the whole page behind the words.
             // Sister field to Us: calmer, sparser — quiet water under words.
             .waveBackground(.dialogue(mood: store.waveMood))
-            .navigationTitle("Dialogue")
-            .navigationBarTitleDisplayMode(.inline)
-            // While typing, the keyboard owns the bottom edge — hide the
-            // tab bar so it can't float over / collide with the keyboard.
-            .toolbar(focused ? .hidden : .visible, for: .tabBar)
+            .toolbar(.hidden, for: .navigationBar)
             .animation(.easeOut(duration: 0.2), value: focused)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    // Walk mode — same session as Telegram's /walk. While
-                    // active, everything typed is kept, not answered.
-                    Button {
-                        store.toggleWalk()
-                    } label: {
-                        Label(store.isWalking ? "\(store.walkWords)w" : "Walk",
-                              systemImage: "figure.walk")
-                            .labelStyle(.titleAndIcon)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(store.isWalking ? Theme.accentSoft : Theme.inkSoft)
-                    }
-                    .accessibilityLabel(store.isWalking ? "End walk" : "Start walk")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        store.voiceReplies.toggle()
-                    } label: {
-                        Image(systemName: store.voiceReplies
-                              ? "speaker.wave.2.fill" : "speaker.slash")
-                            .symbolEffect(.bounce, value: store.voiceReplies)
-                    }
-                    .accessibilityLabel(store.voiceReplies
-                                        ? "Voice replies on" : "Voice replies off")
-                }
-            }
+            .onChange(of: focused) { _, now in store.composerFocused = now }
         }
     }
 

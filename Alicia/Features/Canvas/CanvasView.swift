@@ -13,6 +13,26 @@ struct CanvasView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                ZStack {
+                    SectionHeader(title: "Canvas", kicker: "drawn together")
+                    if mode == .draw {
+                        HStack {
+                            Spacer()
+                            Button {
+                                withAnimation { toolsVisible.toggle() }
+                            } label: {
+                                Image(systemName: toolsVisible
+                                      ? "pencil.slash" : "pencil.and.outline")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(Theme.inkSoft)
+                            }
+                            .accessibilityLabel(toolsVisible
+                                                ? "Hide drawing tools" : "Show drawing tools")
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 14)
+                    }
+                }
                 Picker("Mode", selection: $mode) {
                     ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
@@ -25,20 +45,7 @@ struct CanvasView: View {
                 }
             }
             .sectionBackground()
-            .navigationTitle("Canvas")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if mode == .draw {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            withAnimation { toolsVisible.toggle() }
-                        } label: {
-                            Image(systemName: toolsVisible ? "pencil.slash" : "pencil.and.outline")
-                        }
-                        .accessibilityLabel(toolsVisible ? "Hide drawing tools" : "Show drawing tools")
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 

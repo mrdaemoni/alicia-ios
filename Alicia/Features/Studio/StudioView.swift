@@ -15,6 +15,8 @@ struct StudioView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    SectionHeader(title: "Studio",
+                                  kicker: "memories of my future self")
                     playlistHeader
                     ForEach(seasons, id: \.number) { season in
                         if season.number > 0 {
@@ -41,7 +43,7 @@ struct StudioView: View {
             .refreshable { await store.load() }
             // Sister field to Us: the current runs horizontal — a waveform.
             .waveBackground(.studio(mood: store.waveMood))
-            .navigationTitle("Studio")
+            .toolbar(.hidden, for: .navigationBar)
         }
         // Inset on the NavigationStack itself — the bar stays put when an
         // episode detail is pushed (it used to vanish under the push).

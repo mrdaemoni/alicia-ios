@@ -11,7 +11,7 @@ struct HealthView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                StippleIllustration()
+                StippleIllustration(animated: true)
                     .frame(height: 160)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 6)
@@ -80,6 +80,14 @@ struct InkStroke: View {
     var seed: Int
 
     var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 8.0)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: 86_400)
+            canvas(t: t)
+        }
+    }
+
+    private func canvas(t: TimeInterval) -> some View {
         Canvas { context, size in
             var state = UInt64(truncatingIfNeeded: seed &* 2654435761 &+ 13)
             func rnd() -> Double {
@@ -100,7 +108,9 @@ struct InkStroke: View {
             stroke.move(to: CGPoint(x: 0, y: midY + (rnd() - 0.5) * 2))
             for i in 1...segments {
                 let x = endX * Double(i) / Double(segments)
-                let y = midY + (rnd() - 0.5) * 3.2
+                // The pen never quite rests — a living tremble.
+                let tremble = sin(t * 1.1 + Double(i) * 0.9 + Double(seed % 7)) * 0.9
+                let y = midY + (rnd() - 0.5) * 3.2 + tremble
                 stroke.addLine(to: CGPoint(x: x, y: y))
             }
             context.stroke(stroke, with: .color(Theme.ink.opacity(0.85)),

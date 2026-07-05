@@ -34,6 +34,8 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    SectionHeader(title: "Us",
+                                  kicker: Date.now.formatted(date: .complete, time: .omitted))
                     header
 
                     if let track = store.nowPlaying {
@@ -52,6 +54,10 @@ struct HomeView: View {
                         FeaturedSynthesisCard(featured: featured)
                     }
 
+                    if let art = store.gallery.first(where: { $0.imageURL != nil }) {
+                        BestDrawingCard(art: art)
+                    }
+
                     if let day = dayThought {
                         card(icon: "sun.horizon.fill",
                              title: day.title,
@@ -67,9 +73,7 @@ struct HomeView: View {
             // The living field — contour waves under the hour's color and
             // a fine paper grain. Dawn washes rose, night runs indigo.
             .waveBackground(.us(mood: store.waveMood), tinted: true)
-            .navigationTitle("Us")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 
@@ -293,27 +297,7 @@ struct FeaturedSynthesisCard: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $reading) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    StippleIllustration()
-                        .frame(height: 150)
-                        .frame(maxWidth: .infinity)
-                    Text(featured.date)
-                        .font(.system(.caption2, design: .monospaced))
-                        .tracking(1.4)
-                        .foregroundStyle(Theme.inkSoft)
-                    Text(featured.title)
-                        .font(.system(.title2, design: .serif, weight: .semibold))
-                    Text((try? AttributedString(
-                            markdown: featured.body,
-                            options: .init(interpretedSyntax: .full)))
-                         ?? AttributedString(featured.body))
-                        .font(.system(.body, design: .serif))
-                        .lineSpacing(5)
-                }
-                .padding(22)
-            }
-            .presentationBackground(Theme.paper)
+            SynthesisReader(featured: featured)
         }
     }
 }
@@ -324,3 +308,208 @@ struct FeaturedSynthesisCard: View {
         .tint(Theme.accent)
         .preferredColorScheme(.dark)
 }
+
+/// The reading room: the synthesis typeset like an essay, not dumped as
+/// text. Headings become centered mono-caps rules, paragraphs breathe,
+/// bold sources stand out, and every thinker linked in the piece becomes a
+/// chip — tap one and you're in Dialogue asking her about them.
+struct SynthesisReader: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let featured: FeaturedSynthesis
+
+    /// A parsed block of the synthesis body.
+    private enum Block: Identifiable {
+        case heading(String)
+        case paragraph(AttributedString)
+        var id: UUID { UUID() }
+    }
+
+    /// [[Books/On Quality/OnQuality-21]] → "On Quality"; [[writing/X]] → "X".
+    private static func thinkers(in body: String) -> [String] {
+        var names: [String] = []
+        var searchRange = body.startIndex..<body.endIndex
+        while let open = body.range(of: "[[", range: searchRange),
+              let close = body.range(of: "]]", range: open.upperBound..<body.endIndex) {
+            let target = String(body[open.upperBound..<close.lowerBound])
+            let parts = target.split(separator: "/")
+            let name = String(parts.count >= 2 ? parts[1] : parts.first ?? "")
+                .replacingOccurrences(of: "-", with: " ")
+            if !name.isEmpty, !names.contains(name) { names.append(name) }
+            searchRange = close.upperBound..<body.endIndex
+        }
+        return Array(names.prefix(6))
+    }
+
+    /// Strip wikilink brackets for reading; keep the inner display name.
+    private static func cleanInline(_ text: String) -> String {
+        var t = text
+        while let open = t.range(of: "[["),
+              let close = t.range(of: "]]", range: open.upperBound..<t.endIndex) {
+            let target = String(t[open.upperBound..<close.lowerBound])
+            let display = target.split(separator: "/").last.map(String.init) ?? target
+            t.replaceSubrange(open.lowerBound..<close.upperBound, with: display)
+        }
+        return t
+    }
+
+    private var blocks: [Block] {
+        featured.body.components(separatedBy: "\n\n").compactMap { raw in
+            let p = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !p.isEmpty else { return nil }
+            if p.hasPrefix("## ") {
+                return .heading(String(p.dropFirst(3)))
+            }
+            let cleaned = Self.cleanInline(p)
+            let attr = (try? AttributedString(
+                markdown: cleaned,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                ?? AttributedString(cleaned)
+            return .paragraph(attr)
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                StippleIllustration()
+                    .frame(height: 140)
+                    .frame(maxWidth: .infinity)
+                Text("SYNTHESIS · \(featured.date)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .tracking(2.0)
+                    .foregroundStyle(Theme.inkSoft)
+                    .frame(maxWidth: .infinity)
+                Text(featured.title)
+                    .font(.system(.title2, design: .serif, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                Theme.stroke.frame(width: 60, height: 1)
+                    .frame(maxWidth: .infinity)
+
+                ForEach(blocks) { block in
+                    switch block {
+                    case .heading(let h):
+                        Text(h.uppercased())
+                            .font(.system(size: 11, design: .monospaced).weight(.semibold))
+                            .tracking(2.0)
+                            .foregroundStyle(Theme.accent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 10)
+                    case .paragraph(let p):
+                        Text(p)
+                            .font(.system(size: 16, design: .serif))
+                            .lineSpacing(6.5)
+                            .foregroundStyle(Theme.ink.opacity(0.92))
+                    }
+                }
+
+                let thinkers = Self.thinkers(in: featured.body)
+                if !thinkers.isEmpty {
+                    Text("VOICES IN THIS PIECE")
+                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                        .tracking(2.0)
+                        .foregroundStyle(Theme.inkSoft)
+                        .padding(.top, 14)
+                    FlowChips(items: thinkers) { name in
+                        // Ask her about the thinker, right in Dialogue.
+                        dismiss()
+                        store.selectedSection = .dialogue
+                        store.send("Tell me about \(name) and why this synthesis leans on them.")
+                    }
+                }
+            }
+            .padding(24)
+            .padding(.bottom, 40)
+        }
+        .presentationBackground(Theme.paper)
+    }
+}
+
+/// Simple wrapping chip row.
+struct FlowChips: View {
+    let items: [String]
+    let action: (String) -> Void
+
+    var body: some View {
+        FlexWrap(spacing: 8) {
+            ForEach(items, id: \.self) { name in
+                Button { action(name) } label: {
+                    Text(name)
+                        .font(.system(size: 12, design: .monospaced))
+                        .underline()
+                        .foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.white.opacity(0.35), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+/// Minimal wrap layout for the chips.
+struct FlexWrap: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 320
+        var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0
+        for sub in subviews {
+            let s = sub.sizeThatFits(.unspecified)
+            if x + s.width > width { x = 0; y += rowH + spacing; rowH = 0 }
+            x += s.width + spacing
+            rowH = max(rowH, s.height)
+        }
+        return CGSize(width: width, height: y + rowH)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowH: CGFloat = 0
+        for sub in subviews {
+            let s = sub.sizeThatFits(.unspecified)
+            if x + s.width > bounds.maxX { x = bounds.minX; y += rowH + spacing; rowH = 0 }
+            sub.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += s.width + spacing
+            rowH = max(rowH, s.height)
+        }
+    }
+}
+
+/// Her best recent drawing, elevated — a full-bleed image card with her
+/// caption as the label. The rotation of the drawing algorithm now leads
+/// ink-on-bone, so these read as part of the same page.
+struct BestDrawingCard: View {
+    let art: Artwork
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("FROM HER HAND")
+                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                .tracking(2.0)
+                .foregroundStyle(Theme.inkSoft)
+            if let url = art.imageURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        Rectangle().fill(Theme.paperDeep)
+                    }
+                }
+                .frame(height: 230)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            Text(art.title)
+                .font(.system(.footnote, design: .serif))
+                .italic()
+                .foregroundStyle(Theme.ink.opacity(0.7))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 14, radius: 22)
+    }
+}
+

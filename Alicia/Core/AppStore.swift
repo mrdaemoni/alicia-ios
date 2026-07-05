@@ -127,6 +127,9 @@ final class AppStore {
     /// Which proactive card the Alicia tab should scroll to on arrival
     /// (set by a Dialogue whisper tap; cleared after the scroll).
     var pendingMindFocusID: String?
+    /// The Dialogue composer owns the keyboard — the editorial tab bar
+    /// steps aside while it's up.
+    var composerFocused = false
     var isWalking: Bool { thinkingMode == "walk" }
 
     /// Start or end a walk. Her acknowledgment lands in the timeline.

@@ -296,8 +296,22 @@ struct PaperGrain: View {
 struct StippleIllustration: View {
     var seed: Int = Calendar.current.ordinality(of: .day, in: .year, for: .now) ?? 1
     var dots: Int = 2400
+    /// When true the form breathes — lobes drift and the grain shimmers
+    /// (8 fps; used on the vitals page).
+    var animated: Bool = false
 
     var body: some View {
+        if animated {
+            TimelineView(.animation(minimumInterval: 1.0 / 8.0)) { timeline in
+                canvas(t: timeline.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 86_400))
+            }
+        } else {
+            canvas(t: 0)
+        }
+    }
+
+    private func canvas(t: TimeInterval) -> some View {
         Canvas { context, size in
             var state = UInt64(truncatingIfNeeded: seed &* 2654435761 &+ 97)
             func rnd() -> Double {
@@ -308,13 +322,17 @@ struct StippleIllustration: View {
             let R = min(size.width, size.height) * 0.42
             let k3 = 2.0 + rnd() * 3.0        // lobes
             let k5 = 1.0 + rnd() * 4.0
-            let p3 = rnd() * .pi * 2, p5 = rnd() * .pi * 2
+            // The lobes drift very slowly when animated — a form breathing.
+            let p3 = rnd() * .pi * 2 + t * 0.10
+            let p5 = rnd() * .pi * 2 - t * 0.07
             func edge(_ theta: Double) -> Double {
                 R * (0.66
                      + 0.22 * sin(k3 * theta + p3)
                      + 0.12 * sin(k5 * theta + p5))
             }
+            var i = 0
             for _ in 0..<dots {
+                i += 1
                 let theta = rnd() * .pi * 2
                 // Bias density toward the rim — engraved shading.
                 let rho = pow(rnd(), 0.42) * edge(theta)
@@ -322,10 +340,14 @@ struct StippleIllustration: View {
                 let y = cy + sin(theta) * rho * 0.92
                 let nearEdge = rho / edge(theta)
                 let r = 0.5 + rnd() * (0.6 + nearEdge * 0.9)
-                let a = 0.25 + nearEdge * 0.55 + rnd() * 0.15
+                var a = 0.25 + nearEdge * 0.55 + rnd() * 0.15
+                if t > 0 {
+                    // Grain shimmer: each dot has its own slow phase.
+                    a *= 0.78 + 0.22 * sin(t * 1.4 + Double(i) * 0.61)
+                }
                 context.fill(
                     Path(ellipseIn: CGRect(x: x, y: y, width: r, height: r)),
-                    with: .color(Theme.ink.opacity(min(0.9, a))))
+                    with: .color(Theme.ink.opacity(min(0.9, max(0.05, a)))))
             }
         }
         .allowsHitTesting(false)
@@ -366,6 +388,6 @@ extension AppStore {
 /// at a glance whether his phone runs the latest build. BUMP THIS on every
 /// app change that ships (see CLAUDE.md).
 enum AppVersion {
-    static let tag = "v12"
+    static let tag = "v13"
     static let date = "Jul 5"
 }

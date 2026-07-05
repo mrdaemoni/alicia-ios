@@ -37,19 +37,11 @@ struct RootView: View {
             ForEach(AppSection.allCases) { section in
                 tab(for: section)
                     .tag(section)
-                    .tabItem {
-                        if section == .mind {
-                            // Hector's own rabbit silhouette, template-tinted
-                            // like the SF symbols around it.
-                            Label { Text(section.rawValue) } icon: {
-                                Image("TabRabbit").renderingMode(.template)
-                            }
-                        } else {
-                            Label(section.rawValue, systemImage: section.symbol)
-                        }
-                    }
+                    // The system bar is replaced by the editorial word-bar.
+                    .toolbar(.hidden, for: .tabBar)
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) { EditorialTabBar() }
         // Serif body type everywhere — the sketchbook voice.
         .fontDesign(.serif)
     }

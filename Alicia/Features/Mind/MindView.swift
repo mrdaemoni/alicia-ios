@@ -9,6 +9,7 @@ struct MindView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
+                        SectionHeader(title: "Alicia", kicker: "her inner weather")
                         // Build tag — so the phone build is identifiable at a
                         // glance. Bumped on every shipped app change.
                         Text("\(AppVersion.tag) · \(AppVersion.date)")
@@ -43,8 +44,7 @@ struct MindView: View {
             // Sister field to Us: slow and dense — her inner weather. Seeded
             // by her current archetype, so her page reshapes with her mood.
             .waveBackground(.mind(mood: store.waveMood))
-            .navigationTitle("Alicia")
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 
