@@ -2,6 +2,7 @@ import SwiftUI
 import Observation
 import AVFoundation
 import MediaPlayer
+import WidgetKit
 
 @MainActor
 @Observable
@@ -46,6 +47,7 @@ final class AppStore {
         (thinkingMode, walkWords) = await m
         greeting = await gr ?? greeting
         featured = await fs ?? featured
+        publishWidgetCache()
         let pro = await p
         if !pro.isEmpty {
             proactiveFeed = pro
@@ -63,6 +65,23 @@ final class AppStore {
                 }
             }
         }
+    }
+
+    // MARK: home-screen widget
+    /// The widget reads a shared app-group cache — no network of its own.
+    /// Refresh it (and the timelines) whenever the app loads fresh data.
+    private func publishWidgetCache() {
+        guard let shared = UserDefaults(suiteName: "group.com.myalicia.app") else { return }
+        if let greeting, !greeting.isEmpty {
+            shared.set(greeting, forKey: "widget.greeting")
+        }
+        if let featured {
+            shared.set(featured.title, forKey: "widget.featuredTitle")
+        }
+        if let latest = proactiveFeed.first {
+            shared.set(String(latest.text.prefix(200)), forKey: "widget.note")
+        }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: live proactive polling
