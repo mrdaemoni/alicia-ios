@@ -1,8 +1,11 @@
 # CLAUDE.md — Alicia iOS
 
-Context handoff for continuing this project in Claude Code. Everything below
-reflects the app as of **v11 (2026-07-04)** — verify against the code, this
-doc has drifted before.
+Context handoff for continuing this project in Claude Code.
+**Read `SESSION_HANDOFF.md` first** — the live continuation doc (current
+version, ship loop, design rules, known gaps). This file carries stable
+architecture; details below were last fully refreshed at v11 — the app is now
+at **v19**: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
+into Studio), widget target, hard-VStack bottom bar (safeAreaInset banned).
 
 ## What this is
 
