@@ -150,26 +150,27 @@ struct SaidCard: View {
                         .foregroundStyle(Theme.accentSoft)
                 }
                 Spacer()
-                if let reacted { Text(reacted).font(.footnote) }
+                if let reacted { InkReactionTag(emoji: reacted) }
                 Text(item.date, style: .relative)
                     .font(.caption2)
                     .foregroundStyle(Theme.inkSoft)
             }
             Text((try? AttributedString(
-                    markdown: item.text.strippedLeadingEmoji,
+                    markdown: item.text.strippedEmojis,
                     options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                 ?? AttributedString(item.text.strippedLeadingEmoji))
+                 ?? AttributedString(item.text.strippedEmojis))
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
         .contextMenu {
-            ForEach(["❤️", "🔥", "🧠", "👍", "🤔", "👎"], id: \.self) { emoji in
+            // Words in her register; the emoji rides to the backend loops.
+            ForEach(InkReactions.all, id: \.emoji) { reaction in
                 Button {
-                    reacted = emoji
-                    Task { await storeReact(emoji) }
-                } label: { Text(emoji) }
+                    reacted = reaction.emoji
+                    Task { await storeReact(reaction.emoji) }
+                } label: { Text(reaction.word) }
             }
         }
     }

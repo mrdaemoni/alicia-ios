@@ -255,9 +255,9 @@ struct ProactiveReplyCard: View {
             .foregroundStyle(Theme.accentSoft)
 
             Text((try? AttributedString(
-                    markdown: proactive.text.strippedLeadingEmoji,
+                    markdown: proactive.text.strippedEmojis,
                     options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                 ?? AttributedString(proactive.text.strippedLeadingEmoji))
+                 ?? AttributedString(proactive.text.strippedEmojis))
                 .font(.subheadline)
                 .lineLimit(10)
 

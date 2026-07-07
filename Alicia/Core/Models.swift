@@ -197,5 +197,19 @@ extension String {
         return String(String.UnicodeScalarView(scalars))
             .trimmingCharacters(in: .whitespaces)
     }
+
+    /// No emoji anywhere in her displayed text (v24) — Telegram messages
+    /// carry 💭/✨/🎙 markers inline, but on paper her ink does that work.
+    /// Digits/#/* survive (they're technically emoji-capable scalars).
+    var strippedEmojis: String {
+        let kept = unicodeScalars.filter { s in
+            !(s.properties.isEmojiPresentation ||
+              (s.properties.isEmoji && s.value >= 0x1F000) ||
+              s.value == 0xFE0F || s.value == 0x200D)
+        }
+        return String(String.UnicodeScalarView(kept))
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+    }
 }
 

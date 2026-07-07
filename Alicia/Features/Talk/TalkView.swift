@@ -22,21 +22,38 @@ struct TalkView: View {
                         Button {
                             store.toggleWalk()
                         } label: {
-                            Image(systemName: "figure.walk")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(store.isWalking
-                                                 ? Theme.accent : Theme.inkSoft)
+                            // Words with her underline, not widget glyphs
+                            // (v24 — same treatment as Studio's DRAW).
+                            VStack(spacing: 2) {
+                                Text("WALK")
+                                    .font(.system(size: 9, design: .monospaced)
+                                        .weight(store.isWalking ? .bold : .semibold))
+                                    .tracking(1.6)
+                                    .foregroundStyle(store.isWalking
+                                                     ? Theme.accent : Theme.inkSoft)
+                                InkUnderline(color: Theme.accent, seed: 19,
+                                             lineWidth: 1.1)
+                                    .frame(width: 26, height: 4)
+                                    .opacity(store.isWalking ? 1 : 0)
+                            }
                         }
                         .accessibilityLabel(store.isWalking ? "End walk" : "Start walk")
                         Spacer()
                         Button {
                             store.voiceReplies.toggle()
                         } label: {
-                            Image(systemName: store.voiceReplies
-                                  ? "speaker.wave.2.fill" : "speaker.slash")
-                                .font(.system(size: 14))
-                                .foregroundStyle(Theme.inkSoft)
-                                .symbolEffect(.bounce, value: store.voiceReplies)
+                            VStack(spacing: 2) {
+                                Text("VOICE")
+                                    .font(.system(size: 9, design: .monospaced)
+                                        .weight(store.voiceReplies ? .bold : .semibold))
+                                    .tracking(1.6)
+                                    .foregroundStyle(store.voiceReplies
+                                                     ? Theme.accent : Theme.inkSoft)
+                                InkUnderline(color: Theme.accent, seed: 21,
+                                             lineWidth: 1.1)
+                                    .frame(width: 26, height: 4)
+                                    .opacity(store.voiceReplies ? 1 : 0)
+                            }
                         }
                         .accessibilityLabel(store.voiceReplies
                                             ? "Voice replies on" : "Voice replies off")
@@ -155,11 +172,19 @@ struct TalkView: View {
             Button {
                 toggleDictation()
             } label: {
-                Image(systemName: speech.isRecording ? "waveform.circle.fill" : "mic")
-                    .font(.system(size: speech.isRecording ? 26 : 17, weight: .semibold))
-                    .symbolEffect(.variableColor.iterative, isActive: speech.isRecording)
-                    .foregroundStyle(speech.isRecording ? Theme.rose : Theme.paper.opacity(0.85))
-                    .frame(width: 34, height: 34)
+                // Dictation in her register: wave bars while listening,
+                // the word at rest (v24).
+                Group {
+                    if speech.isRecording {
+                        InkWaveBars(size: 24, color: Theme.rose, seed: 25)
+                    } else {
+                        Text("MIC")
+                            .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                            .tracking(1.4)
+                            .foregroundStyle(Theme.paper.opacity(0.85))
+                    }
+                }
+                .frame(width: 34, height: 34)
             }
             .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
 
@@ -217,7 +242,7 @@ struct ProactiveWhisper: View {
                         .fixedSize()
                     Theme.stroke.frame(height: 0.7)
                 }
-                Text("“" + message.text.strippedLeadingEmoji.prefix(90) + "”")
+                Text("“" + message.text.strippedEmojis.prefix(90) + "”")
                     .font(.system(size: 13, design: .serif))
                     .italic()
                     .foregroundStyle(Theme.ink.opacity(0.8))
@@ -237,8 +262,8 @@ struct MessageBubble: View {
     @State private var expanded = false
     private var isMe: Bool { message.sender == .me }
 
-    /// Emoji palette mirroring what her reaction loop scores on Telegram.
-    private static let reactions = ["❤️", "🔥", "🧠", "👍", "🤔", "👎"]
+    // Reactions render as words in her register (InkReactions); the emoji
+    // strings still travel to the backend, where the loops key on them.
 
     /// A long message from her that isn't asking or answering directly —
     /// a report. Reports open folded to their first breath; direct speech
@@ -249,14 +274,22 @@ struct MessageBubble: View {
         return !tail.contains("?")
     }
 
+    /// Her text arrives with Telegram's inline emoji markers (💭/✨/🎙) —
+    /// on paper, the ink chrome does that work, so they're shed (v24).
+    private var cleanText: String {
+        isMe ? message.text : message.text.strippedEmojis
+    }
+
     private var displayText: String {
-        guard isReport, !expanded else { return message.text }
+        let text = cleanText
+        guard isReport, !expanded else { return text }
         // Fold at the first paragraph break past a minimum, else hard-cut.
-        if let cut = message.text.range(of: "\n\n", range:
-                message.text.index(message.text.startIndex, offsetBy: 120)..<message.text.endIndex) {
-            return String(message.text[..<cut.lowerBound])
+        if text.count > 120,
+           let cut = text.range(of: "\n\n", range:
+                text.index(text.startIndex, offsetBy: 120)..<text.endIndex) {
+            return String(text[..<cut.lowerBound])
         }
-        return String(message.text.prefix(220)) + "…"
+        return String(text.prefix(220)) + "…"
     }
 
     /// Markdown-rendered body (falls back to plain text on parse failure).
@@ -317,9 +350,10 @@ struct MessageBubble: View {
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
                     } label: {
-                        Label(expanded ? "less" : "the rest",
-                              systemImage: expanded ? "chevron.up" : "text.alignleft")
-                            .font(.caption.weight(.semibold))
+                        Text(expanded ? "LESS" : "THE REST →")
+                            .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                            .tracking(1.6)
+                            .underline()
                             .foregroundStyle(Theme.accentSoft)
                     }
                     .buttonStyle(.plain)
@@ -330,9 +364,9 @@ struct MessageBubble: View {
                 Button {
                     store.playVoiceNote(voiceURL)
                 } label: {
-                    Image(systemName: "play.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(Theme.accentSoft)
+                    InkPlayPause(playing: false, size: 24,
+                                 color: Theme.accentSoft,
+                                 seed: message.text.count, ringed: true)
                 }
                 .accessibilityLabel("Play voice note")
             }
@@ -350,22 +384,20 @@ struct MessageBubble: View {
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(alignment: isMe ? .bottomLeading : .bottomTrailing) {
             if let reaction = message.reaction {
-                Text(reaction)
-                    .font(.footnote)
-                    .padding(5)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .offset(x: isMe ? -10 : 10, y: 12)
+                InkReactionTag(emoji: reaction)
+                    .offset(x: isMe ? -8 : 8, y: 11)
             }
         }
         .contextMenu {
             // React to her messages — chat replies feed the archetype loop,
-            // proactive messages feed their circulation entry.
+            // proactive messages feed their circulation entry. Words in
+            // her register; the emoji rides underneath to the backend.
             if !isMe, message.messageID != nil || message.proactiveID != nil {
-                ForEach(Self.reactions, id: \.self) { emoji in
+                ForEach(InkReactions.all, id: \.emoji) { reaction in
                     Button {
-                        store.react(to: message, with: emoji)
+                        store.react(to: message, with: reaction.emoji)
                     } label: {
-                        Text(emoji)
+                        Text(reaction.word)
                     }
                 }
             }

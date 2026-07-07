@@ -501,6 +501,40 @@ struct InkBackButton: View {
     }
 }
 
+// MARK: - Reactions in her register (v24)
+
+/// The reaction vocabulary as words, not emoji. The backend still receives
+/// the emoji strings (her scoring loops key on them — reaction_scorer's
+/// emoji_to_outcome), but on paper the words are hand-set.
+enum InkReactions {
+    static let all: [(word: String, emoji: String)] = [
+        ("LOVE", "❤️"), ("FIRE", "🔥"), ("MIND", "🧠"),
+        ("YES", "👍"), ("HMM", "🤔"), ("NO", "👎"),
+    ]
+
+    static func word(for emoji: String) -> String {
+        all.first(where: { $0.emoji == emoji })?.word ?? emoji
+    }
+}
+
+/// A reacted-with word as a hand-glued label — tiny mono-caps tag with a
+/// sketched border, set slightly askew like a stamp pressed by hand.
+struct InkReactionTag: View {
+    let emoji: String
+
+    var body: some View {
+        Text(InkReactions.word(for: emoji))
+            .font(.system(size: 7.5, design: .monospaced).weight(.bold))
+            .tracking(1.4)
+            .foregroundStyle(Theme.ink)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2.5)
+            .background(Theme.paper.opacity(0.92))
+            .overlay(HandDrawnBorder(opacity: 0.35, inset: 0.5))
+            .rotationEffect(.degrees(-3))
+    }
+}
+
 // MARK: - The constellation (thinker graph, hand-stitched)
 
 /// The related thinkers drawn as a walked path: nodes staggered left and
