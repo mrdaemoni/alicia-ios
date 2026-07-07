@@ -1,4 +1,4 @@
-# Session Handoff — Alicia iOS + Backend (as of v21, 2026-07-07)
+# Session Handoff — Alicia iOS + Backend (as of v22, 2026-07-07)
 
 Continuation doc for iterating on the iPhone app (`~/AliciaApp`) and its
 backend surface (`~/alicia`, `skills/ios_api.py`). Written at the close of the
@@ -59,14 +59,23 @@ Health is pushed from Us's status strip).
   knot rings; why-they-connect lines from vault co-citation + theme overlap
   (`skills/data/thinker_links.json` ← `scripts/build_thinker_links.py`);
   tapping hops the sheet (breadcrumb + back), so the graph walks end to end.
-- **Hand-drawn chrome (v21)** — `DesignSystem/InkDrawn.swift`, all
+- **Hand-drawn chrome (v21–v22)** — `DesignSystem/InkDrawn.swift`, all
   deterministic-seeded Canvas (no @State — nothing shimmers on scroll):
-  `HandDrawnBorder` on every `.card()` (overshot corners, re-traced edges),
+  `HandDrawnBorder` on every `.card()` (subtle since v22),
   `InkUnderline` under the selected tab-bar word, `InkTabs` replacing every
   segmented picker, `InkSubmitArrow` for every send affordance,
-  `PortraitTrace` (her pen circling every thinker photograph). Home
-  knowledge-card feedback is hidden until the card is tapped (three resting
-  dots mark the spot).
+  `PortraitTrace` (her pen circling every thinker photograph). v22 finished
+  the de-widgeting: `InkPlayPause`/`InkSkip`/`InkWaveBars`/`InkChevron`/
+  `InkSpark`/`InkBackButton` replaced every stock play/pause/±15/waveform/
+  chevron/back glyph across Home, Studio (incl. the DRAW|LISTEN word
+  toggle), Knowledge, and Health; the Alicia tab strips message emojis in
+  favor of ink sparks. Home knowledge-card feedback is hidden until the
+  card is tapped (three resting dots mark the spot).
+- **THE ARC is legible (v22)** — `/api/timeline` rows now carry `learned`
+  (hector_learnings bucketed by local day), `thread` (the day's circulated
+  idea, hash-ids filtered), and `goal`; the sheet renders them per day.
+- **Badge (v22)** — local notifications set `content.badge` from an own
+  counter (`ProactiveNotifier`), cleared on scenePhase.active.
 - **Widget** (`AliciaWidgets/` target): greeting + today's synthesis from the
   app-group cache (`group.com.myalicia.app`) — no network of its own.
 
