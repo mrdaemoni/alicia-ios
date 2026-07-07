@@ -197,24 +197,28 @@ struct EditorialThought: View {
     }
 
     /// Register 1 — display: huge centered serif, the day as a headline.
+    /// v22: her spark instead of whatever emoji rode in on the text.
     private var hero: some View {
         VStack(spacing: 10) {
+            InkSpark(size: 13, seed: thought.title.inkSeed)
             Text(thought.tag.uppercased())
                 .font(.system(size: 9, design: .monospaced).weight(.bold))
                 .tracking(2.2)
                 .foregroundStyle(Theme.accent)
-            Text(thought.title)
+            Text(thought.title.strippedLeadingEmoji)
                 .font(.system(size: rank == 0 ? 30 : 24,
                               weight: .semibold, design: .serif))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.ink)
-            Text(thought.body)
+            Text(thought.body.strippedLeadingEmoji)
                 .font(.system(size: 14, design: .serif))
                 .italic()
                 .lineSpacing(5)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.ink.opacity(0.75))
-            Theme.stroke.frame(width: 70, height: 1)
+            InkUnderline(color: Theme.ink.opacity(0.35),
+                         seed: thought.title.inkSeed)
+                .frame(width: 70, height: 5)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
@@ -224,10 +228,10 @@ struct EditorialThought: View {
     /// margin of the page.
     private var aside: some View {
         VStack(alignment: .trailing, spacing: 5) {
-            Text(thought.title)
+            Text(thought.title.strippedLeadingEmoji)
                 .font(.system(size: 18, weight: .medium, design: .serif))
                 .multilineTextAlignment(.trailing)
-            Text(thought.body)
+            Text(thought.body.strippedLeadingEmoji)
                 .font(.system(size: 12, design: .serif))
                 .lineSpacing(4)
                 .multilineTextAlignment(.trailing)
@@ -252,9 +256,9 @@ struct EditorialThought: View {
                     .foregroundStyle(Theme.inkSoft)
                 Theme.stroke.frame(height: 0.7)
             }
-            Text(thought.title)
+            Text(thought.title.strippedLeadingEmoji)
                 .font(.system(size: 16, weight: .semibold, design: .serif))
-            Text(thought.body)
+            Text(thought.body.strippedLeadingEmoji)
                 .font(.system(size: 13, design: .serif))
                 .lineSpacing(4)
                 .foregroundStyle(Theme.ink.opacity(0.8))

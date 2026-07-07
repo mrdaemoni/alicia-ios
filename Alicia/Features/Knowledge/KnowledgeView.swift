@@ -299,9 +299,8 @@ struct ThinkerSheet: View {
                                 current = path.popLast()
                             }
                         } label: {
-                            Image(systemName: "arrow.backward")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(Theme.accent)
+                            InkChevron(pointing: .left, size: 14,
+                                       color: Theme.accent, seed: 37)
                         }
                         .buttonStyle(.plain)
                         Text((path.map(\.name) + [shown.name])

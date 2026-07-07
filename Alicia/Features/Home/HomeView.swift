@@ -141,20 +141,23 @@ struct HomeView: View {
 
     private func nowPlayingChip(_ track: Track) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: store.isPlaying ? "waveform" : "pause.fill")
-                .symbolEffect(.variableColor.iterative, isActive: store.isPlaying)
-                .foregroundStyle(.white)
-                .frame(width: 34, height: 34)
-                .background(Theme.ink, in: Circle())
+            Group {
+                if store.isPlaying {
+                    InkWaveBars(size: 22, seed: track.title.inkSeed)
+                } else {
+                    InkPlayPause(playing: false, size: 22,
+                                 seed: track.title.inkSeed)
+                }
+            }
+            .frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 1) {
                 Text(track.title).font(.footnote.weight(.semibold)).lineLimit(1)
                 Text(track.mood).font(.caption2).foregroundStyle(Theme.inkSoft).lineLimit(1)
             }
             Spacer()
             Button { store.togglePlay() } label: {
-                Image(systemName: store.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(Theme.accentSoft)
+                InkPlayPause(playing: store.isPlaying, size: 30,
+                             color: Theme.accent, ringed: true)
             }
         }
         .card(padding: 10, radius: 18)
@@ -162,10 +165,14 @@ struct HomeView: View {
 
     private func card(icon: String, title: String, body text: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.accentSoft)
-                .lineLimit(1)
+            // Her spark where a system glyph used to sit (v22).
+            HStack(spacing: 6) {
+                InkSpark(size: 11, seed: title.inkSeed)
+                Text(title)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Theme.accentSoft)
+            .lineLimit(1)
             Text((try? AttributedString(
                     markdown: text,
                     options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
@@ -183,13 +190,15 @@ struct HomeView: View {
         } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Label("Status", systemImage: "waveform.path.ecg")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.accentSoft)
+                    HStack(spacing: 6) {
+                        InkWaveBars(size: 13, color: Theme.accentSoft, seed: 5)
+                        Text("Status")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.accentSoft)
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.inkSoft.opacity(0.75))
+                    InkChevron(pointing: .right, size: 13,
+                               color: Theme.inkSoft.opacity(0.75), seed: 9)
                 }
                 ForEach(store.health.prefix(4)) { metric in
                     HStack(spacing: 10) {
@@ -632,9 +641,8 @@ struct ArchetypeCard: View {
                         .foregroundStyle(Theme.ink.opacity(0.7))
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
+                InkChevron(pointing: .right, size: 14,
+                           color: Theme.inkSoft, seed: arch.seed)
             }
             .card(padding: 14, radius: 20)
         }
@@ -660,9 +668,9 @@ struct EpisodeAskCard: View {
                     store.playFromHome(track)
                 } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: "play.circle")
-                            .font(.title3)
-                            .foregroundStyle(Theme.accent)
+                        InkPlayPause(playing: false, size: 24,
+                                     color: Theme.accent,
+                                     seed: track.title.inkSeed, ringed: true)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(track.title)
                                 .font(.system(size: 14, design: .serif).weight(.medium))
@@ -895,9 +903,10 @@ struct TodayEpisodeCard: View {
                     store.playFromHome(track)
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "play.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(Theme.accent)
+                        InkPlayPause(
+                            playing: store.isPlaying && store.nowPlaying?.id == track.id,
+                            size: 24, color: Theme.accent,
+                            seed: today.label.inkSeed, ringed: true)
                         Text(store.nowPlaying?.id == track.id ? "PLAYING" : "LISTEN")
                             .font(.system(size: 10, design: .monospaced).weight(.semibold))
                             .tracking(1.6)
@@ -991,9 +1000,9 @@ struct KnowledgeCardView: View {
                             }
                         }
                         Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                            .foregroundStyle(Theme.inkSoft.opacity(0.7))
+                        InkChevron(pointing: .right, size: 12,
+                                   color: Theme.inkSoft.opacity(0.7),
+                                   seed: card.id.inkSeed)
                     }
                     .contentShape(Rectangle())
                 }
@@ -1292,6 +1301,26 @@ struct TimelineSheet: View {
                                               weight: day.milestone ? .semibold : .regular,
                                               design: .serif))
                                 .foregroundStyle(Theme.ink)
+                            // v22: every day tells you what it was — what
+                            // she learned about you, and the idea that was
+                            // circulating — not just who was speaking.
+                            ForEach((day.learned ?? []).prefix(2), id: \.self) { l in
+                                HStack(alignment: .top, spacing: 6) {
+                                    InkSpark(size: 9, seed: l.inkSeed)
+                                        .padding(.top, 3)
+                                    Text(l)
+                                        .font(.system(size: 12, design: .serif))
+                                        .foregroundStyle(Theme.ink.opacity(0.75))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            if let thread = day.thread, !thread.isEmpty {
+                                Text("the thread · " + thread)
+                                    .font(.system(size: 11, design: .serif))
+                                    .italic()
+                                    .foregroundStyle(Theme.accent.opacity(0.85))
+                                    .lineLimit(2)
+                            }
                             if day.milestone {
                                 ForEach(day.growth, id: \.self) { g in
                                     Text(g)
@@ -1299,14 +1328,14 @@ struct TimelineSheet: View {
                                         .italic()
                                         .foregroundStyle(Theme.accent)
                                 }
-                                if !day.what.isEmpty {
-                                    Text(day.what.joined(separator: " · "))
-                                        .font(.system(size: 11, design: .serif))
-                                        .foregroundStyle(Theme.inkSoft)
-                                }
+                            }
+                            if !day.what.isEmpty {
+                                Text(day.what.joined(separator: " · "))
+                                    .font(.system(size: 10.5, design: .serif))
+                                    .foregroundStyle(Theme.inkSoft.opacity(0.85))
                             }
                         }
-                        .padding(.bottom, day.milestone ? 26 : 14)
+                        .padding(.bottom, day.milestone ? 26 : 18)
                         Spacer(minLength: 0)
                     }
                 }

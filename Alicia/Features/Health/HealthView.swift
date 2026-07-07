@@ -36,6 +36,11 @@ struct HealthView: View {
         .sectionBackground()
         .navigationTitle("Health")
         .navigationBarTitleDisplayMode(.inline)
+        // v22: her chevron, not the system back glyph.
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { InkBackButton() }
+        }
     }
 
     private var verdict: String {

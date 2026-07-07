@@ -67,6 +67,11 @@ struct TimelineDay: Decodable, Hashable, Identifiable {
     var what: [String]
     var growth: [String]
     var milestone: Bool
+    /// What she learned about Hector that day (v22 legibility pass).
+    var learned: [String]?
+    /// The idea the day circulated (empty when the day had no clear one).
+    var thread: String?
+    var goal: String?
     var id: String { date }
 }
 

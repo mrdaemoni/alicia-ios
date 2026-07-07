@@ -30,9 +30,16 @@ struct StudioView: View {
                                     drawing.toggle()
                                 }
                             } label: {
-                                Image(systemName: drawing ? "waveform" : "pencil.and.outline")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(Theme.ink)
+                                // A word with her underline, not a widget
+                                // glyph (v22).
+                                VStack(spacing: 2) {
+                                    Text(drawing ? "LISTEN" : "DRAW")
+                                        .font(.system(size: 10, design: .monospaced).weight(.bold))
+                                        .tracking(1.6)
+                                        .foregroundStyle(Theme.ink)
+                                    InkUnderline(seed: drawing ? 3 : 5, lineWidth: 1.1)
+                                        .frame(width: 30, height: 4)
+                                }
                             }
                             .accessibilityLabel(drawing ? "Back to Studio" : "Draw with me")
                         }
@@ -164,10 +171,11 @@ struct EpisodeDetailView: View {
                         }
                         Spacer()
                         Button { store.togglePlay() } label: {
-                            Image(systemName: store.isPlaying && store.nowPlaying?.id == track.id
-                                  ? "pause.circle.fill" : "play.circle.fill")
-                                .font(.system(size: 40))
-                                .foregroundStyle(Theme.ink)
+                            InkPlayPause(
+                                playing: store.isPlaying && store.nowPlaying?.id == track.id,
+                                size: 42,
+                                seed: (track.label ?? track.title).inkSeed,
+                                ringed: true)
                         }
                     }
                     .padding(14)
@@ -187,11 +195,14 @@ struct EpisodeDetailView: View {
                         .textSelection(.enabled)
                         .card(padding: 16, radius: 20)
                 } else {
-                    Label("No shownotes for this one.", systemImage: "doc.questionmark")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.inkSoft)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 32)
+                    HStack(spacing: 8) {
+                        InkSpark(size: 11, color: Theme.inkSoft, seed: 13)
+                        Text("No shownotes for this one.")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.inkSoft)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 32)
                 }
             }
             .padding(16)
@@ -200,6 +211,11 @@ struct EpisodeDetailView: View {
         .sectionBackground()
         .navigationTitle(track.label ?? "Episode")
         .navigationBarTitleDisplayMode(.inline)
+        // v22: her chevron, not the system back glyph.
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { InkBackButton() }
+        }
         .task {
             store.play(track)   // no-ops if this episode is already playing
             let md = await store.episodeNotes(for: track)
@@ -235,13 +251,11 @@ struct TrackRow: View {
                         .strokeBorder(isCurrent ? Theme.accent : Theme.stroke,
                                       lineWidth: isCurrent ? 1.6 : 0.7))
                 if isPlaying {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(4)
-                        .background(Theme.accent, in: Circle())
+                    InkWaveBars(size: 13, color: Theme.accent,
+                                seed: track.title.inkSeed)
+                        .padding(3)
+                        .background(Theme.paper.opacity(0.92), in: Circle())
                         .offset(x: 5, y: 5)
-                        .symbolEffect(.variableColor.iterative, isActive: true)
                 }
             }
             VStack(alignment: .leading, spacing: 3) {
@@ -283,7 +297,8 @@ struct PlayerBar: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Theme.accentGradient)
                         .frame(width: 40, height: 40)
-                        .overlay(Image(systemName: track.symbol).foregroundStyle(.white))
+                        .overlay(InkWaveBars(size: 22, color: .white,
+                                             seed: track.title.inkSeed))
                     VStack(alignment: .leading, spacing: 2) {
                         Text(track.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                         Text(track.mood).font(.caption2).foregroundStyle(Theme.inkSoft).lineLimit(1)
@@ -298,14 +313,14 @@ struct PlayerBar: View {
                             .overlay(Capsule().strokeBorder(Theme.stroke))
                     }
                     Button { store.skip(-15) } label: {
-                        Image(systemName: "gobackward.15")
+                        InkSkip(forward: false, size: 27, seed: 3)
                     }
                     Button { store.togglePlay() } label: {
-                        Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.title3)
+                        InkPlayPause(playing: store.isPlaying, size: 30,
+                                     seed: 17)
                     }
                     Button { store.skip(15) } label: {
-                        Image(systemName: "goforward.15")
+                        InkSkip(forward: true, size: 27, seed: 7)
                     }
                 }
                 .foregroundStyle(.primary)

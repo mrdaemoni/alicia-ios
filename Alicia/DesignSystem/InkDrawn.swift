@@ -103,7 +103,7 @@ enum InkPen {
 /// thought it wants to keep.
 struct HandDrawnBorder: View {
     var color: Color = Theme.ink
-    var opacity: Double = 0.34
+    var opacity: Double = 0.19   // v22: quieter — present, not insistent
     var inset: CGFloat = 3
 
     var body: some View {
@@ -118,9 +118,9 @@ struct HandDrawnBorder: View {
                 let path = InkPen.stroke(from: corners[i],
                                          to: corners[(i + 1) % 4],
                                          rand: &rand,
-                                         overshoot: 7, bow: 2.2)
+                                         overshoot: 4.5, bow: 1.8)
                 ctx.stroke(path, with: ink,
-                           style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+                           style: StrokeStyle(lineWidth: 0.85, lineCap: .round))
             }
             // The re-trace: two edges get a second, fainter pass, slightly
             // off — the pen going back over the line.
@@ -128,9 +128,9 @@ struct HandDrawnBorder: View {
                 let path = InkPen.stroke(from: corners[i],
                                          to: corners[(i + 1) % 4],
                                          rand: &rand,
-                                         overshoot: 3, bow: 3.4)
-                ctx.stroke(path, with: .color(color.opacity(opacity * 0.45)),
-                           style: StrokeStyle(lineWidth: 0.7, lineCap: .round))
+                                         overshoot: 2, bow: 2.6)
+                ctx.stroke(path, with: .color(color.opacity(opacity * 0.4)),
+                           style: StrokeStyle(lineWidth: 0.55, lineCap: .round))
             }
         }
         .allowsHitTesting(false)
@@ -288,6 +288,216 @@ struct PortraitTrace: View {
             }
         }
         .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Hand-drawn glyph set (v22 — no more stock icons)
+
+/// Play / pause, pulled by hand. `ringed` circles it for big affordances.
+struct InkPlayPause: View {
+    var playing: Bool
+    var size: CGFloat = 22
+    var color: Color = Theme.ink
+    var seed: Int = 31
+    var ringed: Bool = false
+
+    var body: some View {
+        Canvas { ctx, s in
+            var rand = InkRand(seed &+ (playing ? 7 : 0))
+            let ink = GraphicsContext.Shading.color(color)
+            if ringed {
+                let ring = InkPen.ring(center: CGPoint(x: s.width / 2, y: s.height / 2),
+                                       radius: s.width / 2 - 1.5, rand: &rand,
+                                       sweep: 2 * .pi * 1.03, breathe: 1.0)
+                ctx.stroke(ring, with: .color(color.opacity(0.8)),
+                           style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+            }
+            let w = s.width, h = s.height
+            let lw = max(1.3, s.width * 0.055)
+            if playing {
+                for x in [0.40, 0.60] {
+                    let bar = InkPen.stroke(
+                        from: CGPoint(x: w * x, y: h * 0.32),
+                        to: CGPoint(x: w * x, y: h * 0.68),
+                        rand: &rand, overshoot: 1, bow: 0.8, wobble: 0.4,
+                        segments: 6)
+                    ctx.stroke(bar, with: ink,
+                               style: StrokeStyle(lineWidth: lw, lineCap: .round))
+                }
+            } else {
+                let a = CGPoint(x: w * 0.40, y: h * 0.30)
+                let b = CGPoint(x: w * 0.40, y: h * 0.70)
+                let c = CGPoint(x: w * 0.70, y: h * 0.50)
+                for (p, q) in [(a, b), (b, c), (c, a)] {
+                    let edge = InkPen.stroke(from: p, to: q, rand: &rand,
+                                             overshoot: 1.2, bow: 0.7,
+                                             wobble: 0.35, segments: 6)
+                    ctx.stroke(edge, with: ink,
+                               style: StrokeStyle(lineWidth: lw, lineCap: .round))
+                }
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// A chevron with a wrist in it — list affordances and back buttons.
+struct InkChevron: View {
+    enum Direction { case left, right }
+    var pointing: Direction = .right
+    var size: CGFloat = 14
+    var color: Color = Theme.inkSoft
+    var seed: Int = 41
+
+    var body: some View {
+        Canvas { ctx, s in
+            var rand = InkRand(seed)
+            let w = s.width, h = s.height
+            let tipX = pointing == .right ? w * 0.62 : w * 0.38
+            let baseX = pointing == .right ? w * 0.38 : w * 0.62
+            let tip = CGPoint(x: tipX, y: h * 0.5)
+            for endY in [0.22, 0.78] {
+                let stroke = InkPen.stroke(
+                    from: CGPoint(x: baseX, y: h * endY), to: tip,
+                    rand: &rand, overshoot: 1.2, bow: 0.7, wobble: 0.35,
+                    segments: 6)
+                ctx.stroke(stroke, with: .color(color),
+                           style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// ±15s skip: a hand-drawn arc arrow around a tiny mono "15".
+struct InkSkip: View {
+    var forward: Bool
+    var size: CGFloat = 26
+    var color: Color = Theme.ink
+    var seed: Int = 53
+
+    var body: some View {
+        ZStack {
+            Canvas { ctx, s in
+                var rand = InkRand(seed &+ (forward ? 3 : 0))
+                let c = CGPoint(x: s.width / 2, y: s.height / 2)
+                let r = s.width / 2 - 2.5
+                // Most of a circle, opening at the top; direction decides
+                // which way the arrowhead flicks.
+                var path = Path()
+                let start = -Double.pi * (forward ? 0.82 : 0.18)
+                let sweep = 2 * Double.pi * 0.72 * (forward ? 1 : -1)
+                var endPoint = CGPoint.zero
+                var endAngle = 0.0
+                var randCopy = rand
+                for i in 0...44 {
+                    let t = Double(i) / 44
+                    let a = start + sweep * t
+                    let rr = r + CGFloat(sin(a * 3 + 1)) * 0.9
+                        + CGFloat(randCopy.range(-0.3, 0.3))
+                    let p = CGPoint(x: c.x + CGFloat(cos(a)) * rr,
+                                    y: c.y + CGFloat(sin(a)) * rr)
+                    if i == 0 { path.move(to: p) } else { path.addLine(to: p) }
+                    endPoint = p; endAngle = a
+                }
+                ctx.stroke(path, with: .color(color),
+                           style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                // Arrowhead at the arc's end, tangent to travel.
+                let tangent = endAngle + (forward ? 1 : -1) * Double.pi / 2
+                for spread in [-0.5, 0.55] {
+                    let a = tangent + .pi + spread
+                    let end = CGPoint(x: endPoint.x + CGFloat(cos(a)) * s.width * 0.2,
+                                      y: endPoint.y + CGFloat(sin(a)) * s.width * 0.2)
+                    let flick = InkPen.stroke(from: endPoint, to: end,
+                                              rand: &rand, overshoot: 0.5,
+                                              bow: 0.5, wobble: 0.3, segments: 5)
+                    ctx.stroke(flick, with: .color(color),
+                               style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                }
+            }
+            Text("15")
+                .font(.system(size: size * 0.3, design: .monospaced).weight(.semibold))
+                .foregroundStyle(color)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// A small ink asterisk — the mark she leaves where an emoji used to be.
+struct InkSpark: View {
+    var size: CGFloat = 12
+    var color: Color = Theme.accent
+    var seed: Int = 61
+
+    var body: some View {
+        Canvas { ctx, s in
+            var rand = InkRand(seed)
+            let c = CGPoint(x: s.width / 2, y: s.height / 2)
+            let r = s.width * 0.42
+            let base = rand.range(0, .pi)
+            for k in 0..<3 {
+                let a = base + Double(k) * .pi / 3 + rand.range(-0.08, 0.08)
+                let p0 = CGPoint(x: c.x - CGFloat(cos(a)) * r,
+                                 y: c.y - CGFloat(sin(a)) * r)
+                let p1 = CGPoint(x: c.x + CGFloat(cos(a)) * r,
+                                 y: c.y + CGFloat(sin(a)) * r)
+                let stroke = InkPen.stroke(from: p0, to: p1, rand: &rand,
+                                           overshoot: 0.6, bow: 0.5,
+                                           wobble: 0.3, segments: 5)
+                ctx.stroke(stroke, with: .color(color),
+                           style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// Trembling vertical bars — the "this is sound" mark (replaces waveform).
+struct InkWaveBars: View {
+    var size: CGFloat = 18
+    var color: Color = Theme.ink
+    var seed: Int = 71
+
+    var body: some View {
+        Canvas { ctx, s in
+            var rand = InkRand(seed)
+            let heights: [CGFloat] = [0.45, 0.85, 0.6, 0.95, 0.5]
+            let step = s.width / CGFloat(heights.count + 1)
+            for (i, hFrac) in heights.enumerated() {
+                let x = step * CGFloat(i + 1) + CGFloat(rand.range(-0.6, 0.6))
+                let h = s.height * hFrac
+                let bar = InkPen.stroke(
+                    from: CGPoint(x: x, y: (s.height - h) / 2),
+                    to: CGPoint(x: x, y: (s.height + h) / 2),
+                    rand: &rand, overshoot: 0.8, bow: 0.6, wobble: 0.35,
+                    segments: 5)
+                ctx.stroke(bar, with: .color(color),
+                           style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// The back affordance for pushed pages — her chevron + a small word,
+/// replacing the system back button.
+struct InkBackButton: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Button { dismiss() } label: {
+            HStack(spacing: 4) {
+                InkChevron(pointing: .left, size: 15, color: Theme.ink, seed: 29)
+                Text("BACK")
+                    .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                    .tracking(1.6)
+                    .foregroundStyle(Theme.ink)
+                    .fixedSize()   // the toolbar slot must not truncate it
+            }
+            .fixedSize()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -65,6 +65,24 @@ enum ProactiveNotifier {
         messages.filter { !seen.contains($0.id) }
     }
 
+    // MARK: app-icon badge
+    // The badge count rides ON the notification content — without setting
+    // `content.badge`, iOS never marks the icon, which is why her messages
+    // arrived silently (v22 fix). We keep our own counter because the
+    // system doesn't accumulate one for us.
+    private static let badgeKey = "alicia.badgeCount"
+
+    private static var badgeCount: Int {
+        get { UserDefaults.standard.integer(forKey: badgeKey) }
+        set { UserDefaults.standard.set(max(0, newValue), forKey: badgeKey) }
+    }
+
+    /// Call when the app comes to the foreground — he's looking at her now.
+    static func clearBadge() {
+        badgeCount = 0
+        UNUserNotificationCenter.current().setBadgeCount(0)
+    }
+
     /// Post a local notification for one proactive message (used by both
     /// the background task and the live poll).
     static func notify(_ m: ProactiveMessage) async {
@@ -73,6 +91,8 @@ enum ProactiveNotifier {
         if !m.archetype.isEmpty { content.subtitle = m.archetype }
         content.body = String(m.text.prefix(160))
         content.sound = .default
+        badgeCount += 1
+        content.badge = NSNumber(value: badgeCount)
         try? await UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: m.id, content: content, trigger: nil))
     }

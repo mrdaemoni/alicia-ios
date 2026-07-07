@@ -51,6 +51,9 @@ struct AliciaApp: App {
                         // back to the foreground (backend may have restarted
                         // or sent proactive messages since), and start the
                         // live poll that makes her presence real-time.
+                        // He's looking at her — the icon badge has done
+                        // its job.
+                        ProactiveNotifier.clearBadge()
                         Task { await store.load() }
                         store.startProactivePolling()
                     case .background:
