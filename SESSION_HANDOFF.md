@@ -1,4 +1,4 @@
-# Session Handoff — Alicia iOS + Backend (as of v23, 2026-07-07)
+# Session Handoff — Alicia iOS + Backend (as of v25, 2026-07-07)
 
 Continuation doc for iterating on the iPhone app (`~/AliciaApp`) and its
 backend surface (`~/alicia`, `skills/ios_api.py`). Written at the close of the
@@ -80,6 +80,15 @@ Health is pushed from Us's status strip).
   idea, hash-ids filtered), and `goal`; the sheet renders them per day.
 - **Badge (v22)** — local notifications set `content.badge` from an own
   counter (`ProactiveNotifier`), cleared on scenePhase.active.
+- **No emoji, anywhere (v24–v25, HARD RULE)** — Hector enforced this twice:
+  her displayed text passes through `String.strippedEmojis` on every
+  surface (bubbles, whispers, SaidCards, Us proactive card, greeting,
+  thoughts, knowing claims, timeline lines, synthesis reader, quote card,
+  shownotes, notifications, widget cache). Reactions are WORDS
+  (LOVE/FIRE/MIND/YES/HMM/NO via `InkReactions`) + `InkReactionTag` badge;
+  the emoji strings still travel to the backend unchanged (loops key on
+  them). Dialogue's last stock glyphs went too: WALK/VOICE/MIC words,
+  THE REST → fold, ink ring on voice notes.
 - **Widget** (`AliciaWidgets/` target): greeting + today's synthesis from the
   app-group cache (`group.com.myalicia.app`) — no network of its own.
 
@@ -111,7 +120,9 @@ payload builders are pure + defensive; harness callables arrive via
 ## Design language (he will reject deviations)
 
 Ink-on-bone from his drawings: `Theme.paper`/`Theme.ink`; **no warm gray
-anywhere** (inkSoft is ink at 78%); serif display + mono-caps tracked kickers
+anywhere** (inkSoft is ink at 78%); **no SF Symbols and no emojis anywhere**
+(InkDrawn glyphs + strippedEmojis — see the v24–v25 bullet above);
+serif display + mono-caps tracked kickers
 (Co-Star register); alternating alignments; everything decorative is
 procedural Canvas — `ContourWaves` (per-tab sister fields, time-of-day tint +
 ink weight, seasonal reseed, her-mood seed), `StippleIllustration` (breathing
