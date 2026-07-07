@@ -119,11 +119,8 @@ struct TalkView: View {
                 store.send(draft)
                 draft = ""
             } label: {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Theme.ink)
-                    .frame(width: 34, height: 34)
-                    .background(Theme.paper, in: Circle())
+                // Hand-drawn send — paper ink on the dark band (v21).
+                InkSubmitArrow(size: 34, color: Theme.paper, seed: 23)
             }
             .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
             .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)

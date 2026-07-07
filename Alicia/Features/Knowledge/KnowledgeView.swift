@@ -15,49 +15,25 @@ struct KnowledgeView: View {
     }
 
     var body: some View {
+        @Bindable var store = store
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    SectionHeader(title: "Knowledge",
-                                  kicker: "the vault, in your pocket")
+                    SectionHeader(title: store.knowledgeSegment == 0
+                                  ? "Knowledge" : "The Thinkers",
+                                  kicker: store.knowledgeSegment == 0
+                                  ? "the vault, in your pocket"
+                                  : "\(thinkers.count) minds, hand in hand")
 
-                    if !store.syntheses.isEmpty {
-                        Text("FRESH FROM THE SHELF")
-                            .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                            .tracking(2.0)
-                            .foregroundStyle(Theme.inkSoft)
-                        ForEach(Array(store.syntheses.enumerated()), id: \.element.title) { i, syn in
-                            SynthesisRow(syn: syn, rank: i) { reading = syn }
-                        }
-                    }
+                    // v21: two rooms, one door — her underline marks which.
+                    InkTabs(items: ["Knowledge", "Thinkers"],
+                            selection: $store.knowledgeSegment)
+                        .padding(.bottom, 4)
 
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("THE THINKERS")
-                            .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                            .tracking(2.0)
-                            .foregroundStyle(Theme.inkSoft)
-                        Spacer()
-                        NavigationLink {
-                            ThinkersPage()
-                        } label: {
-                            Text("SEE ALL \(store.thinkerNetwork?.thinkers.count ?? 0) →")
-                                .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                                .tracking(1.4)
-                                .underline()
-                                .foregroundStyle(Theme.accent)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.top, 10)
-
-                    // The anchors + the loudest themed voices, faces first.
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 14),
-                                        GridItem(.flexible(), spacing: 14)],
-                              spacing: 14) {
-                        ForEach((store.thinkerNetwork?.thinkers ?? []).prefix(4)) { thinker in
-                            ThinkerCell(thinker: thinker)
-                                .onTapGesture { openThinker = thinker }
-                        }
+                    if store.knowledgeSegment == 0 {
+                        shelf
+                    } else {
+                        thinkersRoom
                     }
                 }
                 .padding(16)
@@ -75,15 +51,54 @@ struct KnowledgeView: View {
         }
         .onChange(of: store.pendingThinker) { _, name in
             guard let name else { return }
+            store.knowledgeSegment = 1
             openThinker = store.thinkerNetwork?.thinkers
                 .first(where: { $0.name == name })
             store.pendingThinker = nil
         }
         .onAppear {
             if let name = store.pendingThinker {
+                store.knowledgeSegment = 1
                 openThinker = store.thinkerNetwork?.thinkers
                     .first(where: { $0.name == name })
                 store.pendingThinker = nil
+            }
+        }
+    }
+
+    /// Segment 0 — the syntheses shelf.
+    @ViewBuilder private var shelf: some View {
+        if !store.syntheses.isEmpty {
+            Text("FRESH FROM THE SHELF")
+                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                .tracking(2.0)
+                .foregroundStyle(Theme.inkSoft)
+            ForEach(Array(store.syntheses.enumerated()), id: \.element.title) { i, syn in
+                SynthesisRow(syn: syn, rank: i) { reading = syn }
+            }
+        } else {
+            ProgressView("Reaching the shelf…")
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+        }
+    }
+
+    /// Segment 1 — the whole network, filterable by theme.
+    @ViewBuilder private var thinkersRoom: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                themeChip(nil, label: "ALL")
+                ForEach(store.thinkerNetwork?.themes ?? [], id: \.self) { th in
+                    themeChip(th, label: th.uppercased())
+                }
+            }
+        }
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 14),
+                            GridItem(.flexible(), spacing: 14)],
+                  spacing: 14) {
+            ForEach(thinkers) { thinker in
+                ThinkerCell(thinker: thinker)
+                    .onTapGesture { openThinker = thinker }
             }
         }
     }
@@ -165,7 +180,10 @@ struct WikiPortrait: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().strokeBorder(Theme.stroke))
+        // v21: her pen over the photograph — an unfinished tracing ring and
+        // a few tangent hatches, as if she's surfacing the face. Replaces
+        // the geometric hairline.
+        .overlay(PortraitTrace(name: name).padding(-size * 0.09))
         .task { url = await WikiCache.shared.thumbnail(for: name) }
     }
 
@@ -351,45 +369,18 @@ struct ThinkerSheet: View {
                     .padding(.top, 6)
                 }
 
-                // ── The graph: minds like this one, and why ──
+                // ── The graph, hand-stitched: her threads connecting the
+                // minds, faces staggered like a constellation she drew ──
                 if let related = shown.related, !related.isEmpty {
-                    Theme.stroke.frame(width: 60, height: 1)
                     Text("MINDS LIKE THIS ONE")
                         .font(.system(size: 10, design: .monospaced).weight(.semibold))
                         .tracking(2.0)
                         .foregroundStyle(Theme.accent)
-                    VStack(spacing: 10) {
-                        ForEach(related, id: \.name) { edge in
-                            Button {
-                                hop(to: edge.name)
-                            } label: {
-                                HStack(spacing: 12) {
-                                    WikiPortrait(name: edge.name, size: 44)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(edge.name)
-                                            .font(.system(size: 14, design: .serif).weight(.medium))
-                                            .foregroundStyle(Theme.ink)
-                                        Text(edge.why)
-                                            .font(.system(size: 11, design: .serif))
-                                            .italic()
-                                            .foregroundStyle(Theme.inkSoft)
-                                            .lineLimit(2)
-                                            .multilineTextAlignment(.leading)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "arrow.forward")
-                                        .font(.caption2)
-                                        .foregroundStyle(resolve(edge.name) == nil
-                                                         ? Theme.inkSoft.opacity(0.3)
-                                                         : Theme.accent)
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(resolve(edge.name) == nil)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+                    ThinkerConstellation(
+                        related: related,
+                        isResolvable: { resolve($0) != nil },
+                        hop: { hop(to: $0) })
                 }
             }
             .padding(24)
@@ -407,62 +398,6 @@ struct ThinkerSheet: View {
     }
 }
 
-/// The full network — every thinker in the vault, filterable by theme.
-struct ThinkersPage: View {
-    @Environment(AppStore.self) private var store
-    @State private var themeFilter: String?
-    @State private var openThinker: Thinker?
-
-    private var thinkers: [Thinker] {
-        let all = store.thinkerNetwork?.thinkers ?? []
-        guard let themeFilter else { return all }
-        return all.filter { $0.themes.contains(themeFilter) }
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                SectionHeader(title: "The Thinkers",
-                              kicker: "\(thinkers.count) minds in the vault")
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        chip(nil, label: "ALL")
-                        ForEach(store.thinkerNetwork?.themes ?? [], id: \.self) { th in
-                            chip(th, label: th.uppercased())
-                        }
-                    }
-                }
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 14),
-                                    GridItem(.flexible(), spacing: 14)],
-                          spacing: 14) {
-                    ForEach(thinkers) { thinker in
-                        ThinkerCell(thinker: thinker)
-                            .onTapGesture { openThinker = thinker }
-                    }
-                }
-            }
-            .padding(16)
-            .padding(.bottom, 24)
-        }
-        .waveBackground(.mind(mood: store.waveMood + 7), tinted: true)
-        .sheet(item: $openThinker) { t in ThinkerSheet(thinker: t) }
-    }
-
-    private func chip(_ value: String?, label: String) -> some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.15)) { themeFilter = value }
-        } label: {
-            Text(label)
-                .font(.system(size: 10, design: .monospaced)
-                    .weight(themeFilter == value ? .bold : .regular))
-                .tracking(1.4)
-                .foregroundStyle(themeFilter == value ? Theme.paper : Theme.ink)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(themeFilter == value ? Theme.ink : Color.white.opacity(0.3),
-                            in: Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-}
+// ThinkersPage (the old pushed subpage) folded into KnowledgeView's
+// THINKERS segment in v21 — one door, two rooms.
 

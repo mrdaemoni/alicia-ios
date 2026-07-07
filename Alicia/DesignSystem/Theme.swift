@@ -45,14 +45,18 @@ enum Theme {
     }
 }
 
-/// Paper-card look: a breath of lighter paper, frameless.
+/// Paper-card look (v21): still a breath of lighter paper underneath, but
+/// the container is now DRAWN — a hand-pulled border that overshoots its
+/// corners and doesn't fully respect the box. Sketchbook, not dashboard.
 struct CardModifier: ViewModifier {
     var padding: CGFloat = 16
     var radius: CGFloat = 22
     func body(content: Content) -> some View {
         content
             .padding(padding)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .background(Theme.card.opacity(0.75),
+                        in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(HandDrawnBorder())
     }
 }
 

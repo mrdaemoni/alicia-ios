@@ -283,11 +283,7 @@ struct ProactiveReplyCard: View {
                     if sending {
                         ProgressView().frame(width: 32, height: 32)
                     } else {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(Theme.ink, in: Circle())
+                        InkSubmitArrow(size: 32, seed: proactive.id.inkSeed)
                     }
                 }
                 .disabled(sending || draft.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -707,6 +703,7 @@ struct ThinkerStrip: View {
                     .foregroundStyle(Theme.inkSoft)
                 Spacer()
                 Button {
+                    store.knowledgeSegment = 1
                     store.selectedSection = .knowledge
                 } label: {
                     Text("ALL THINKERS →")
@@ -942,6 +939,9 @@ struct KnowledgeCardsSection: View {
 struct KnowledgeCardView: View {
     @Environment(AppStore.self) private var store
     let card: HomeContext.Card
+    /// v21: the feedback affordance hides until the card itself is tapped —
+    /// the card is a thought first, a control second.
+    @State private var revealed = false
     @State private var whyDraft = ""
     @State private var whyOpen = false
     @State private var whySent = false
@@ -1019,17 +1019,35 @@ struct KnowledgeCardView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            feedbackRow
+            if revealed {
+                feedbackRow
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else {
+                // A resting pen-tap: three faint dots where her line will
+                // appear — tap the card and the affordance surfaces.
+                HStack(spacing: 3) {
+                    Spacer()
+                    ForEach(0..<3, id: \.self) { _ in
+                        Circle().fill(Theme.inkSoft.opacity(0.35))
+                            .frame(width: 2.5, height: 2.5)
+                    }
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 14, radius: 20)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) { revealed.toggle() }
+        }
     }
 
     /// relevant · great · not today — and, once judged, "why?" so Hector
     /// can tell her what made it land. The why re-posts the same verdict
-    /// carrying the note.
+    /// carrying the note. Hidden until the card is tapped (v21).
     @ViewBuilder private var feedbackRow: some View {
-        Theme.stroke.frame(height: 0.7)
+        InkUnderline(color: Theme.ink.opacity(0.3), seed: card.id.inkSeed)
+            .frame(height: 4)
         if let verdict = store.cardVerdicts[card.id] {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
@@ -1073,11 +1091,7 @@ struct KnowledgeCardView: View {
                             store.giveCardFeedback(card, verdict: verdict, note: note)
                             withAnimation { whySent = true; whyOpen = false }
                         } label: {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 26, height: 26)
-                                .background(Theme.ink, in: Circle())
+                            InkSubmitArrow(size: 27, seed: card.id.inkSeed)
                         }
                         .disabled(whyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
@@ -1116,13 +1130,9 @@ struct UsSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $segment) {
-                Text("TODAY").tag(0)
-                Text("THE ARC").tag(1)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 24)
-            .padding(.top, 20)
+            InkTabs(items: ["Today", "The Arc"], selection: $segment)
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
             if segment == 0 {
                 TodayContextSheet()
             } else {

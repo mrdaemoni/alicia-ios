@@ -171,6 +171,8 @@ final class AppStore {
     var thinkerNetwork: ThinkerNetwork?
     /// Deep link into the Knowledge tab's thinker detail.
     var pendingThinker: String?
+    /// Which room the Knowledge tab shows: 0 = the shelf, 1 = the thinkers.
+    var knowledgeSegment = 0
     /// The whole arc since her birth (fetched when the sheet opens).
     var timeline: [TimelineDay] = []
 

@@ -29,19 +29,31 @@ struct EditorialTabBar: View {
         HStack(spacing: 0) {
             ForEach(AppSection.allCases) { section in
                 Button {
-                    store.selectedSection = section
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        store.selectedSection = section
+                    }
                 } label: {
-                    Text(section.rawValue.uppercased())
-                        .font(.system(size: 10, design: .monospaced)
-                            .weight(store.selectedSection == section ? .bold : .regular))
-                        .tracking(0.8)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .foregroundStyle(store.selectedSection == section
-                                         ? Theme.paper : Theme.paper.opacity(0.55))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .contentShape(Rectangle())
+                    VStack(spacing: 2.5) {
+                        Text(section.rawValue.uppercased())
+                            .font(.system(size: 10, design: .monospaced)
+                                .weight(store.selectedSection == section ? .bold : .regular))
+                            .tracking(0.8)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .foregroundStyle(store.selectedSection == section
+                                             ? Theme.paper : Theme.paper.opacity(0.55))
+                        // Her mark under the chosen word — a hand-pulled
+                        // line, not a pill or a tint.
+                        InkUnderline(color: Theme.paper.opacity(0.9),
+                                     seed: section.rawValue.inkSeed,
+                                     lineWidth: 1.3)
+                            .frame(width: 34, height: 5)
+                            .opacity(store.selectedSection == section ? 1 : 0)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 15)
+                    .padding(.bottom, 11)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
