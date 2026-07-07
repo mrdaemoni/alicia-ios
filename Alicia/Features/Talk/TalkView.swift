@@ -62,8 +62,11 @@ struct TalkView: View {
                     ForEach(store.messages) { message in
                         // Her proactive life stays a whisper here — one
                         // tappable line that opens the Alicia tab. The
-                        // Dialogue page belongs to the dialogue.
-                        if message.proactiveLabel != nil {
+                        // Dialogue page belongs to the dialogue. EXCEPT
+                        // her explicit asks (v23): those are conversation
+                        // by construction, so they arrive as full bubbles
+                        // he can answer in place.
+                        if message.proactiveLabel != nil, !message.isAsk {
                             ProactiveWhisper(message: message)
                                 .id(message.id)
                         } else {
@@ -89,8 +92,53 @@ struct TalkView: View {
     }
 
     private var composer: some View {
+        VStack(spacing: 6) {
+            // v23: answering one of her asks — the send routes to her
+            // capture loops, and this strip says so.
+            if store.answeringAskID != nil {
+                HStack(spacing: 7) {
+                    InkChevron(pointing: .right, size: 10,
+                               color: Theme.paper.opacity(0.8), seed: 47)
+                    Text("ANSWERING · " + store.answeringAskExcerpt.uppercased())
+                        .font(.system(size: 8, design: .monospaced).weight(.semibold))
+                        .tracking(1.2)
+                        .foregroundStyle(Theme.paper.opacity(0.8))
+                        .lineLimit(1)
+                    Spacer()
+                    Button { store.cancelAnswering() } label: {
+                        Text("CANCEL")
+                            .font(.system(size: 8, design: .monospaced).weight(.semibold))
+                            .tracking(1.2)
+                            .underline()
+                            .foregroundStyle(Theme.paper.opacity(0.65))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 4)
+            }
+            composerRow
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        // One piece with the word-bar: the composer sits IN the ink frame.
+        .background(Theme.ink)
+        .onChange(of: speech.transcript) { _, new in
+            if speech.isRecording || !new.isEmpty {
+                draft = dictationBase.isEmpty ? new
+                      : dictationBase + (new.isEmpty ? "" : " " + new)
+            }
+        }
+        // Choosing an ask to answer pulls the keyboard up ready to write.
+        .onChange(of: store.answeringAskID) { _, id in
+            if id != nil { focused = true }
+        }
+    }
+
+    private var composerRow: some View {
         HStack(spacing: 8) {
             TextField(speech.isRecording ? "Listening…"
+                      : store.answeringAskID != nil ? "Answer her…"
                       : store.isWalking ? "Walking — talk or type…"
                                         : "Message Alicia…",
                       text: $draft, axis: .vertical)
@@ -124,17 +172,6 @@ struct TalkView: View {
             }
             .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
             .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        // One piece with the word-bar: the composer sits IN the ink frame.
-        .background(Theme.ink)
-        .onChange(of: speech.transcript) { _, new in
-            if speech.isRecording || !new.isEmpty {
-                draft = dictationBase.isEmpty ? new
-                      : dictationBase + (new.isEmpty ? "" : " " + new)
-            }
         }
     }
 
@@ -241,12 +278,31 @@ struct MessageBubble: View {
                             .scaledToFill()
                             .frame(width: 15, height: 15)
                             .clipShape(Circle())
-                        Text(label)
+                        Text(message.isAsk ? label + " · she's asking" : label)
                     }
                     .font(.caption2)
                     .foregroundStyle(Theme.accentSoft)
                 }
                 bubble
+                // v23: her explicit asks carry the door to answer them —
+                // the reply lands in her capture loops, not a fresh chat.
+                if message.isAsk, message.proactiveID != nil {
+                    Button {
+                        store.beginAnswering(message)
+                    } label: {
+                        HStack(spacing: 5) {
+                            InkSpark(size: 9, seed: (message.proactiveID ?? "a").inkSeed)
+                            Text(store.answeringAskID == message.proactiveID
+                                 ? "ANSWERING…" : "ANSWER HER →")
+                                .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                                .tracking(1.6)
+                                .underline()
+                        }
+                        .foregroundStyle(Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 4)
+                }
             }
             if !isMe { Spacer(minLength: 40) }
         }

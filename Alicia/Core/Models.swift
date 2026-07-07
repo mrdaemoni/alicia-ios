@@ -18,6 +18,9 @@ struct Message: Identifiable, Hashable {
     /// Circulation decision id — reactions on proactive messages attach to
     /// this (per-synthesis reception signal), not a chat message id.
     var proactiveID: String? = nil
+    /// True when this is one of her explicit asks — Dialogue gives it a
+    /// full bubble and an "answer her" affordance (v23).
+    var isAsk: Bool = false
 }
 
 /// One event in a streamed chat reply.
@@ -45,6 +48,9 @@ struct ProactiveMessage: Identifiable, Hashable {
     var kind: String
     var archetype: String
     var date: Date
+    /// She is explicitly asking — an open-ended answer is the point.
+    /// Dialogue renders these as answerable messages, not whispers.
+    var isAsk: Bool = false
 }
 
 /// One of Alicia's introspective notes — what she is thinking / working on.

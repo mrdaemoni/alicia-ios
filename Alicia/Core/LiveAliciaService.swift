@@ -136,13 +136,15 @@ struct LiveAliciaService: AliciaService {
 
     private struct ProactiveDTO: Decodable {
         var id, date, text, kind, archetype: String
+        var is_ask: Bool?
     }
 
     func proactive(limit: Int) async -> [ProactiveMessage] {
         await fetch("/api/proactive?limit=\(limit)", as: [ProactiveDTO].self).map {
             ProactiveMessage(id: $0.id, text: $0.text, kind: $0.kind,
                              archetype: $0.archetype,
-                             date: Self.parseDate($0.date))
+                             date: Self.parseDate($0.date),
+                             isAsk: $0.is_ask ?? false)
         }
     }
 

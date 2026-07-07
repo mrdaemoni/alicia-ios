@@ -77,7 +77,8 @@ final class AppStore {
                                              m.archetype]
                                 .filter { !$0.isEmpty }
                                 .joined(separator: " · "),
-                            proactiveID: m.id)
+                            proactiveID: m.id,
+                            isAsk: m.isAsk)
                 }
             }
         }
@@ -139,7 +140,8 @@ final class AppStore {
                                  m.archetype]
                     .filter { !$0.isEmpty }
                     .joined(separator: " · "),
-                proactiveID: m.id))
+                proactiveID: m.id,
+                isAsk: m.isAsk))
             await ProactiveNotifier.notify(m)
         }
         ProactiveNotifier.markSeen(fresh)
@@ -295,9 +297,45 @@ final class AppStore {
         }
     }
 
+    // MARK: answering her asks (v23)
+    /// When set, the Dialogue composer is answering one of her explicit
+    /// asks: the next send routes through /api/reply with this proactive
+    /// id — landing as Tier-3 capture + circulation attribution, exactly
+    /// like answering her on Telegram — instead of opening a fresh chat
+    /// turn.
+    var answeringAskID: String?
+    var answeringAskExcerpt: String = ""
+
+    func beginAnswering(_ message: Message) {
+        guard let pid = message.proactiveID else { return }
+        answeringAskID = pid
+        answeringAskExcerpt = String(
+            message.text.strippedLeadingEmoji.prefix(70))
+    }
+
+    func cancelAnswering() {
+        answeringAskID = nil
+        answeringAskExcerpt = ""
+    }
+
     func send(_ text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
+        if let askID = answeringAskID {
+            cancelAnswering()
+            messages.append(Message(sender: .me, text: clean))
+            Task {
+                let reply = await service.reply(proactiveID: askID, text: clean)
+                if let reply, !reply.isEmpty {
+                    messages.append(Message(sender: .alicia, text: reply))
+                } else {
+                    messages.append(Message(
+                        sender: .alicia,
+                        text: "(couldn't reach her — your answer didn't land; try again)"))
+                }
+            }
+            return
+        }
         messages.append(Message(sender: .me, text: clean))
         let idx = messages.count
         messages.append(Message(sender: .alicia, text: ""))
