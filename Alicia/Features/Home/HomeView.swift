@@ -9,7 +9,7 @@ struct HomeView: View {
     /// Her line, when the backend has one — grounded in what you two are
     /// actually talking about. Time-of-day only as the offline fallback.
     private var greeting: String {
-        if let live = store.greeting, !live.isEmpty { return live }
+        if let live = store.greeting, !live.isEmpty { return live.strippedEmojis }
         switch Calendar.current.component(.hour, from: .now) {
         case 5..<12:  return "Good morning, Hector"
         case 12..<18: return "Good afternoon, Hector"
@@ -124,7 +124,7 @@ struct HomeView: View {
                 .font(.system(.largeTitle, design: .serif, weight: .semibold))
                 .foregroundStyle(Theme.ink)
             if let season = seasonThought {
-                Text(season.body)
+                Text(season.body.strippedEmojis)
                     .font(.system(.subheadline, design: .serif))
                     .italic()
                     .foregroundStyle(Theme.ink.opacity(0.65))
@@ -163,12 +163,13 @@ struct HomeView: View {
         .card(padding: 10, radius: 18)
     }
 
-    private func card(icon: String, title: String, body text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func card(icon: String, title: String, body rawText: String) -> some View {
+        let text = rawText.strippedEmojis
+        return VStack(alignment: .leading, spacing: 8) {
             // Her spark where a system glyph used to sit (v22).
             HStack(spacing: 6) {
                 InkSpark(size: 11, seed: title.inkSeed)
-                Text(title)
+                Text(title.strippedEmojis)
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(Theme.accentSoft)
@@ -322,12 +323,12 @@ struct FeaturedSynthesisCard: View {
                     StippleIllustration(dots: 700, animated: true)
                         .frame(width: 44, height: 44)
                 }
-                Text(featured.title)
+                Text(featured.title.strippedEmojis)
                     .font(.system(.title3, design: .serif, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(featured.excerpt)
+                Text(featured.excerpt.strippedEmojis)
                     .font(.system(.footnote, design: .serif))
                     .foregroundStyle(Theme.ink.opacity(0.75))
                     .lineLimit(4)
@@ -400,7 +401,7 @@ struct SynthesisReader: View {
     }
 
     private var blocks: [Block] {
-        featured.body.components(separatedBy: "\n\n").compactMap { raw in
+        featured.body.strippedEmojis.components(separatedBy: "\n\n").compactMap { raw in
             let p = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !p.isEmpty else { return nil }
             if p.hasPrefix("## ") {
@@ -579,7 +580,7 @@ struct QuoteCard: View {
                 .font(.system(size: 10, design: .monospaced).weight(.semibold))
                 .tracking(2.0)
                 .foregroundStyle(Theme.inkSoft)
-            Text("“" + quote.text + "”")
+            Text("“" + quote.text.strippedEmojis + "”")
                 .font(.system(size: 17, design: .serif))
                 .italic()
                 .lineSpacing(5)
@@ -1308,14 +1309,14 @@ struct TimelineSheet: View {
                                 HStack(alignment: .top, spacing: 6) {
                                     InkSpark(size: 9, seed: l.inkSeed)
                                         .padding(.top, 3)
-                                    Text(l)
+                                    Text(l.strippedEmojis)
                                         .font(.system(size: 12, design: .serif))
                                         .foregroundStyle(Theme.ink.opacity(0.75))
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                             if let thread = day.thread, !thread.isEmpty {
-                                Text("the thread · " + thread)
+                                Text("the thread · " + thread.strippedEmojis)
                                     .font(.system(size: 11, design: .serif))
                                     .italic()
                                     .foregroundStyle(Theme.accent.opacity(0.85))

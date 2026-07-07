@@ -89,17 +89,20 @@ final class AppStore {
     /// Refresh it (and the timelines) whenever the app loads fresh data.
     private func publishWidgetCache() {
         guard let shared = UserDefaults(suiteName: "group.com.myalicia.app") else { return }
+        // The widget shows her words without the Telegram emoji markers —
+        // strip at write time so the widget target needs no logic (v25).
         if let greeting, !greeting.isEmpty {
-            shared.set(greeting, forKey: "widget.greeting")
+            shared.set(greeting.strippedEmojis, forKey: "widget.greeting")
         }
         if let featured {
-            shared.set(featured.title, forKey: "widget.featuredTitle")
+            shared.set(featured.title.strippedEmojis, forKey: "widget.featuredTitle")
         }
         if let latest = proactiveFeed.first {
-            shared.set(String(latest.text.prefix(200)), forKey: "widget.note")
+            shared.set(String(latest.text.strippedEmojis.prefix(200)),
+                       forKey: "widget.note")
         }
         if let quote {
-            shared.set("“" + quote.text + "”", forKey: "widget.quote")
+            shared.set("“" + quote.text.strippedEmojis + "”", forKey: "widget.quote")
         }
         WidgetCenter.shared.reloadAllTimelines()
     }

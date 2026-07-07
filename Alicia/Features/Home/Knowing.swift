@@ -189,7 +189,7 @@ struct KnowingSheet: View {
             }
             ForEach(claims, id: \.claim) { c in
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(c.claim)
+                    Text(c.claim.strippedEmojis)
                         .font(.system(size: 14, design: .serif))
                         .lineSpacing(4)
                     Text(c.dimension.uppercased() +

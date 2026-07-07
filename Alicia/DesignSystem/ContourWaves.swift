@@ -397,6 +397,6 @@ extension AppStore {
 /// at a glance whether his phone runs the latest build. BUMP THIS on every
 /// app change that ships (see CLAUDE.md).
 enum AppVersion {
-    static let tag = "v24"
+    static let tag = "v25"
     static let date = "Jul 7"
 }

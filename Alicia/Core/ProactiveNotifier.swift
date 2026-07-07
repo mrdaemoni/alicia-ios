@@ -89,7 +89,8 @@ enum ProactiveNotifier {
         let content = UNMutableNotificationContent()
         content.title = "Alicia"
         if !m.archetype.isEmpty { content.subtitle = m.archetype }
-        content.body = String(m.text.prefix(160))
+        // Her text, without the Telegram emoji markers (v25).
+        content.body = String(m.text.strippedEmojis.prefix(160))
         content.sound = .default
         badgeCount += 1
         content.badge = NSNumber(value: badgeCount)

@@ -121,9 +121,9 @@ struct EpisodeDetailView: View {
     @State private var loading = true
 
     /// Inline-markdown rendering keeps `#`/`-`/`>` markers literal — restyle
-    /// them line-by-line (headings → bold, bullets → dots, quotes → ❝).
+    /// them line-by-line (headings → bold, bullets → dots, quotes → “).
     static func render(_ md: String) -> AttributedString {
-        let cleaned = md
+        let cleaned = md.strippedEmojis
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { line -> String in
                 var l = String(line)
@@ -133,7 +133,7 @@ struct EpisodeDetailView: View {
                 } else if l.hasPrefix("- ") {
                     l = "  •  " + l.dropFirst(2)
                 } else if l.hasPrefix("> ") {
-                    l = "❝ " + l.dropFirst(2).replacingOccurrences(of: "\"", with: "")
+                    l = "“" + l.dropFirst(2).replacingOccurrences(of: "\"", with: "")
                 }
                 return l
             }
