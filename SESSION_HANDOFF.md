@@ -1,4 +1,4 @@
-# Session Handoff — Alicia iOS + Backend (as of v22, 2026-07-07)
+# Session Handoff — Alicia iOS + Backend (as of v23, 2026-07-07)
 
 Continuation doc for iterating on the iPhone app (`~/AliciaApp`) and its
 backend surface (`~/alicia`, `skills/ios_api.py`). Written at the close of the
@@ -44,6 +44,10 @@ Health is pushed from Us's status strip).
 - **Dialogue**: SSE chat + dictation mic + walk mode + voice-note replies +
   emoji reactions; her impulses render as editorial interludes (hairlines +
   emblem + serif italic) that deep-link to the exact card on the Alicia tab.
+  v23: sends the backend flags `is_ask` (kind tokens — Rule-11 word-boundary,
+  💭 rider glyph, tail "?") arrive as FULL bubbles with ANSWER HER → —
+  answering-mode composer routes the reply through /api/reply (Tier-3
+  capture + circulation attribution, same as answering on Telegram).
 - **Alicia**: THE VOICES gallery ranked by the real loop (`/api/archetypes`),
   custom ink emblems per voice (`ArchetypeEmblem`), manifesto sheets, recent
   thinking cards, version tag.
