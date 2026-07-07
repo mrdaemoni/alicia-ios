@@ -1,9 +1,10 @@
-# Session Handoff — Alicia iOS + Backend (as of v20, 2026-07-07)
+# Session Handoff — Alicia iOS + Backend (as of v21, 2026-07-07)
 
 Continuation doc for iterating on the iPhone app (`~/AliciaApp`) and its
 backend surface (`~/alicia`, `skills/ios_api.py`). Written at the close of the
 July 3–5 build marathon (v1 → v19); v20 (2026-07-07) added the
-loop-architecture home. Read this, then `CLAUDE.md`, then go.
+loop-architecture home; v21 (same day) the hand-drawn chrome. Read this,
+then `CLAUDE.md`, then go.
 
 ## The two repos, one feature loop
 
@@ -50,13 +51,22 @@ Health is pushed from Us's status strip).
   episode plates with shownotes, persistent player (scrub/±15s/rate,
   Dynamic Island artwork), co-creation canvas mode (she draws from where the
   pencil stopped — `/api/cocreate`).
-- **Knowledge**: fresh syntheses shelf + 313-thinker network (Wikipedia
-  portraits in duotone, theme filters, `ThinkersPage` subpage). v20:
-  `ThinkerSheet` ends in **MINDS LIKE THIS ONE** — related thinkers with the
-  why-they-connect line (vault co-citation + theme overlap, precomputed into
-  `skills/data/thinker_links.json` by `scripts/build_thinker_links.py`);
-  tapping hops the sheet to that thinker (breadcrumb + back arrow), so the
-  graph is walkable end to end.
+- **Knowledge (v21: two rooms)**: `InkTabs` KNOWLEDGE | THINKERS — the
+  syntheses shelf in one, the full 313-thinker network inline in the other
+  (ThinkersPage subpage folded in; deep-links set `store.knowledgeSegment`).
+  `ThinkerSheet` ends in **MINDS LIKE THIS ONE**, now a hand-stitched
+  **ThinkerConstellation** — staggered faces joined by bowed ink threads +
+  knot rings; why-they-connect lines from vault co-citation + theme overlap
+  (`skills/data/thinker_links.json` ← `scripts/build_thinker_links.py`);
+  tapping hops the sheet (breadcrumb + back), so the graph walks end to end.
+- **Hand-drawn chrome (v21)** — `DesignSystem/InkDrawn.swift`, all
+  deterministic-seeded Canvas (no @State — nothing shimmers on scroll):
+  `HandDrawnBorder` on every `.card()` (overshot corners, re-traced edges),
+  `InkUnderline` under the selected tab-bar word, `InkTabs` replacing every
+  segmented picker, `InkSubmitArrow` for every send affordance,
+  `PortraitTrace` (her pen circling every thinker photograph). Home
+  knowledge-card feedback is hidden until the card is tapped (three resting
+  dots mark the spot).
 - **Widget** (`AliciaWidgets/` target): greeting + today's synthesis from the
   app-group cache (`group.com.myalicia.app`) — no network of its own.
 
