@@ -1,8 +1,9 @@
-# Session Handoff — Alicia iOS + Backend (as of v19, 2026-07-05)
+# Session Handoff — Alicia iOS + Backend (as of v20, 2026-07-07)
 
 Continuation doc for iterating on the iPhone app (`~/AliciaApp`) and its
 backend surface (`~/alicia`, `skills/ios_api.py`). Written at the close of the
-July 3–5 build marathon (v1 → v19). Read this, then `CLAUDE.md`, then go.
+July 3–5 build marathon (v1 → v19); v20 (2026-07-07) added the
+loop-architecture home. Read this, then `CLAUDE.md`, then go.
 
 ## The two repos, one feature loop
 
@@ -19,17 +20,26 @@ method in `Core/AliciaService.swift` protocol (+ Mock + Live impls), state in
 `Core/AppStore.swift`, and a view. Media URLs carry `?token=` (AVPlayer/
 AsyncImage can't set headers); everything else uses `Authorization: Bearer`.
 
-## Current app shape (v19)
+## Current app shape (v20)
 
 Five tabs — `AppSection` in `App/RootView.swift`: **Us · Dialogue · Alicia ·
 Studio · Knowledge** (Canvas lives INSIDE Studio as a segmented mode;
 Health is pushed from Us's status strip).
 
-- **Us**: her live greeting (tap the "Us" title → THE ARC timeline sheet since
-  her birth), proactive reply card, featured synthesis (reader sheet with
-  thinker chips), quote of the moment (copy button), her best drawing, voice
-  of the moment, today's listening (deep-links to Studio), thinkers
-  in-your-ears strip, "what she knows about me" loops card, status strip.
+- **Us (v20 — the loop architecture)**: her live greeting, proactive reply
+  card, then three concentric loops from `/api/home` (`skills/home_context.py`):
+  **SeasonArcCard** (season theme + episode-node spine + current movement) →
+  **TrailCard** (previous days' episodes) → **TodayEpisodeCard** (today's
+  pick, focus claim, one-tap LISTEN into Studio) → **knowledge cards** mined
+  from today's shownotes (quote / thinkers / ideas), each with a feedback row
+  (RELEVANT · GREAT · NOT TODAY + a why-note follow-up → POST
+  /api/card_feedback → evidence-shrunk card-ordering weights + daily signal;
+  loop 10 in the backend map). Tap the "Us" title → **UsSheet**: TODAY (the
+  context line — what she thinks you two are talking about today — episode,
+  season, trail, what she's surfacing) with THE ARC timeline one segment
+  away. Below the loops: featured synthesis, quote, drawing, voice of the
+  moment, knowing card, thinkers-in-your-ears strip, status strip.
+  (EpisodeAskCard renders only when /api/home has no active episode.)
 - **Dialogue**: SSE chat + dictation mic + walk mode + voice-note replies +
   emoji reactions; her impulses render as editorial interludes (hairlines +
   emblem + serif italic) that deep-link to the exact card on the Alicia tab.
@@ -40,18 +50,26 @@ Health is pushed from Us's status strip).
   episode plates with shownotes, persistent player (scrub/±15s/rate,
   Dynamic Island artwork), co-creation canvas mode (she draws from where the
   pencil stopped — `/api/cocreate`).
-- **Knowledge**: fresh syntheses shelf + 318-thinker network (Wikipedia
-  portraits in duotone, theme filters, `ThinkersPage` subpage).
+- **Knowledge**: fresh syntheses shelf + 313-thinker network (Wikipedia
+  portraits in duotone, theme filters, `ThinkersPage` subpage). v20:
+  `ThinkerSheet` ends in **MINDS LIKE THIS ONE** — related thinkers with the
+  why-they-connect line (vault co-citation + theme overlap, precomputed into
+  `skills/data/thinker_links.json` by `scripts/build_thinker_links.py`);
+  tapping hops the sheet to that thinker (breadcrumb + back arrow), so the
+  graph is walkable end to end.
 - **Widget** (`AliciaWidgets/` target): greeting + today's synthesis from the
   app-group cache (`group.com.myalicia.app`) — no network of its own.
 
 ## Backend surface (skills/ios_api.py, :8766)
 
 chat (SSE+voice) · react (message/proactive) · reply · proactive · greeting ·
-featured · quote · archetypes · timeline · knowing · thinkers · syntheses ·
-tracks/audio/episode · mode (walk) · cocreate · complement · gallery/drawing ·
-health · healthz. All payload builders are pure + defensive; harness callables
-arrive via `start_ios_api(deps=...)` — skills never import alicia.py.
+featured · quote · archetypes · timeline · knowing · thinkers (now with
+per-thinker `related` edges) · syntheses · tracks/audio/episode · mode (walk) ·
+cocreate · complement · gallery/drawing · health · **home** (the loop payload;
+capability in `skills/home_context.py`) · **card_feedback** (POST; writes the
+contracted `card_feedback.jsonl` + `home_card_weights.json`) · healthz. All
+payload builders are pure + defensive; harness callables arrive via
+`start_ios_api(deps=...)` — skills never import alicia.py.
 
 ## Ship loop (memorize)
 
