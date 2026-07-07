@@ -52,6 +52,13 @@ protocol AliciaService {
     func thinkers() async -> ThinkerNetwork?
     /// Every lived day since her birth, growth moments marked.
     func timeline() async -> [TimelineDay]
+    /// The Us tab's loop payload: season arc → episode trail → today's
+    /// episode → knowledge cards. Nil offline.
+    func homeContext() async -> HomeContext?
+    /// Verdict on one home knowledge card ("great"/"relevant"/"skip", with
+    /// an optional why note). Feeds her card-ordering loop + daily signal.
+    func cardFeedback(cardID: String, kind: String, verdict: String,
+                      note: String) async -> Bool
 }
 
 struct TimelineDay: Decodable, Hashable, Identifiable {
@@ -90,6 +97,9 @@ struct Thinker: Decodable, Hashable, Identifiable {
     var themes: [String]
     var works: String
     var relation: String
+    /// Traversal edges: the thinkers most connected to this one (absent in
+    /// older payloads, hence optional).
+    var related: [RelatedThinker]? = nil
     var id: String { name }
 }
 
@@ -160,6 +170,47 @@ struct MockAliciaService: AliciaService {
     func syntheses() async -> [FeaturedSynthesis] { [] }
     func thinkers() async -> ThinkerNetwork? { nil }
     func timeline() async -> [TimelineDay] { [] }
+    func cardFeedback(cardID: String, kind: String, verdict: String,
+                      note: String) async -> Bool { true }
+
+    func homeContext() async -> HomeContext? {
+        HomeContext(
+            season: .init(
+                season: 11, series: "Memories of My Future Self",
+                title: "Emergence, Not Emergency",
+                subtitle: "Eight episodes on the hardest tempo there is: acting without alarm.",
+                premise: "How do you act from a hand that has stopped gripping?",
+                movements: [], movementNow: "Movement III — THE PRACTICE",
+                episodes: (1...8).map { n in
+                    .init(episode: n, label: String(format: "S11E%02d", n),
+                          title: "Episode \(n)", claim: "",
+                          heard: n < 7, isToday: n == 8)
+                },
+                heardCount: 6, total: 8),
+            trail: [
+                .init(label: "S11E07", title: "Strict With the Present Self",
+                      pickedDate: "", daysAgo: 2, claim: ""),
+                .init(label: "S11E06", title: "Trust Is an Architecture",
+                      pickedDate: "", daysAgo: 3, claim: ""),
+            ],
+            today: .init(label: "S11E08",
+                         title: "The Doer and the Done Are Not Separate",
+                         pickedDate: "", isToday: true,
+                         focus: "Actorless action is not passivity — it is the highest precision.",
+                         claim: "", about: "", quote: "The best work of my life left no fingerprints."),
+            cards: [
+                .init(id: "S11E08:quote:0", kind: "quote",
+                      title: "From today's episode",
+                      body: "The best work of my life left no fingerprints.",
+                      thinker: "", tagline: "", themes: [], source: "S11E08", badge: ""),
+                .init(id: "S11E08:thinker:zhuangzi", kind: "thinker",
+                      title: "Zhuangzi",
+                      body: "Cook Ding's blade, effortless because it follows the grain.",
+                      thinker: "Zhuangzi", tagline: "the way beyond skill",
+                      themes: ["mastery"], source: "S11E08", badge: ""),
+            ],
+            contextLine: "S11E08 — The Doer and the Done Are Not Separate.")
+    }
 
     func featured() async -> FeaturedSynthesis? {
         FeaturedSynthesis(

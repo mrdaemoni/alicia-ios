@@ -289,6 +289,116 @@ struct LiveAliciaService: AliciaService {
         await fetch("/api/timeline", as: [TimelineDay].self)
     }
 
+    // MARK: home context (the Us tab's loops)
+
+    private struct HomeDTO: Decodable {
+        struct EpisodeDTO: Decodable {
+            var episode: Int?
+            var label, title, claim: String?
+            var heard, is_today: Bool?
+        }
+        struct MovementDTO: Decodable {
+            var numeral, title, summary: String?
+            var from_episode, to_episode: Int?
+        }
+        struct SeasonDTO: Decodable {
+            var season, heard_count, total: Int?
+            var series, title, subtitle, premise, movement_now: String?
+            var movements: [MovementDTO]?
+            var episodes: [EpisodeDTO]?
+        }
+        struct TrailDTO: Decodable {
+            var label, title, picked_date, claim: String?
+            var days_ago: Int?
+        }
+        struct TodayDTO: Decodable {
+            var label, title, picked_date, focus, claim, about, quote: String?
+            var is_today: Bool?
+        }
+        struct CardDTO: Decodable {
+            var id, kind, title, body, thinker, tagline, source, badge: String?
+            var themes: [String]?
+        }
+        var season: SeasonDTO?
+        var trail: [TrailDTO]?
+        var today: TodayDTO?
+        var cards: [CardDTO]?
+        var context_line: String?
+    }
+
+    func homeContext() async -> HomeContext? {
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: request("/api/home"))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            let d = try JSONDecoder().decode(HomeDTO.self, from: data)
+            let season: HomeContext.Season? = d.season.flatMap { s in
+                guard let n = s.season, n > 0 else { return nil }
+                return HomeContext.Season(
+                    season: n, series: s.series ?? "", title: s.title ?? "",
+                    subtitle: s.subtitle ?? "", premise: s.premise ?? "",
+                    movements: (s.movements ?? []).map {
+                        .init(numeral: $0.numeral ?? "", title: $0.title ?? "",
+                              fromEpisode: $0.from_episode ?? 0,
+                              toEpisode: $0.to_episode ?? 0,
+                              summary: $0.summary ?? "")
+                    },
+                    movementNow: s.movement_now ?? "",
+                    episodes: (s.episodes ?? []).map {
+                        .init(episode: $0.episode ?? 0, label: $0.label ?? "",
+                              title: $0.title ?? "", claim: $0.claim ?? "",
+                              heard: $0.heard ?? false,
+                              isToday: $0.is_today ?? false)
+                    },
+                    heardCount: s.heard_count ?? 0, total: s.total ?? 0)
+            }
+            let today: HomeContext.Today? = d.today.flatMap { t in
+                guard let label = t.label, !label.isEmpty else { return nil }
+                return HomeContext.Today(
+                    label: label, title: t.title ?? "",
+                    pickedDate: t.picked_date ?? "",
+                    isToday: t.is_today ?? false,
+                    focus: t.focus ?? "", claim: t.claim ?? "",
+                    about: t.about ?? "", quote: t.quote ?? "")
+            }
+            return HomeContext(
+                season: season,
+                trail: (d.trail ?? []).compactMap { t in
+                    guard let label = t.label else { return nil }
+                    return HomeContext.TrailItem(
+                        label: label, title: t.title ?? "",
+                        pickedDate: t.picked_date ?? "",
+                        daysAgo: t.days_ago, claim: t.claim ?? "")
+                },
+                today: today,
+                cards: (d.cards ?? []).compactMap { c in
+                    guard let id = c.id, let kind = c.kind else { return nil }
+                    return HomeContext.Card(
+                        id: id, kind: kind, title: c.title ?? "",
+                        body: c.body ?? "", thinker: c.thinker ?? "",
+                        tagline: c.tagline ?? "", themes: c.themes ?? [],
+                        source: c.source ?? "", badge: c.badge ?? "")
+                },
+                contextLine: d.context_line ?? "")
+        } catch { return nil }
+    }
+
+    private struct CardFeedbackDTO: Decodable { var ok: Bool }
+
+    func cardFeedback(cardID: String, kind: String, verdict: String,
+                      note: String) async -> Bool {
+        do {
+            var payload: [String: Any] = [
+                "card_id": cardID, "kind": kind, "verdict": verdict,
+            ]
+            if !note.isEmpty { payload["note"] = note }
+            let body = try JSONSerialization.data(withJSONObject: payload)
+            let (data, resp) = try await URLSession.shared.data(
+                for: request("/api/card_feedback", method: "POST", body: body))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return false }
+            return try JSONDecoder().decode(CardFeedbackDTO.self, from: data).ok
+        } catch { return false }
+    }
+
     private struct QuoteDTO: Decodable { var text: String; var author: String }
 
     func quote() async -> (text: String, author: String)? {

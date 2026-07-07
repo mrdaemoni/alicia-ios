@@ -47,7 +47,9 @@ final class AppStore {
         async let ar = service.archetypes()
         async let kn = service.knowing()
         async let sy = service.syntheses()
+        async let hc = service.homeContext()
         (thoughts, tracks, gallery, health) = await (t, tr, g, h)
+        homeContext = await hc ?? homeContext
         (thinkingMode, walkWords) = await m
         greeting = await gr ?? greeting
         featured = await fs ?? featured
@@ -171,6 +173,38 @@ final class AppStore {
     var pendingThinker: String?
     /// The whole arc since her birth (fetched when the sheet opens).
     var timeline: [TimelineDay] = []
+
+    // MARK: the loops (Us tab home context)
+    /// Season arc → episode trail → today's episode → knowledge cards.
+    var homeContext: HomeContext?
+
+    /// Verdicts already given this run (card id → verdict), persisted so a
+    /// relaunch doesn't re-ask for cards he already judged today.
+    var cardVerdicts: [String: String] =
+        (UserDefaults.standard.dictionary(forKey: "alicia.cardVerdicts")
+            as? [String: String]) ?? [:]
+
+    /// Verdict on one knowledge card — optimistic UI, then the backend
+    /// (card-ordering weights + shared daily signal). A follow-up why note
+    /// re-posts the same verdict carrying the note.
+    func giveCardFeedback(_ card: HomeContext.Card, verdict: String,
+                          note: String = "") {
+        cardVerdicts[card.id] = verdict
+        // Card ids embed the episode label, so old entries go stale, not
+        // wrong — prune to keep the defaults dictionary small.
+        if cardVerdicts.count > 200 { cardVerdicts = [card.id: verdict] }
+        UserDefaults.standard.set(cardVerdicts, forKey: "alicia.cardVerdicts")
+        Task {
+            _ = await service.cardFeedback(cardID: card.id, kind: card.kind,
+                                           verdict: verdict, note: note)
+        }
+    }
+
+    /// The playable track for an episode label ("S11E08"), if the library
+    /// has it — bridges today's-episode card to the Studio player.
+    func track(forLabel label: String) -> Track? {
+        tracks.first(where: { $0.label == label })
+    }
 
     func loadTimeline() async {
         if timeline.isEmpty {

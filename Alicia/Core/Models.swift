@@ -84,6 +84,86 @@ struct Artwork: Identifiable, Hashable {
     var imageURL: URL? = nil
 }
 
+/// The Us tab's loop-architecture payload (`/api/home`) — three concentric
+/// loops around right now: the season arc she holds around Hector, the
+/// trail of the previous days' episodes, and today's episode — plus the
+/// knowledge cards mined from it.
+struct HomeContext {
+    struct SeasonEpisode: Hashable, Identifiable {
+        var episode: Int
+        var label: String
+        var title: String
+        var claim: String
+        var heard: Bool
+        var isToday: Bool
+        var id: String { label }
+    }
+    struct Movement: Hashable {
+        var numeral: String
+        var title: String
+        var fromEpisode: Int
+        var toEpisode: Int
+        var summary: String
+    }
+    struct Season {
+        var season: Int
+        var series: String
+        var title: String
+        var subtitle: String
+        var premise: String
+        var movements: [Movement]
+        var movementNow: String
+        var episodes: [SeasonEpisode]
+        var heardCount: Int
+        var total: Int
+    }
+    struct TrailItem: Hashable, Identifiable {
+        var label: String
+        var title: String
+        var pickedDate: String
+        var daysAgo: Int?
+        var claim: String
+        var id: String { label }
+    }
+    struct Today {
+        var label: String
+        var title: String
+        var pickedDate: String
+        var isToday: Bool
+        var focus: String
+        var claim: String
+        var about: String
+        var quote: String
+    }
+    /// One knowledge card — a thinker in his ears, the episode's quote, or
+    /// a new idea. `id` is stable for the day ("S11E08:thinker:zhuangzi")
+    /// so feedback lands on the exact card.
+    struct Card: Hashable, Identifiable {
+        var id: String
+        var kind: String        // "quote" | "thinker" | "idea"
+        var title: String
+        var body: String
+        var thinker: String
+        var tagline: String
+        var themes: [String]
+        var source: String      // episode label
+        var badge: String       // e.g. "new to the vault"
+    }
+    var season: Season?
+    var trail: [TrailItem]
+    var today: Today?
+    var cards: [Card]
+    /// One sentence: what Alicia thinks we're talking about today.
+    var contextLine: String
+}
+
+/// A traversal edge of the thinker graph — who connects to whom, and why
+/// (vault co-citation + shared themes, precomputed on the backend).
+struct RelatedThinker: Decodable, Hashable {
+    var name: String
+    var why: String
+}
+
 /// A single vital in Alicia's health dashboard.
 struct HealthMetric: Identifiable, Hashable {
     let id = UUID()

@@ -243,28 +243,73 @@ struct ThinkerCell: View {
     }
 }
 
-/// The thinker's page: face, how they matter to Hector, their work, and
-/// the door to the open web.
+/// The thinker's page: face, how they matter to Hector, their work, the
+/// door to the open web — and the graph underneath: the thinkers most
+/// connected to this one, each a tap away, so you can keep walking the
+/// network without ever leaving the sheet.
 struct ThinkerSheet: View {
+    @Environment(AppStore.self) private var store
     let thinker: Thinker
+    @State private var current: Thinker?
+    @State private var path: [Thinker] = []   // hops behind the current one
     @State private var extract = ""
     @State private var page: URL?
+
+    private var shown: Thinker { current ?? thinker }
+
+    /// Resolve a related-thinker edge to the full record in the network.
+    private func resolve(_ name: String) -> Thinker? {
+        store.thinkerNetwork?.thinkers.first(where: { $0.name == name })
+    }
+
+    private func hop(to name: String) {
+        guard let next = resolve(name) else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            path.append(shown)
+            current = next
+        }
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
-                WikiPortrait(name: thinker.name, size: 130)
-                    .padding(.top, 12)
-                Text(thinker.name.uppercased())
+                if !path.isEmpty {
+                    // The walked path, latest hop last — tap ← to step back.
+                    HStack(spacing: 6) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                current = path.popLast()
+                            }
+                        } label: {
+                            Image(systemName: "arrow.backward")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .buttonStyle(.plain)
+                        Text((path.map(\.name) + [shown.name])
+                            .joined(separator: " → "))
+                            .font(.system(size: 9, design: .monospaced))
+                            .tracking(0.6)
+                            .foregroundStyle(Theme.inkSoft)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                        Spacer()
+                    }
+                    .padding(.top, 14)
+                }
+                WikiPortrait(name: shown.name, size: 130)
+                    .padding(.top, path.isEmpty ? 12 : 0)
+                    .id(shown.name)   // fresh portrait per hop
+                Text(shown.name.uppercased())
                     .font(.system(size: 12, design: .monospaced).weight(.bold))
                     .tracking(2.6)
-                Text(thinker.tagline)
+                Text(shown.tagline)
                     .font(.system(size: 16, design: .serif))
                     .italic()
                     .multilineTextAlignment(.center)
                     .lineSpacing(5)
                 HStack(spacing: 6) {
-                    ForEach(thinker.themes, id: \.self) { th in
+                    ForEach(shown.themes, id: \.self) { th in
                         Text(th.uppercased())
                             .font(.system(size: 8, design: .monospaced))
                             .tracking(1.4)
@@ -273,13 +318,13 @@ struct ThinkerSheet: View {
                             .background(Color.white.opacity(0.35), in: Capsule())
                     }
                 }
-                if !thinker.relation.isEmpty {
+                if !shown.relation.isEmpty {
                     Theme.stroke.frame(width: 60, height: 1)
                     Text("IN YOUR VAULT")
                         .font(.system(size: 10, design: .monospaced).weight(.semibold))
                         .tracking(2.0)
                         .foregroundStyle(Theme.accent)
-                    Text(thinker.relation)
+                    Text(shown.relation)
                         .font(.system(size: 14, design: .serif))
                         .lineSpacing(5)
                         .multilineTextAlignment(.center)
@@ -305,13 +350,56 @@ struct ThinkerSheet: View {
                     }
                     .padding(.top, 6)
                 }
+
+                // ── The graph: minds like this one, and why ──
+                if let related = shown.related, !related.isEmpty {
+                    Theme.stroke.frame(width: 60, height: 1)
+                    Text("MINDS LIKE THIS ONE")
+                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                        .tracking(2.0)
+                        .foregroundStyle(Theme.accent)
+                    VStack(spacing: 10) {
+                        ForEach(related, id: \.name) { edge in
+                            Button {
+                                hop(to: edge.name)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    WikiPortrait(name: edge.name, size: 44)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(edge.name)
+                                            .font(.system(size: 14, design: .serif).weight(.medium))
+                                            .foregroundStyle(Theme.ink)
+                                        Text(edge.why)
+                                            .font(.system(size: 11, design: .serif))
+                                            .italic()
+                                            .foregroundStyle(Theme.inkSoft)
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.leading)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "arrow.forward")
+                                        .font(.caption2)
+                                        .foregroundStyle(resolve(edge.name) == nil
+                                                         ? Theme.inkSoft.opacity(0.3)
+                                                         : Theme.accent)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(resolve(edge.name) == nil)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
             }
             .padding(24)
             .padding(.bottom, 40)
         }
         .presentationBackground(Theme.paper)
-        .task {
-            if let s = await WikiCache.shared.summary(for: thinker.name) {
+        .task(id: shown.name) {
+            extract = ""
+            page = nil
+            if let s = await WikiCache.shared.summary(for: shown.name) {
                 extract = String(s.extract.prefix(500))
                 page = s.page
             }

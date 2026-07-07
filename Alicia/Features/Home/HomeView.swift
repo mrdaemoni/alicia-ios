@@ -55,6 +55,22 @@ struct HomeView: View {
                              body: word.text)
                     }
 
+                    // ── The loops — widest to innermost, zooming in ──
+                    if let home = store.homeContext {
+                        if let season = home.season {
+                            SeasonArcCard(season: season)
+                        }
+                        if !home.trail.isEmpty {
+                            TrailCard(trail: home.trail)
+                        }
+                        if let today = home.today {
+                            TodayEpisodeCard(today: today)
+                        }
+                        if !home.cards.isEmpty {
+                            KnowledgeCardsSection(cards: home.cards)
+                        }
+                    }
+
                     if let featured = store.featured {
                         FeaturedSynthesisCard(featured: featured)
                     }
@@ -72,7 +88,9 @@ struct HomeView: View {
 
                     KnowingCard()
 
-                    if !store.suggestedTracks.isEmpty {
+                    // Only when the loops don't already carry today's pick.
+                    if store.homeContext?.today == nil,
+                       !store.suggestedTracks.isEmpty {
                         EpisodeAskCard()
                     }
 
@@ -96,7 +114,7 @@ struct HomeView: View {
             // a fine paper grain. Dawn washes rose, night runs indigo.
             .waveBackground(.us(mood: store.waveMood), tinted: true)
             .toolbar(.hidden, for: .navigationBar)
-            .sheet(isPresented: $showTimeline) { TimelineSheet() }
+            .sheet(isPresented: $showTimeline) { UsSheet() }
         }
     }
 
@@ -719,6 +737,493 @@ struct ThinkerStrip: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 14, radius: 20)
+    }
+}
+
+// ═══ The loops — the Us tab's concentric context ═══════════════════════════
+
+/// The widest loop she holds around Hector: the current podcast season —
+/// its theme, and a spine of episode nodes showing where in the arc he is.
+struct SeasonArcCard: View {
+    let season: HomeContext.Season
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("THE WIDEST LOOP · SEASON \(season.season)")
+                    .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                    .tracking(2.0)
+                    .foregroundStyle(Theme.inkSoft)
+                Spacer()
+                Text("\(season.heardCount)/\(season.total)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            Text(season.title)
+                .font(.system(.title3, design: .serif, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+            if !season.subtitle.isEmpty {
+                Text(season.subtitle)
+                    .font(.system(.footnote, design: .serif))
+                    .italic()
+                    .foregroundStyle(Theme.ink.opacity(0.7))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // The spine: one node per episode, filled once heard, the
+            // accent ring on today's.
+            HStack(spacing: 0) {
+                ForEach(Array(season.episodes.enumerated()), id: \.element.id) { i, ep in
+                    if i > 0 {
+                        Rectangle()
+                            .fill(Theme.stroke)
+                            .frame(height: 1)
+                            .frame(maxWidth: .infinity)
+                    }
+                    VStack(spacing: 5) {
+                        Circle()
+                            .fill(ep.isToday ? Theme.accent
+                                  : ep.heard ? Theme.ink.opacity(0.75)
+                                  : Color.clear)
+                            .overlay(Circle().strokeBorder(
+                                ep.isToday ? Theme.accent : Theme.inkSoft.opacity(0.5),
+                                lineWidth: 1.2))
+                            .frame(width: ep.isToday ? 13 : 9,
+                                   height: ep.isToday ? 13 : 9)
+                        Text("\(ep.episode)")
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundStyle(ep.isToday ? Theme.accent : Theme.inkSoft)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+
+            if !season.movementNow.isEmpty {
+                Text(season.movementNow.uppercased())
+                    .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                    .tracking(1.6)
+                    .foregroundStyle(Theme.accent)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 16, radius: 20)
+    }
+}
+
+/// The middle loop: the episodes of the previous days — the path that led
+/// to today.
+struct TrailCard: View {
+    let trail: [HomeContext.TrailItem]
+
+    private func when(_ item: HomeContext.TrailItem) -> String {
+        guard let d = item.daysAgo else { return item.pickedDate }
+        switch d {
+        case 0:  return "today"
+        case 1:  return "yesterday"
+        default: return "\(d) days ago"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("THE TRAIL · PREVIOUS DAYS")
+                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                .tracking(2.0)
+                .foregroundStyle(Theme.inkSoft)
+            ForEach(trail) { item in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(item.label)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(Theme.inkSoft)
+                        Text(item.title)
+                            .font(.system(size: 14, design: .serif).weight(.medium))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(when(item))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    if !item.claim.isEmpty {
+                        Text(item.claim)
+                            .font(.system(size: 12, design: .serif))
+                            .italic()
+                            .foregroundStyle(Theme.ink.opacity(0.6))
+                            .lineLimit(2)
+                    }
+                    if item.id != trail.last?.id {
+                        Theme.stroke.frame(height: 0.7).padding(.top, 5)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 16, radius: 20)
+    }
+}
+
+/// The innermost loop: the episode in his ears today — the thought the
+/// whole day leans against. One tap to play.
+struct TodayEpisodeCard: View {
+    @Environment(AppStore.self) private var store
+    let today: HomeContext.Today
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(today.isToday ? "TODAY · IN YOUR EARS"
+                     : "STILL OPEN · PICKED \(today.pickedDate)")
+                    .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                    .tracking(2.0)
+                    .foregroundStyle(Theme.accent)
+                Spacer()
+                Text(today.label)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            Text(today.title)
+                .font(.system(.title2, design: .serif, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            if !today.focus.isEmpty {
+                Text(today.focus)
+                    .font(.system(.subheadline, design: .serif))
+                    .italic()
+                    .foregroundStyle(Theme.ink.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let track = store.track(forLabel: today.label) {
+                Button {
+                    store.playFromHome(track)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(Theme.accent)
+                        Text(store.nowPlaying?.id == track.id ? "PLAYING" : "LISTEN")
+                            .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                            .tracking(1.6)
+                            .underline()
+                            .foregroundStyle(Theme.accent)
+                        Text(track.duration.asClock)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 16, radius: 22)
+    }
+}
+
+/// The knowledge she is surfacing from today's episode — thinkers, the
+/// quote, the ideas — each with a feedback affordance so what lands
+/// reshapes what she surfaces next.
+struct KnowledgeCardsSection: View {
+    let cards: [HomeContext.Card]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("TO CARRY TODAY")
+                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                .tracking(2.0)
+                .foregroundStyle(Theme.inkSoft)
+                .padding(.leading, 2)
+            ForEach(cards) { card in
+                KnowledgeCardView(card: card)
+            }
+        }
+    }
+}
+
+struct KnowledgeCardView: View {
+    @Environment(AppStore.self) private var store
+    let card: HomeContext.Card
+    @State private var whyDraft = ""
+    @State private var whyOpen = false
+    @State private var whySent = false
+    @FocusState private var whyFocused: Bool
+
+    private var kicker: String {
+        let base: String
+        switch card.kind {
+        case "thinker": base = "A MIND IN YOUR EARS"
+        case "quote":   base = "FROM THE EPISODE"
+        default:        base = "AN IDEA TO CARRY"
+        }
+        return card.badge.isEmpty ? base
+            : base + " · " + card.badge.uppercased()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(kicker)
+                    .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                    .tracking(1.8)
+                    .foregroundStyle(card.badge.isEmpty ? Theme.inkSoft : Theme.accent)
+                Spacer()
+                Text(card.source)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(Theme.inkSoft.opacity(0.7))
+            }
+
+            if card.kind == "thinker" {
+                Button {
+                    store.pendingThinker = card.thinker
+                    store.selectedSection = .knowledge
+                } label: {
+                    HStack(spacing: 12) {
+                        WikiPortrait(name: card.thinker, size: 54)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(card.title)
+                                .font(.system(.headline, design: .serif))
+                                .foregroundStyle(Theme.ink)
+                            if !card.tagline.isEmpty {
+                                Text(card.tagline)
+                                    .font(.system(size: 12, design: .serif))
+                                    .italic()
+                                    .foregroundStyle(Theme.ink.opacity(0.65))
+                                    .lineLimit(2)
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.inkSoft.opacity(0.7))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else if card.kind == "quote" {
+                Text("“" + card.body + "”")
+                    .font(.system(size: 16, design: .serif))
+                    .italic()
+                    .lineSpacing(4)
+                    .foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(card.title)
+                    .font(.system(.headline, design: .serif))
+                    .foregroundStyle(Theme.ink)
+            }
+
+            if card.kind != "quote", !card.body.isEmpty {
+                Text(card.body)
+                    .font(.system(.footnote, design: .serif))
+                    .foregroundStyle(Theme.ink.opacity(0.8))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            feedbackRow
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 14, radius: 20)
+    }
+
+    /// relevant · great · not today — and, once judged, "why?" so Hector
+    /// can tell her what made it land. The why re-posts the same verdict
+    /// carrying the note.
+    @ViewBuilder private var feedbackRow: some View {
+        Theme.stroke.frame(height: 0.7)
+        if let verdict = store.cardVerdicts[card.id] {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    Text("NOTED · \(verdict == "skip" ? "NOT TODAY" : verdict.uppercased())")
+                        .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                        .tracking(1.6)
+                        .foregroundStyle(Theme.mint)
+                    if !whySent, verdict != "skip" {
+                        Button {
+                            withAnimation { whyOpen.toggle() }
+                            whyFocused = whyOpen
+                        } label: {
+                            Text("TELL HER WHY →")
+                                .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                                .tracking(1.6)
+                                .underline()
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if whySent {
+                        Text("· SHE HAS YOUR WHY")
+                            .font(.system(size: 9, design: .monospaced))
+                            .tracking(1.2)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    Spacer()
+                }
+                if whyOpen, !whySent {
+                    HStack(spacing: 8) {
+                        TextField("why it lands…", text: $whyDraft, axis: .vertical)
+                            .lineLimit(1...3)
+                            .focused($whyFocused)
+                            .font(.footnote)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.30), in: Capsule())
+                        Button {
+                            let note = whyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !note.isEmpty else { return }
+                            store.giveCardFeedback(card, verdict: verdict, note: note)
+                            withAnimation { whySent = true; whyOpen = false }
+                        } label: {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 26, height: 26)
+                                .background(Theme.ink, in: Circle())
+                        }
+                        .disabled(whyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+            }
+        } else {
+            HStack(spacing: 16) {
+                verdictButton("RELEVANT", verdict: "relevant", color: Theme.accent)
+                verdictButton("GREAT", verdict: "great", color: Theme.accent)
+                Spacer()
+                verdictButton("NOT TODAY", verdict: "skip",
+                              color: Theme.inkSoft.opacity(0.8))
+            }
+        }
+    }
+
+    private func verdictButton(_ label: String, verdict: String,
+                               color: Color) -> some View {
+        Button {
+            withAnimation { store.giveCardFeedback(card, verdict: verdict) }
+        } label: {
+            Text(label)
+                .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                .tracking(1.6)
+                .underline()
+                .foregroundStyle(color)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Behind the "Us" title: what Alicia thinks we're talking about today —
+/// with THE ARC (the full timeline) one segment away.
+struct UsSheet: View {
+    @State private var segment = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $segment) {
+                Text("TODAY").tag(0)
+                Text("THE ARC").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+            if segment == 0 {
+                TodayContextSheet()
+            } else {
+                TimelineSheet()
+            }
+        }
+        .presentationBackground(Theme.paper)
+    }
+}
+
+/// The context of today, readable: the sentence, the episode, the season
+/// around it, the trail behind it, and what she's surfacing.
+struct TodayContextSheet: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                Text("WHAT WE'RE TALKING ABOUT TODAY")
+                    .font(.system(size: 11, design: .monospaced).weight(.bold))
+                    .tracking(3.0)
+                    .foregroundStyle(Theme.inkSoft)
+                    .padding(.top, 22)
+
+                if let home = store.homeContext {
+                    if !home.contextLine.isEmpty {
+                        Text(home.contextLine)
+                            .font(.system(.title3, design: .serif, weight: .semibold))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(Theme.ink)
+                    }
+                    Theme.stroke.frame(width: 60, height: 1)
+
+                    if let today = home.today, !today.about.isEmpty {
+                        Text(today.about)
+                            .font(.system(size: 15, design: .serif))
+                            .lineSpacing(6)
+                            .foregroundStyle(Theme.ink.opacity(0.9))
+                    }
+
+                    if let season = home.season {
+                        contextKicker("THE SEASON AROUND IT")
+                        VStack(spacing: 6) {
+                            Text("Season \(season.season) — \(season.title)")
+                                .font(.system(.headline, design: .serif))
+                            if !season.movementNow.isEmpty {
+                                Text(season.movementNow)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .tracking(1.4)
+                                    .foregroundStyle(Theme.accent)
+                            }
+                            if !season.premise.isEmpty {
+                                Text(season.premise)
+                                    .font(.system(size: 13, design: .serif))
+                                    .italic()
+                                    .lineSpacing(4)
+                                    .foregroundStyle(Theme.ink.opacity(0.7))
+                            }
+                        }
+                        .multilineTextAlignment(.center)
+                    }
+
+                    if !home.trail.isEmpty {
+                        contextKicker("THE TRAIL HERE")
+                        VStack(spacing: 4) {
+                            ForEach(home.trail) { item in
+                                Text("\(item.label) · \(item.title)")
+                                    .font(.system(size: 13, design: .serif))
+                                    .foregroundStyle(Theme.ink.opacity(0.8))
+                            }
+                        }
+                    }
+
+                    if !home.cards.isEmpty {
+                        contextKicker("SHE IS SURFACING")
+                        VStack(spacing: 4) {
+                            ForEach(home.cards) { card in
+                                Text(card.kind == "quote" ? "the quote" : card.title)
+                                    .font(.system(size: 13, design: .serif))
+                                    .italic()
+                                    .foregroundStyle(Theme.ink.opacity(0.8))
+                            }
+                        }
+                    }
+                } else {
+                    ProgressView("Reading the day…")
+                        .padding(.vertical, 40)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(24)
+            .padding(.bottom, 40)
+        }
+    }
+
+    private func contextKicker(_ label: String) -> some View {
+        Text(label)
+            .font(.system(size: 10, design: .monospaced).weight(.semibold))
+            .tracking(2.0)
+            .foregroundStyle(Theme.accent)
+            .padding(.top, 10)
     }
 }
 
