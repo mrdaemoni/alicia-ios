@@ -15,6 +15,9 @@ struct ContourWaves: View {
     /// ripples — rings spreading from drifting centers (squash < 1 turns
     /// them into sonar ellipses, a sound-wave feel).
     enum Pattern {
+        /// Stacked horizontal lines that swell and hush like a waveform —
+        /// the sound of the studio, not the sea (v26).
+        case soundwave
         case contour
         case ripple(squash: Double)
     }
@@ -44,11 +47,12 @@ struct ContourWaves: View {
                    seedOffset: 9 + mood, crossBoost: 0.8,
                    pattern: .ripple(squash: 1.0))
         }
-        /// Studio — sonar: fast ripples squashed into sound-wave ellipses.
+        /// Studio — waves of music: stacked waveforms that swell and hush
+        /// (v26; the sonar ripples read as water, not sound).
         static func studio(mood: Int = 0) -> Config {
-            Config(speed: 1.2, levels: 5, alphaScale: 0.9,
+            Config(speed: 1.0, levels: 5, alphaScale: 0.9,
                    seedOffset: 13 + mood, crossBoost: 3.2,
-                   pattern: .ripple(squash: 0.42))
+                   pattern: .soundwave)
         }
 
         /// The day breathes through every field: brisk mornings, still
@@ -149,6 +153,45 @@ struct ContourWaves: View {
                     let t = timeline.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: 86_400)
                         * config.speed * Config.timeOfDayFactor * season.speed
+
+                    // Soundwaves: stacked horizontal waveforms — each line a
+                    // track of music breathing, envelopes swelling along x
+                    // and drifting with time.
+                    if case .soundwave = config.pattern {
+                        let rowSpacing = 42.0
+                        var rowY = rowSpacing * 0.7
+                        var idx = 0
+                        while rowY < size.height + rowSpacing {
+                            var path = Path()
+                            let base = Double(idx) * 1.73 + Double(seed % 17)
+                            let amp = 7 + 13 * abs(sin(base * 1.31 + t * 0.18))
+                            var x = -6.0
+                            var first = true
+                            while x <= size.width + 6 {
+                                // Envelope pulses along the line like phrases
+                                // in a piece; two harmonics carry the detail.
+                                let env = 0.25 + 0.75
+                                    * pow(sin(x * 0.0042 + base + t * 0.3), 2)
+                                let y = rowY
+                                    + sin(x * 0.055 + t * 1.5 + base) * 2.8 * env
+                                    + sin(x * 0.016 + t * 0.65 + base * 2.1)
+                                        * amp * env * 0.6
+                                if first { path.move(to: CGPoint(x: x, y: y)); first = false }
+                                else { path.addLine(to: CGPoint(x: x, y: y)) }
+                                x += 5
+                            }
+                            let alpha = (0.09 + 0.10
+                                * abs(sin(base * 0.9 + t * 0.24)))
+                                * config.alphaScale * Config.inkFactor
+                            context.stroke(
+                                path,
+                                with: .color(Theme.ink.opacity(min(0.5, alpha))),
+                                lineWidth: 0.9)
+                            rowY += rowSpacing
+                            idx += 1
+                        }
+                        return
+                    }
 
                     // Ripples: rings spreading from four drifting centers.
                     if case .ripple(let squash) = config.pattern {
@@ -397,6 +440,6 @@ extension AppStore {
 /// at a glance whether his phone runs the latest build. BUMP THIS on every
 /// app change that ships (see CLAUDE.md).
 enum AppVersion {
-    static let tag = "v25"
+    static let tag = "v26"
     static let date = "Jul 7"
 }

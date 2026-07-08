@@ -16,9 +16,7 @@ struct MindView: View {
                                     .resizable().scaledToFit()
                                     .frame(width: 26, height: 26)
                                     .foregroundStyle(Theme.ink)
-                                Text("Alicia")
-                                    .font(.system(size: 30, weight: .semibold, design: .serif))
-                                    .foregroundStyle(Theme.ink)
+                                InkTitleLine(text: "Alicia", size: 30)
                             }
                             Text("HER INNER WEATHER · \(AppVersion.tag)")
                                 .font(.system(size: 10, design: .monospaced))

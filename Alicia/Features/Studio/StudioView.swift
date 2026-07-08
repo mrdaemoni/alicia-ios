@@ -165,9 +165,8 @@ struct EpisodeDetailView: View {
                                 .font(.system(size: 10, design: .monospaced).weight(.semibold))
                                 .tracking(1.6)
                                 .foregroundStyle(Theme.inkSoft)
-                            Text(track.title)
-                                .font(.system(size: 22, weight: .semibold, design: .serif))
-                                .foregroundStyle(Theme.ink)
+                            // The episode's name in her hand (v26).
+                            InkTitle(text: track.title, size: 21)
                         }
                         Spacer()
                         Button { store.togglePlay() } label: {
@@ -209,12 +208,15 @@ struct EpisodeDetailView: View {
             .padding(.bottom, 92)
         }
         .sectionBackground()
-        .navigationTitle(track.label ?? "Episode")
         .navigationBarTitleDisplayMode(.inline)
-        // v22: her chevron, not the system back glyph.
+        // v22: her chevron, not the system back glyph; v26: the episode
+        // number at the top in her hand, not the system title font.
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { InkBackButton() }
+            ToolbarItem(placement: .principal) {
+                InkTitleLine(text: track.label ?? "Episode", size: 16)
+            }
         }
         .task {
             store.play(track)   // no-ops if this episode is already playing
@@ -259,9 +261,9 @@ struct TrackRow: View {
                 }
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(track.title)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(isCurrent ? Theme.accentSoft : .primary)
+                // Row titles in her hand too (v26) — gentle at this size.
+                InkTitle(text: track.title, size: 15, weight: .semibold,
+                         color: isCurrent ? Theme.accentSoft : Theme.ink)
                 Text(track.mood)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)

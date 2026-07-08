@@ -32,6 +32,14 @@ extension String {
     var inkSeed: Int {
         unicodeScalars.reduce(5381) { ($0 << 5) &+ $0 &+ Int($1.value) }
     }
+
+    /// Stable kebab id fragment ("Robert M. Pirsig" → "robert-m-pirsig").
+    var inkSlug: String {
+        lowercased()
+            .map { $0.isLetter || $0.isNumber ? String($0) : "-" }
+            .joined()
+            .split(separator: "-").joined(separator: "-")
+    }
 }
 
 // MARK: - Stroke helpers
@@ -498,6 +506,146 @@ struct InkBackButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Pin mark (v26): a resting dot that blooms into her asterisk
+
+/// Unpinned: a small hand-pressed dot. Pinned: a starburst asterisk —
+/// five strokes through a center, the mark she'd leave next to something
+/// she means to come back to.
+struct InkPinMark: View {
+    var pinned: Bool
+    var size: CGFloat = 22
+    var seed: Int = 83
+
+    var body: some View {
+        Canvas { ctx, s in
+            var rand = InkRand(seed &+ (pinned ? 5 : 0))
+            let c = CGPoint(x: s.width / 2, y: s.height / 2)
+            if pinned {
+                let r = s.width * 0.38
+                for k in 0..<5 {
+                    let a = rand.range(0, 0.25) + Double(k) * .pi / 5
+                    let r0 = r * CGFloat(rand.range(0.75, 1.0))
+                    let r1 = r * CGFloat(rand.range(0.75, 1.0))
+                    let p0 = CGPoint(x: c.x - CGFloat(cos(a)) * r0,
+                                     y: c.y - CGFloat(sin(a)) * r0)
+                    let p1 = CGPoint(x: c.x + CGFloat(cos(a)) * r1,
+                                     y: c.y + CGFloat(sin(a)) * r1)
+                    let stroke = InkPen.stroke(from: p0, to: p1, rand: &rand,
+                                               overshoot: 0.8, bow: 0.6,
+                                               wobble: 0.35, segments: 5)
+                    ctx.stroke(stroke, with: .color(Theme.accent),
+                               style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
+                }
+                // The press at the center where the strokes meet.
+                let dot = InkPen.ring(center: c, radius: 1.3, rand: &rand,
+                                      breathe: 0.4, segments: 10)
+                ctx.fill(dot, with: .color(Theme.accent))
+            } else {
+                // A dot waiting to become a star — pressed, slightly uneven.
+                let dot = InkPen.ring(center: c,
+                                      radius: s.width * 0.11,
+                                      rand: &rand, breathe: 0.5, segments: 14)
+                ctx.fill(dot, with: .color(Theme.inkSoft.opacity(0.55)))
+            }
+        }
+        .frame(width: size, height: size)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Her hand-set display type (v26)
+
+/// One line of display type as if she set it by hand: each glyph leans and
+/// sits a hair off its baseline, deterministically per character — serif
+/// italic, unevenly pressed. For the big words: section titles, greetings,
+/// episode plates.
+struct InkTitleLine: View {
+    let text: String
+    var size: CGFloat = 30
+    var weight: Font.Weight = .semibold
+    var color: Color = Theme.ink
+
+    private func jitter(_ i: Int) -> (rot: Double, dy: CGFloat) {
+        var rand = InkRand(text.inkSeed &+ i &* 31)
+        return (rand.range(-2.3, 2.3), CGFloat(rand.range(-0.05, 0.05)) * size)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(text.enumerated()), id: \.offset) { i, ch in
+                let j = jitter(i)
+                Text(String(ch))
+                    .font(.system(size: size, weight: weight, design: .serif))
+                    .italic()
+                    .foregroundStyle(color)
+                    .rotationEffect(.degrees(j.rot))
+                    .offset(y: j.dy)
+            }
+        }
+        .fixedSize()
+    }
+}
+
+/// Multi-word, wrapping variant — the big greeting at the top of Us.
+struct InkTitle: View {
+    let text: String
+    var size: CGFloat = 34
+    var weight: Font.Weight = .semibold
+    var color: Color = Theme.ink
+
+    var body: some View {
+        FlexWrap(spacing: size * 0.3) {
+            ForEach(Array(text.split(separator: " ").enumerated()),
+                    id: \.offset) { _, word in
+                InkTitleLine(text: String(word), size: size,
+                             weight: weight, color: color)
+            }
+        }
+    }
+}
+
+// MARK: - The spine of the arc (v26): a line that wanders and curls
+
+/// One vertical segment of the timeline's spine — trembling, and once in a
+/// while looping into a small curl, the way a pen wanders when the hand is
+/// thinking. Deterministic per seed.
+struct InkSpineSegment: View {
+    var seed: Int
+
+    var body: some View {
+        Canvas { ctx, s in
+            var rand = InkRand(seed)
+            let cx = s.width / 2
+            let hasCurl = rand.next() < 0.3
+            let curlY = s.height * CGFloat(rand.range(0.3, 0.7))
+            let curlSide: CGFloat = rand.next() < 0.5 ? -1 : 1
+            var path = Path()
+            path.move(to: CGPoint(x: cx + CGFloat(rand.range(-0.8, 0.8)), y: 0))
+            let steps = max(6, Int(s.height / 7))
+            let phase = rand.range(0, .pi * 2)
+            for i in 1...steps {
+                let t = CGFloat(i) / CGFloat(steps)
+                let y = s.height * t
+                let x = cx + CGFloat(sin(Double(t) * 5 + phase)) * 1.2
+                    + CGFloat(rand.range(-0.5, 0.5))
+                path.addLine(to: CGPoint(x: x, y: y))
+            }
+            ctx.stroke(path, with: .color(Theme.ink.opacity(0.22)),
+                       style: StrokeStyle(lineWidth: 1.0, lineCap: .round))
+            if hasCurl {
+                // The curl: a loop pulled off the line and back.
+                let curl = InkPen.ring(
+                    center: CGPoint(x: cx + curlSide * 3.4, y: curlY),
+                    radius: CGFloat(rand.range(2.6, 4.2)),
+                    rand: &rand, sweep: 2 * .pi * 0.92, breathe: 0.6,
+                    segments: 22)
+                ctx.stroke(curl, with: .color(Theme.ink.opacity(0.20)),
+                           style: StrokeStyle(lineWidth: 0.9, lineCap: .round))
+            }
+        }
     }
 }
 

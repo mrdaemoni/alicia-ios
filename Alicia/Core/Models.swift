@@ -159,6 +159,8 @@ struct HomeContext {
     var trail: [TrailItem]
     var today: Today?
     var cards: [Card]
+    /// What Hector is holding — pinned cards/thinkers, newest first (v26).
+    var pinned: [Card] = []
     /// One sentence: what Alicia thinks we're talking about today.
     var contextLine: String
 }

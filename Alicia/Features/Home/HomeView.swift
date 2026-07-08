@@ -55,6 +55,20 @@ struct HomeView: View {
                              body: word.text)
                     }
 
+                    // ── What he's holding — pinned until he lets go ──
+                    if let held = store.homeContext?.pinned, !held.isEmpty {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("HELD · STILL TALKING ABOUT")
+                                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                                .tracking(2.0)
+                                .foregroundStyle(Theme.accent)
+                                .padding(.leading, 2)
+                            ForEach(held) { card in
+                                KnowledgeCardView(card: card)
+                            }
+                        }
+                    }
+
                     // ── The loops — widest to innermost, zooming in ──
                     if let home = store.homeContext {
                         if let season = home.season {
@@ -120,9 +134,9 @@ struct HomeView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(greeting)
-                .font(.system(.largeTitle, design: .serif, weight: .semibold))
-                .foregroundStyle(Theme.ink)
+            // Her greeting in her own hand (v26) — each glyph leans and
+            // settles a hair off the baseline.
+            InkTitle(text: greeting, size: 32)
             if let season = seasonThought {
                 Text(season.body.strippedEmojis)
                     .font(.system(.subheadline, design: .serif))
@@ -970,7 +984,7 @@ struct KnowledgeCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center) {
                 Text(kicker)
                     .font(.system(size: 9, design: .monospaced).weight(.semibold))
                     .tracking(1.8)
@@ -979,6 +993,17 @@ struct KnowledgeCardView: View {
                 Text(card.source)
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(Theme.inkSoft.opacity(0.7))
+                // The dot that becomes her star (v26): hold this card on
+                // the home screen — and tell her the topic matters.
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        store.togglePin(card: card)
+                    }
+                } label: {
+                    InkPinMark(pinned: store.isPinned(card.id),
+                               size: 22, seed: card.id.inkSeed)
+                }
+                .buttonStyle(.plain)
             }
 
             if card.kind == "thinker" {
@@ -1153,6 +1178,104 @@ struct UsSheet: View {
     }
 }
 
+/// The context drawn as an onion (v26): today at the heart, the trail
+/// around it, the season as the outermost skin — three hand-pulled rings,
+/// in to out, the way she actually holds the day.
+struct ContextOnion: View {
+    let home: HomeContext
+
+    var body: some View {
+        GeometryReader { geo in
+            let c = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+            let u = min(geo.size.width, geo.size.height) / 2
+            let rings: [CGFloat] = [u * 0.40, u * 0.68, u * 0.96]
+            ZStack {
+                Canvas { ctx, size in
+                    var rand = InkRand((home.today?.label ?? "onion").inkSeed)
+                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                    for (i, r) in rings.enumerated() {
+                        // Each layer drawn twice — an ink pass and a
+                        // sea-slate afterthought drifting wider.
+                        let ring = InkPen.ring(
+                            center: center, radius: r, rand: &rand,
+                            sweep: 2 * .pi * rand.range(0.88, 0.99),
+                            squashX: CGFloat(rand.range(0.97, 1.03)),
+                            squashY: CGFloat(rand.range(0.96, 1.02)),
+                            breathe: 2.2)
+                        ctx.stroke(ring,
+                                   with: .color(Theme.ink.opacity(0.42 - Double(i) * 0.09)),
+                                   style: StrokeStyle(lineWidth: 1.15, lineCap: .round))
+                        let echo = InkPen.ring(
+                            center: center, radius: r + CGFloat(rand.range(1.5, 4)),
+                            rand: &rand, sweep: 2 * .pi * rand.range(0.25, 0.5),
+                            breathe: 2.6)
+                        ctx.stroke(echo,
+                                   with: .color(Theme.accent.opacity(0.30)),
+                                   style: StrokeStyle(lineWidth: 0.8, lineCap: .round))
+                    }
+                }
+
+                // The heart: today.
+                if let today = home.today {
+                    VStack(spacing: 3) {
+                        Text(today.label)
+                            .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                            .tracking(1.6)
+                            .foregroundStyle(Theme.accent)
+                        Text(today.title)
+                            .font(.system(size: 13, design: .serif))
+                            .italic()
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(3)
+                    }
+                    .frame(width: rings[0] * 1.7)
+                    .position(c)
+                }
+
+                // The middle skin: the trail, scattered around the ring.
+                ForEach(Array(home.trail.prefix(4).enumerated()), id: \.element.id) { i, item in
+                    let angles: [Double] = [-0.42, 0.35, 2.75, 3.55]
+                    let a = angles[i % angles.count]
+                    Text(item.label)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Theme.inkSoft)
+                        .position(x: c.x + CGFloat(cos(a)) * rings[1],
+                                  y: c.y + CGFloat(sin(a)) * rings[1])
+                }
+
+                // The outermost skin: the season, resting on the rim.
+                if let season = home.season {
+                    VStack(spacing: 1) {
+                        Text("SEASON \(season.season)")
+                            .font(.system(size: 8, design: .monospaced).weight(.semibold))
+                            .tracking(1.8)
+                            .foregroundStyle(Theme.inkSoft)
+                        Text(season.title)
+                            .font(.system(size: 11, design: .serif))
+                            .italic()
+                            .foregroundStyle(Theme.ink.opacity(0.75))
+                    }
+                    .position(x: c.x, y: c.y - rings[2] + 2)
+                    .background(alignment: .center) { Color.clear }
+                }
+
+                // Quiet layer names down the right, in to out.
+                ForEach(Array(["today", "the days behind", "the season"].enumerated()),
+                        id: \.offset) { i, name in
+                    Text(name)
+                        .font(.system(size: 8.5, design: .serif))
+                        .italic()
+                        .foregroundStyle(Theme.inkSoft.opacity(0.75))
+                        .position(x: c.x + rings[i] * 0.72,
+                                  y: c.y + rings[i] * 0.72)
+                }
+            }
+        }
+        .frame(height: 330)
+    }
+}
+
 /// The context of today, readable: the sentence, the episode, the season
 /// around it, the trail behind it, and what she's surfacing.
 struct TodayContextSheet: View {
@@ -1168,6 +1291,9 @@ struct TodayContextSheet: View {
                     .padding(.top, 22)
 
                 if let home = store.homeContext {
+                    // The onion: the day's context as layers, in to out.
+                    ContextOnion(home: home)
+
                     if !home.contextLine.isEmpty {
                         Text(home.contextLine)
                             .font(.system(.title3, design: .serif, weight: .semibold))
@@ -1279,29 +1405,43 @@ struct TimelineSheet: View {
 
                 ForEach(store.timeline) { day in
                     HStack(alignment: .top, spacing: 12) {
-                        // The spine: a dot per day, a heavier node on
-                        // milestones.
-                        VStack(spacing: 0) {
-                            Circle()
-                                .fill(day.milestone ? Theme.accent : Theme.inkSoft.opacity(0.5))
-                                .frame(width: day.milestone ? 11 : 5,
-                                       height: day.milestone ? 11 : 5)
-                            Rectangle()
-                                .fill(Theme.stroke)
-                                .frame(width: 1)
+                        // The spine (v26): her emblem where a voice led the
+                        // day, and a line that trembles and sometimes curls
+                        // — a pen wandering, not a ruler.
+                        VStack(spacing: 3) {
+                            if let arch = day.archetype, !arch.isEmpty,
+                               Archetypes.get(arch) != nil {
+                                ArchetypeEmblem(id: arch,
+                                                size: day.milestone ? 21 : 14)
+                            } else {
+                                Circle()
+                                    .fill(day.milestone ? Theme.accent
+                                          : Theme.inkSoft.opacity(0.5))
+                                    .frame(width: day.milestone ? 11 : 5,
+                                           height: day.milestone ? 11 : 5)
+                            }
+                            InkSpineSegment(seed: day.date.inkSeed)
+                                .frame(width: 14)
+                                .frame(maxHeight: .infinity)
                         }
-                        .frame(width: 14)
+                        .frame(width: 22)
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(day.date)
                                 .font(.system(size: 9, design: .monospaced))
                                 .tracking(1.2)
                                 .foregroundStyle(Theme.inkSoft)
-                            Text(day.headline.strippedLeadingEmoji)
+                            Text(day.headline.strippedEmojis)
                                 .font(.system(size: day.milestone ? 20 : 14,
                                               weight: day.milestone ? .semibold : .regular,
                                               design: .serif))
                                 .foregroundStyle(Theme.ink)
+                            if day.milestone {
+                                // Her line under the days that moved.
+                                InkUnderline(color: Theme.accent.opacity(0.55),
+                                             seed: day.date.inkSeed)
+                                    .frame(width: 96, height: 5)
+                            }
                             // v22: every day tells you what it was — what
                             // she learned about you, and the idea that was
                             // circulating — not just who was speaking.

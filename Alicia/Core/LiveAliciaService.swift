@@ -321,10 +321,14 @@ struct LiveAliciaService: AliciaService {
             var id, kind, title, body, thinker, tagline, source, badge: String?
             var themes: [String]?
         }
+        struct PinnedDTO: Decodable {
+            var id, kind, title, body, thinker, source: String?
+        }
         var season: SeasonDTO?
         var trail: [TrailDTO]?
         var today: TodayDTO?
         var cards: [CardDTO]?
+        var pinned: [PinnedDTO]?
         var context_line: String?
     }
 
@@ -380,8 +384,33 @@ struct LiveAliciaService: AliciaService {
                         tagline: c.tagline ?? "", themes: c.themes ?? [],
                         source: c.source ?? "", badge: c.badge ?? "")
                 },
+                pinned: (d.pinned ?? []).compactMap { p in
+                    guard let id = p.id else { return nil }
+                    return HomeContext.Card(
+                        id: id, kind: p.kind ?? "note", title: p.title ?? "",
+                        body: p.body ?? "", thinker: p.thinker ?? "",
+                        tagline: "", themes: [],
+                        source: p.source ?? "", badge: "held")
+                },
                 contextLine: d.context_line ?? "")
         } catch { return nil }
+    }
+
+    private struct PinDTO: Decodable { var ok: Bool }
+
+    func pin(action: String, id: String, kind: String, title: String,
+             body: String, thinker: String, source: String) async -> Bool {
+        do {
+            let payload: [String: Any] = [
+                "action": action, "id": id, "kind": kind, "title": title,
+                "body": body, "thinker": thinker, "source": source,
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            let (resp, http) = try await URLSession.shared.data(
+                for: request("/api/pin", method: "POST", body: data))
+            guard (http as? HTTPURLResponse)?.statusCode == 200 else { return false }
+            return try JSONDecoder().decode(PinDTO.self, from: resp).ok
+        } catch { return false }
     }
 
     private struct CardFeedbackDTO: Decodable { var ok: Bool }

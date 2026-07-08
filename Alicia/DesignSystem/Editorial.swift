@@ -75,9 +75,9 @@ struct SectionHeader: View {
 
     var body: some View {
         VStack(spacing: 5) {
-            Text(title)
-                .font(.system(size: 30, weight: .semibold, design: .serif))
-                .foregroundStyle(Theme.ink)
+            // The section's name in her hand (v26) — leaning glyphs,
+            // uneven baseline, hand-set.
+            InkTitleLine(text: title, size: 30)
             if !kicker.isEmpty {
                 Text(kicker.uppercased())
                     .font(.system(size: 10, design: .monospaced))

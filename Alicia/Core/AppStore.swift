@@ -213,6 +213,46 @@ final class AppStore {
         tracks.first(where: { $0.label == label })
     }
 
+    // MARK: pins (v26)
+    /// Held items live in homeContext.pinned (backend-persisted); this
+    /// mirrors ids for O(1) mark rendering.
+    var pinnedIDs: Set<String> {
+        Set((homeContext?.pinned ?? []).map(\.id))
+    }
+
+    func isPinned(_ id: String) -> Bool { pinnedIDs.contains(id) }
+
+    /// Toggle a pin — optimistic locally, persisted by the backend, and
+    /// (on pin) recorded as interest in her model of Hector.
+    func togglePin(id: String, kind: String, title: String,
+                   body: String = "", thinker: String = "",
+                   source: String = "") {
+        let pinning = !isPinned(id)
+        let card = HomeContext.Card(
+            id: id, kind: kind, title: title, body: body, thinker: thinker,
+            tagline: "", themes: [], source: source, badge: "held")
+        if homeContext == nil {
+            homeContext = HomeContext(season: nil, trail: [], today: nil,
+                                      cards: [], pinned: [], contextLine: "")
+        }
+        if pinning {
+            homeContext?.pinned.removeAll { $0.id == id }
+            homeContext?.pinned.insert(card, at: 0)
+        } else {
+            homeContext?.pinned.removeAll { $0.id == id }
+        }
+        Task {
+            _ = await service.pin(action: pinning ? "pin" : "unpin",
+                                  id: id, kind: kind, title: title,
+                                  body: body, thinker: thinker, source: source)
+        }
+    }
+
+    func togglePin(card: HomeContext.Card) {
+        togglePin(id: card.id, kind: card.kind, title: card.title,
+                  body: card.body, thinker: card.thinker, source: card.source)
+    }
+
     func loadTimeline() async {
         if timeline.isEmpty {
             timeline = await service.timeline()

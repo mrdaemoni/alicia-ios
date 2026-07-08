@@ -317,6 +317,25 @@ struct ThinkerSheet: View {
                 WikiPortrait(name: shown.name, size: 130)
                     .padding(.top, path.isEmpty ? 12 : 0)
                     .id(shown.name)   // fresh portrait per hop
+                    // v26: hold this thinker on the home screen — the dot
+                    // becomes her star, and she notes the interest.
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                store.togglePin(
+                                    id: "thinker:" + shown.name.inkSlug,
+                                    kind: "thinker", title: shown.name,
+                                    body: shown.tagline,
+                                    thinker: shown.name, source: "thinkers")
+                            }
+                        } label: {
+                            InkPinMark(
+                                pinned: store.isPinned("thinker:" + shown.name.inkSlug),
+                                size: 26, seed: shown.name.inkSeed)
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: 34, y: -6)
+                    }
                 Text(shown.name.uppercased())
                     .font(.system(size: 12, design: .monospaced).weight(.bold))
                     .tracking(2.6)

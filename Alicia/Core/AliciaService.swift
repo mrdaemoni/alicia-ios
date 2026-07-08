@@ -59,6 +59,10 @@ protocol AliciaService {
     /// an optional why note). Feeds her card-ordering loop + daily signal.
     func cardFeedback(cardID: String, kind: String, verdict: String,
                       note: String) async -> Bool
+    /// Pin/unpin something to the home screen. A pin is also an interest
+    /// signal — she records "he's holding this topic" (v26).
+    func pin(action: String, id: String, kind: String, title: String,
+             body: String, thinker: String, source: String) async -> Bool
 }
 
 struct TimelineDay: Decodable, Hashable, Identifiable {
@@ -72,6 +76,8 @@ struct TimelineDay: Decodable, Hashable, Identifiable {
     /// The idea the day circulated (empty when the day had no clear one).
     var thread: String?
     var goal: String?
+    /// The day's dominant voice — her emblem marks the spine (v26).
+    var archetype: String?
     var id: String { date }
 }
 
@@ -177,6 +183,8 @@ struct MockAliciaService: AliciaService {
     func timeline() async -> [TimelineDay] { [] }
     func cardFeedback(cardID: String, kind: String, verdict: String,
                       note: String) async -> Bool { true }
+    func pin(action: String, id: String, kind: String, title: String,
+             body: String, thinker: String, source: String) async -> Bool { true }
 
     func homeContext() async -> HomeContext? {
         HomeContext(
