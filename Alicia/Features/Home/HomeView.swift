@@ -513,30 +513,52 @@ struct FlowChips: View {
     }
 }
 
-/// Minimal wrap layout for the chips.
+/// Minimal wrap layout for chips and hand-set words. v28: optional
+/// trailing alignment (rows hug the right edge) so the editorial
+/// alternating-alignment shelf can carry highlighted words too.
 struct FlexWrap: Layout {
     var spacing: CGFloat = 8
+    var trailing: Bool = false
+
+    /// Group subview indices into rows for the given width.
+    private func rows(_ subviews: Subviews, width: CGFloat) -> [[Int]] {
+        var out: [[Int]] = [[]]
+        var x: CGFloat = 0
+        for (i, sub) in subviews.enumerated() {
+            let s = sub.sizeThatFits(.unspecified)
+            if x + s.width > width, !out[out.count - 1].isEmpty {
+                out.append([])
+                x = 0
+            }
+            out[out.count - 1].append(i)
+            x += s.width + spacing
+        }
+        return out
+    }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? 320
-        var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0
-        for sub in subviews {
-            let s = sub.sizeThatFits(.unspecified)
-            if x + s.width > width { x = 0; y += rowH + spacing; rowH = 0 }
-            x += s.width + spacing
-            rowH = max(rowH, s.height)
+        var y: CGFloat = 0
+        for row in rows(subviews, width: width) {
+            let h = row.map { subviews[$0].sizeThatFits(.unspecified).height }.max() ?? 0
+            y += h + (y > 0 ? spacing : 0)
         }
-        return CGSize(width: width, height: y + rowH)
+        return CGSize(width: width, height: y)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowH: CGFloat = 0
-        for sub in subviews {
-            let s = sub.sizeThatFits(.unspecified)
-            if x + s.width > bounds.maxX { x = bounds.minX; y += rowH + spacing; rowH = 0 }
-            sub.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
-            x += s.width + spacing
-            rowH = max(rowH, s.height)
+        var y = bounds.minY
+        for row in rows(subviews, width: bounds.width) {
+            let sizes = row.map { subviews[$0].sizeThatFits(.unspecified) }
+            let rowW = sizes.map(\.width).reduce(0, +)
+                + spacing * CGFloat(max(0, row.count - 1))
+            let rowH = sizes.map(\.height).max() ?? 0
+            var x = trailing ? bounds.maxX - rowW : bounds.minX
+            for (k, i) in row.enumerated() {
+                subviews[i].place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+                x += sizes[k].width + spacing
+            }
+            y += rowH + spacing
         }
     }
 }

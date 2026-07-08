@@ -80,8 +80,12 @@ struct StudioView: View {
             .waveBackground(.studio(mood: store.waveMood), tinted: true)
             .toolbar(.hidden, for: .navigationBar)
         }
-        // The player bar is global now (RootView, v27) — it rides above
-        // the word-bar on every tab, so nothing is mounted here.
+        // Inset on the NavigationStack itself — the bar stays put when an
+        // episode detail is pushed. (Global player tried in v27, reverted
+        // in v28: Studio is its home.)
+        .safeAreaInset(edge: .bottom) {
+            if store.nowPlaying != nil { PlayerBar() }
+        }
     }
 
     private var playlistHeader: some View {

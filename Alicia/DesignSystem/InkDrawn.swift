@@ -569,11 +569,15 @@ struct InkTitleLine: View {
     var weight: Font.Weight = .semibold
     var color: Color = Theme.ink
 
+    /// v28: Zapfino — thin calligraphic strokes with real flourish, the
+    /// closest shipping font to the trembling ink of the glyph set.
+    /// (Savoye would have been ideal but lives in CoreUI — private on
+    /// iOS 26; and note the iOS 26 SIMULATOR substitutes ALL custom fonts
+    /// with New York serif — judge script rendering on device or via a
+    /// macOS proof, never in the sim.) Scale 0.82 proofs optically close
+    /// to the serif sizes it replaces; give lines room to swash.
     private var scriptFont: Font {
-        // Snell's x-height runs small — scale up so it holds the same
-        // optical size the serif did.
-        .custom(weight == .regular ? "SnellRoundhand" : "SnellRoundhand-Bold",
-                size: size * 1.22)
+        .custom("Zapfino", size: size * 0.82)
     }
 
     private func jitter(_ i: Int) -> (rot: Double, dy: CGFloat) {
@@ -610,6 +614,76 @@ struct InkTitle: View {
                     id: \.offset) { _, word in
                 InkTitleLine(text: String(word), size: size,
                              weight: weight, color: color)
+            }
+        }
+    }
+}
+
+/// A quick squiggle — the mark you make under a word that keeps coming
+/// back (v28). Wavier and more casual than InkUnderline.
+struct InkSquiggle: View {
+    var color: Color = Theme.accent
+    var seed: Int = 3
+    var lineWidth: CGFloat = 1.2
+
+    var body: some View {
+        Canvas { ctx, s in
+            var rand = InkRand(seed)
+            let mid = s.height * 0.5
+            let waves = rand.range(2.6, 3.8)
+            let amp = s.height * CGFloat(rand.range(0.26, 0.38))
+            let phase = rand.range(0, .pi * 2)
+            var path = Path()
+            let steps = max(10, Int(s.width / 3))
+            for i in 0...steps {
+                let t = CGFloat(i) / CGFloat(steps)
+                let x = t * s.width
+                let y = mid
+                    + CGFloat(sin(Double(t) * .pi * 2 * waves + phase)) * amp
+                    + CGFloat(rand.range(-0.4, 0.4))
+                if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                else { path.addLine(to: CGPoint(x: x, y: y)) }
+            }
+            ctx.stroke(path, with: .color(color),
+                       style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// Wrapping text whose recurring words wear her squiggle (v28) — the
+/// notepad noticing what keeps coming back. `emphasize` holds lowercase
+/// stems; crude plural folding included.
+struct InkHighlightedText: View {
+    let text: String
+    let emphasize: Set<String>
+    var size: CGFloat = 15
+    var weight: Font.Weight = .semibold
+    var color: Color = Theme.ink
+    var trailing: Bool = false
+
+    private func isHot(_ word: String) -> Bool {
+        let clean = word.lowercased()
+            .trimmingCharacters(in: .punctuationCharacters)
+        guard clean.count > 3 else { return false }
+        return emphasize.contains(clean)
+            || emphasize.contains(String(clean.dropLast()))
+    }
+
+    var body: some View {
+        FlexWrap(spacing: size * 0.3, trailing: trailing) {
+            ForEach(Array(text.split(separator: " ").enumerated()),
+                    id: \.offset) { _, raw in
+                let word = String(raw)
+                VStack(spacing: 1) {
+                    Text(word)
+                        .font(.system(size: size, weight: weight, design: .serif))
+                        .foregroundStyle(color)
+                    if isHot(word) {
+                        InkSquiggle(seed: word.inkSeed)
+                            .frame(height: 5)
+                    }
+                }
             }
         }
     }

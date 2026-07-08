@@ -26,8 +26,12 @@ struct EditorialTabBar: View {
     }
 
     private var bar: some View {
+        // v28: equal GAPS between natural-width words (equal columns made
+        // the space after DIALOGUE huge and STUDIO·KNOWLEDGE cramped —
+        // words this different in length need optical spacing).
         HStack(spacing: 0) {
-            ForEach(AppSection.allCases) { section in
+            ForEach(Array(AppSection.allCases.enumerated()), id: \.element.id) { i, section in
+                if i > 0 { Spacer(minLength: 8) }
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         store.selectedSection = section
@@ -39,7 +43,7 @@ struct EditorialTabBar: View {
                                 .weight(store.selectedSection == section ? .bold : .regular))
                             .tracking(0.8)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.75)
+                            .fixedSize()
                             .foregroundStyle(store.selectedSection == section
                                              ? Theme.paper : Theme.paper.opacity(0.55))
                         // Her mark under the chosen word — a hand-pulled
@@ -50,7 +54,6 @@ struct EditorialTabBar: View {
                             .frame(width: 34, height: 5)
                             .opacity(store.selectedSection == section ? 1 : 0)
                     }
-                    .frame(maxWidth: .infinity)
                     .padding(.top, 15)
                     .padding(.bottom, 11)
                     .contentShape(Rectangle())
@@ -58,7 +61,7 @@ struct EditorialTabBar: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 18)
         // The bar owns the true bottom edge now (RootView ignores the
         // bottom safe area) — pad the label row clear of the home
         // indicator and fill the whole band with ink.

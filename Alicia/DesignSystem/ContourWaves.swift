@@ -44,11 +44,11 @@ struct ContourWaves: View {
             Config(speed: 0.45, levels: 4, alphaScale: 0.6,
                    seedOffset: 5 + mood, crossBoost: 0.5)
         }
-        /// Alicia — thought radiating outward: slow round ripples.
+        /// Alicia — her page, quieter than his (v28: the dense ripples
+        /// were too busy; a sparse sister of the Us contour field).
         static func mind(mood: Int = 0) -> Config {
-            Config(speed: 0.35, levels: 13, alphaScale: 1.0,
-                   seedOffset: 9 + mood, crossBoost: 0.8,
-                   pattern: .ripple(squash: 1.0))
+            Config(speed: 0.5, levels: 5, alphaScale: 0.65,
+                   seedOffset: 9 + mood, crossBoost: 0.9)
         }
         /// Studio — waves of music: stacked waveforms that swell and hush
         /// (v26; the sonar ripples read as water, not sound).
@@ -504,6 +504,6 @@ extension AppStore {
 /// at a glance whether his phone runs the latest build. BUMP THIS on every
 /// app change that ships (see CLAUDE.md).
 enum AppVersion {
-    static let tag = "v27"
+    static let tag = "v28"
     static let date = "Jul 7"
 }

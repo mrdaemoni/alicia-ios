@@ -122,8 +122,8 @@ struct AliciaWidgetView: View {
     }
 
     private var script: Font {
-        .custom("SnellRoundhand-Bold",
-                size: family == .systemLarge ? 23 : 19)
+        // Zapfino — the same scribbling pen the app writes with (v28).
+        .custom("Zapfino", size: family == .systemLarge ? 16 : 14)
     }
 
     @ViewBuilder
@@ -134,10 +134,10 @@ struct AliciaWidgetView: View {
                 kickerRow
                 Spacer(minLength: 0)
                 Text(entry.greeting)
-                    .font(.custom("SnellRoundhand-Bold", size: 17))
+                    .font(.custom("Zapfino", size: 12))
                     .foregroundStyle(hour.ink)
                     .minimumScaleFactor(0.65)
-                    .lineLimit(5)
+                    .lineLimit(3)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

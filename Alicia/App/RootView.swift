@@ -46,13 +46,9 @@ struct RootView: View {
                         .toolbar(.hidden, for: .tabBar)
                 }
             }
-            // v27: the player travels with him — pause/scrub from any tab,
-            // not just Studio. Hard sibling above the word-bar (the same
-            // no-safeAreaInset doctrine as the bar itself); steps aside
-            // when the Dialogue composer owns the bottom edge.
-            if store.nowPlaying != nil, !store.composerFocused {
-                PlayerBar()
-            }
+            // v28: the global player was more clutter than comfort
+            // (Hector: "then I have to close it") — it lives in Studio
+            // again, and the lock screen / Dynamic Island covers the rest.
             EditorialTabBar()
         }
         .ignoresSafeArea(edges: .bottom)

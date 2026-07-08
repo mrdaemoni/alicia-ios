@@ -14,6 +14,33 @@ struct KnowledgeView: View {
         return all.filter { $0.themes.contains(themeFilter) }
     }
 
+    /// The words Hector keeps circling (v28): counted across the fresh
+    /// shelf, the recurring substantial words — value, quality, willingness
+    /// — get her squiggle wherever they appear in the titles.
+    private var hotWords: Set<String> {
+        let stop: Set<String> = [
+            "the", "and", "that", "with", "this", "from", "into", "what",
+            "when", "which", "must", "because", "only", "every", "their",
+            "there", "about", "itself", "between", "becomes", "being",
+            "most", "then", "than", "them", "does", "doing", "makes",
+            "cannot", "where", "under", "after", "before", "against",
+        ]
+        var counts: [String: Int] = [:]
+        for syn in store.syntheses {
+            let words = (syn.title + " " + syn.excerpt).lowercased()
+                .split(whereSeparator: { !$0.isLetter })
+            for raw in words {
+                let w = String(raw)
+                guard w.count >= 5, !stop.contains(w) else { continue }
+                counts[w, default: 0] += 1
+            }
+        }
+        return Set(counts.filter { $0.value >= 3 }
+            .sorted { $0.value > $1.value }
+            .prefix(8)
+            .map(\.key))
+    }
+
     var body: some View {
         @Bindable var store = store
         NavigationStack {
@@ -75,8 +102,9 @@ struct KnowledgeView: View {
                 .font(.system(size: 10, design: .monospaced).weight(.semibold))
                 .tracking(2.0)
                 .foregroundStyle(Theme.inkSoft)
+            let hot = hotWords
             ForEach(Array(store.syntheses.enumerated()), id: \.element.title) { i, syn in
-                SynthesisRow(syn: syn, rank: i) { reading = syn }
+                SynthesisRow(syn: syn, rank: i, hot: hot) { reading = syn }
             }
         } else {
             ProgressView("Reaching the shelf…")
@@ -124,9 +152,11 @@ struct KnowledgeView: View {
 }
 
 /// One synthesis on the shelf — editorial row, alternating alignment.
+/// v28: the words he keeps repeating wear her squiggle.
 struct SynthesisRow: View {
     let syn: FeaturedSynthesis
     let rank: Int
+    var hot: Set<String> = []
     let open: () -> Void
 
     var body: some View {
@@ -137,11 +167,11 @@ struct SynthesisRow: View {
                     .font(.system(size: 9, design: .monospaced))
                     .tracking(1.4)
                     .foregroundStyle(Theme.inkSoft)
-                Text(syn.title)
-                    .font(.system(size: rank == 0 ? 20 : 15,
-                                  weight: .semibold, design: .serif))
-                    .foregroundStyle(Theme.ink)
-                    .multilineTextAlignment(rank.isMultiple(of: 2) ? .leading : .trailing)
+                InkHighlightedText(text: syn.title.strippedEmojis,
+                                   emphasize: hot,
+                                   size: rank == 0 ? 20 : 15,
+                                   weight: .semibold,
+                                   trailing: !rank.isMultiple(of: 2))
                 Theme.stroke.frame(height: 0.7)
             }
             .frame(maxWidth: .infinity,
