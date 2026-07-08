@@ -111,6 +111,9 @@ struct Thinker: Decodable, Hashable, Identifiable {
     /// Traversal edges: the thinkers most connected to this one (absent in
     /// older payloads, hence optional).
     var related: [RelatedThinker]? = nil
+    /// Corrected Wikipedia slug (v29 portrait audit) — names that hit
+    /// disambiguation pages or carry vault typos resolve through this.
+    var wiki: String? = nil
     var id: String { name }
 }
 

@@ -33,6 +33,13 @@ extension String {
         unicodeScalars.reduce(5381) { ($0 << 5) &+ $0 &+ Int($1.value) }
     }
 
+    /// Case- and diacritic-blind comparison key ("Sönke" == "Sonke").
+    var inkFolded: String {
+        folding(options: [.diacriticInsensitive, .caseInsensitive],
+                locale: .init(identifier: "en_US"))
+            .trimmingCharacters(in: .whitespaces)
+    }
+
     /// Stable kebab id fragment ("Robert M. Pirsig" → "robert-m-pirsig").
     var inkSlug: String {
         lowercased()
@@ -843,6 +850,46 @@ struct InkSpineSegment: View {
                            style: StrokeStyle(lineWidth: 0.9, lineCap: .round))
             }
         }
+    }
+}
+
+// MARK: - Share glyph (v29): the thought leaving the page
+
+/// A small open ring with an arrow flying out of it — hand-drawn share.
+struct InkShareGlyph: View {
+    var size: CGFloat = 18
+    var color: Color = Theme.inkSoft
+    var seed: Int = 101
+
+    var body: some View {
+        Canvas { ctx, s in
+            var rand = InkRand(seed)
+            let c = CGPoint(x: s.width * 0.42, y: s.height * 0.58)
+            let ring = InkPen.ring(center: c, radius: s.width * 0.3,
+                                   rand: &rand, sweep: 2 * .pi * 0.72,
+                                   breathe: 0.7, segments: 24)
+            ctx.stroke(ring, with: .color(color),
+                       style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+            // The escape: up and out to the right.
+            let start = CGPoint(x: c.x + s.width * 0.08, y: c.y - s.height * 0.10)
+            let tip = CGPoint(x: s.width * 0.88, y: s.height * 0.12)
+            let shaft = InkPen.stroke(from: start, to: tip, rand: &rand,
+                                      overshoot: 1, bow: 1.2, wobble: 0.4,
+                                      segments: 8)
+            ctx.stroke(shaft, with: .color(color),
+                       style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+            for a in [2.4, 3.6] {
+                let end = CGPoint(x: tip.x + CGFloat(cos(a)) * s.width * 0.2,
+                                  y: tip.y + CGFloat(sin(a)) * s.width * 0.2)
+                let flick = InkPen.stroke(from: tip, to: end, rand: &rand,
+                                          overshoot: 0.5, bow: 0.5,
+                                          wobble: 0.3, segments: 5)
+                ctx.stroke(flick, with: .color(color),
+                           style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+            }
+        }
+        .frame(width: size, height: size)
+        .contentShape(Rectangle())
     }
 }
 

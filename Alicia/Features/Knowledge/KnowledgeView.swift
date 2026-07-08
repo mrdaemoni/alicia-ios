@@ -7,6 +7,7 @@ struct KnowledgeView: View {
     @State private var themeFilter: String?
     @State private var reading: FeaturedSynthesis?
     @State private var openThinker: Thinker?
+    @State private var searchText = ""
 
     private var thinkers: [Thinker] {
         let all = store.thinkerNetwork?.thinkers ?? []
@@ -113,8 +114,35 @@ struct KnowledgeView: View {
         }
     }
 
-    /// Segment 1 — the whole network, filterable by theme.
+    /// Segment 1 — the whole network, searchable + filterable by theme.
     @ViewBuilder private var thinkersRoom: some View {
+        // v29: 313 minds need a way in — a simple line to write a name on.
+        VStack(spacing: 2) {
+            HStack(spacing: 8) {
+                InkSpark(size: 11, color: Theme.inkSoft, seed: 43)
+                TextField("find a mind…", text: $searchText)
+                    .font(.system(size: 14, design: .serif))
+                    .italic()
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                if !searchText.isEmpty {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { searchText = "" }
+                    } label: {
+                        Text("CLEAR")
+                            .font(.system(size: 8, design: .monospaced).weight(.semibold))
+                            .tracking(1.2)
+                            .underline()
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            InkUnderline(color: Theme.ink.opacity(0.35), seed: 43)
+                .frame(height: 5)
+        }
+        .padding(.bottom, 4)
+
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 themeChip(nil, label: "ALL")
@@ -123,13 +151,31 @@ struct KnowledgeView: View {
                 }
             }
         }
+        let visible = searched
+        if visible.isEmpty, !searchText.isEmpty {
+            Text("no mind by that name yet")
+                .font(.system(size: 13, design: .serif))
+                .italic()
+                .foregroundStyle(Theme.inkSoft)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 30)
+        }
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 14),
                             GridItem(.flexible(), spacing: 14)],
                   spacing: 14) {
-            ForEach(thinkers) { thinker in
+            ForEach(visible) { thinker in
                 ThinkerCell(thinker: thinker)
                     .onTapGesture { openThinker = thinker }
             }
+        }
+    }
+
+    /// Theme filter + typed search, folded (case/diacritic-blind).
+    private var searched: [Thinker] {
+        let q = searchText.inkFolded
+        guard !q.isEmpty else { return thinkers }
+        return thinkers.filter {
+            $0.name.inkFolded.contains(q) || $0.tagline.inkFolded.contains(q)
         }
     }
 
@@ -183,12 +229,22 @@ struct SynthesisRow: View {
 }
 
 /// A thinker's face from Wikipedia, rendered in the app's duotone.
+/// v29: looks up through the network's corrected wiki slug when one
+/// exists (Seneca → Seneca_the_Younger, typo fixes, ...), so the audit's
+/// 26 repaired portraits actually repair.
 struct WikiPortrait: View {
+    @Environment(AppStore.self) private var store
     let name: String
     var size: CGFloat = 72
 
     @State private var url: URL?
     @State private var failed = false
+
+    private var lookupName: String {
+        (store.thinkerNetwork?.thinkers
+            .first(where: { $0.name == name })?.wiki ?? name)
+            .replacingOccurrences(of: "_", with: " ")
+    }
 
     var body: some View {
         Group {
@@ -216,7 +272,7 @@ struct WikiPortrait: View {
         // a few tangent hatches, as if she's surfacing the face. Replaces
         // the geometric hairline.
         .overlay(PortraitTrace(name: name).padding(-size * 0.09))
-        .task { url = await WikiCache.shared.thumbnail(for: name) }
+        .task { url = await WikiCache.shared.thumbnail(for: lookupName) }
     }
 
     private var placeholder: some View {
@@ -320,6 +376,18 @@ struct ThinkerSheet: View {
         }
     }
 
+    /// What leaves the page when he shares this mind (v29).
+    private var thinkerShareText: String {
+        var lines = [shown.name]
+        if !shown.tagline.isEmpty { lines.append(shown.tagline) }
+        if !shown.relation.isEmpty { lines.append(shown.relation) }
+        let slug = shown.wiki
+            ?? shown.name.replacingOccurrences(of: " ", with: "_")
+        lines.append("https://en.wikipedia.org/wiki/\(slug)")
+        lines.append("— from Alicia's thinker map")
+        return lines.joined(separator: "\n")
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
@@ -349,6 +417,14 @@ struct ThinkerSheet: View {
                 WikiPortrait(name: shown.name, size: 130)
                     .padding(.top, path.isEmpty ? 12 : 0)
                     .id(shown.name)   // fresh portrait per hop
+                    // v29: send this mind to a friend.
+                    .overlay(alignment: .topLeading) {
+                        ShareLink(item: thinkerShareText) {
+                            InkShareGlyph(size: 24, seed: shown.name.inkSeed &+ 5)
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: -34, y: -6)
+                    }
                     // v26: hold this thinker on the home screen — the dot
                     // becomes her star, and she notes the interest.
                     .overlay(alignment: .topTrailing) {
@@ -445,7 +521,9 @@ struct ThinkerSheet: View {
         .task(id: shown.name) {
             extract = ""
             page = nil
-            if let s = await WikiCache.shared.summary(for: shown.name) {
+            let lookup = (shown.wiki ?? shown.name)
+                .replacingOccurrences(of: "_", with: " ")
+            if let s = await WikiCache.shared.summary(for: lookup) {
                 extract = String(s.extract.prefix(500))
                 page = s.page
             }

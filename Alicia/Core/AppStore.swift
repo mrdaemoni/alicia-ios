@@ -39,7 +39,9 @@ final class AppStore {
         async let tr = service.tracks()
         async let g = service.gallery()
         async let h = service.health()
-        async let p = service.proactive(limit: 6)
+        // v29: 6 starved the Dialogue — the backend sends ~9/day and the
+        // feed is capped at 100 server-side; 30 gives real history.
+        async let p = service.proactive(limit: 30)
         async let m = service.modeState()
         async let gr = service.greeting()
         async let fs = service.featured()
@@ -143,7 +145,7 @@ final class AppStore {
     }
 
     private func pollProactive() async {
-        let fresh = await service.proactive(limit: 6)
+        let fresh = await service.proactive(limit: 30)
         guard !fresh.isEmpty else { return }
         let known = Set(proactiveFeed.map(\.id))
         let new = fresh.filter { !known.contains($0.id) }
@@ -193,15 +195,26 @@ final class AppStore {
     /// home screen opens them right there instead of yanking to Knowledge.
     var presentThinker: Thinker?
 
-    /// Resolve + present a thinker wherever you are; falls back to the
-    /// Knowledge deep-link if the network hasn't loaded.
+    /// Resolve + present a thinker wherever you are. v29: NEVER a dead
+    /// end — exact match, then folded (case/diacritic-blind) match, then a
+    /// synthesized sheet (portrait + wiki extract + share still work) for
+    /// episode thinkers who aren't in the curated network yet (Bhagavad
+    /// Gita, Dogen, Shinran... — 17 such names in current shownotes).
     func showThinker(named name: String) {
-        if let t = thinkerNetwork?.thinkers.first(where: { $0.name == name }) {
+        let all = thinkerNetwork?.thinkers ?? []
+        if let t = all.first(where: { $0.name == name }) {
             presentThinker = t
-        } else {
-            pendingThinker = name
-            selectedSection = .knowledge
+            return
         }
+        let folded = name.inkFolded
+        if let t = all.first(where: { $0.name.inkFolded == folded }) {
+            presentThinker = t
+            return
+        }
+        presentThinker = Thinker(
+            name: name, anchor: false,
+            tagline: "from today's episode — not yet in the master map",
+            themes: [], works: "", relation: "", related: nil)
     }
     /// Which room the Knowledge tab shows: 0 = the shelf, 1 = the thinkers.
     var knowledgeSegment = 0

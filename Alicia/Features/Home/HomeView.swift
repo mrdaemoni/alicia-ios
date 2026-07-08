@@ -439,11 +439,23 @@ struct SynthesisReader: View {
                 StippleIllustration(animated: true)
                     .frame(height: 140)
                     .frame(maxWidth: .infinity)
-                Text("SYNTHESIS · \(featured.date)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .tracking(2.0)
-                    .foregroundStyle(Theme.inkSoft)
-                    .frame(maxWidth: .infinity)
+                HStack {
+                    Spacer()
+                    Text("SYNTHESIS · \(featured.date)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .tracking(2.0)
+                        .foregroundStyle(Theme.inkSoft)
+                    Spacer()
+                }
+                .overlay(alignment: .trailing) {
+                    // v29: pass the finished thought along.
+                    ShareLink(item: "\(featured.title.strippedEmojis)\n\n"
+                              + "\(featured.excerpt.strippedEmojis)\n"
+                              + "— Alicia · a synthesis from Hector's vault") {
+                        InkShareGlyph(size: 22, seed: featured.title.inkSeed)
+                    }
+                    .buttonStyle(.plain)
+                }
                 Text(featured.title)
                     .font(.system(.title2, design: .serif, weight: .semibold))
                     .multilineTextAlignment(.center)
@@ -1006,6 +1018,21 @@ struct KnowledgeCardView: View {
             : base + " · " + card.badge.uppercased()
     }
 
+    /// What leaves the page when he shares this card (v29).
+    private var shareText: String {
+        let signature = "— Alicia · Memories of My Future Self"
+            + (card.source.isEmpty ? "" : " · \(card.source)")
+        switch card.kind {
+        case "quote":
+            return "“\(card.body)”\n\(signature)"
+        case "thinker":
+            let tag = card.tagline.isEmpty ? "" : " — \(card.tagline)"
+            return "\(card.title)\(tag)\n\(card.body)\n\(signature)"
+        default:
+            return "\(card.title)\n\(card.body)\n\(signature)"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center) {
@@ -1017,6 +1044,11 @@ struct KnowledgeCardView: View {
                 Text(card.source)
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(Theme.inkSoft.opacity(0.7))
+                // Send it to a friend (v29) — the thought leaves the page.
+                ShareLink(item: shareText) {
+                    InkShareGlyph(size: 20, seed: card.id.inkSeed &+ 3)
+                }
+                .buttonStyle(.plain)
                 // The dot that becomes her star (v26): hold this card on
                 // the home screen — and tell her the topic matters.
                 Button {
