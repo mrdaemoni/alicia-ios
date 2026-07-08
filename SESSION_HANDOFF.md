@@ -1,4 +1,4 @@
-# Session Handoff — Alicia iOS + Backend (as of v25, 2026-07-07)
+# Session Handoff — Alicia iOS + Backend (as of v26, 2026-07-07)
 
 Continuation doc for iterating on the iPhone app (`~/AliciaApp`) and its
 backend surface (`~/alicia`, `skills/ios_api.py`). Written at the close of the
@@ -89,6 +89,20 @@ Health is pushed from Us's status strip).
   the emoji strings still travel to the backend unchanged (loops key on
   them). Dialogue's last stock glyphs went too: WALK/VOICE/MIC words,
   THE REST → fold, ink ring on voice notes.
+- **Pins (v26)** — `InkPinMark` (dot → her asterisk) top-right of every
+  knowledge card + on thinker sheets. Pinned items persist server-side
+  (`memory/pinned_items.json`, POST `/api/pin`, in the `/api/home` payload)
+  and render in a HELD · STILL TALKING ABOUT section atop Us until
+  released. A pin is ALSO an interest signal: `home_context.pin_item`
+  appends a hector_learnings row (source=ios_pin) — loop-4 fuel. Unpin is
+  quiet (no negative signal).
+- **v26 aesthetics** — `ContextOnion` (TODAY sheet: the day as three
+  hand-pulled concentric rings, in→out); THE ARC wears archetype emblems
+  per day (`timeline` rows carry `archetype`), a trembling/curling spine
+  (`InkSpineSegment`), milestone underlines; `InkTitleLine`/`InkTitle`
+  hand-set display type (per-glyph lean + baseline drift) on the greeting,
+  all SectionHeaders, episode plates/rows/nav; Studio's background is the
+  `.soundwave` ContourWaves pattern — stacked waveforms, not sonar.
 - **Widget** (`AliciaWidgets/` target): greeting + today's synthesis from the
   app-group cache (`group.com.myalicia.app`) — no network of its own.
 
