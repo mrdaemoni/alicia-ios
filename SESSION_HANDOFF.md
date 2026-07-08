@@ -183,3 +183,16 @@ composer lives inside the ink frame.
   `presentThinker` (falls back to Knowledge deep-link pre-load).
   ThinkerSheet: cursive name, `InkAnnotatedText` (underlined key words +
   dashed connecting thread), `InkDividerCurl` between sections.
+
+## v28 addenda (2026-07-07, night)
+
+- **Her hand = Zapfino** (0.82× in `InkTitleLine`; widget 12–16pt). The
+  brief: "a smart notepad that is alive"; squiggle over polish. **The
+  iOS 26 SIM substitutes ALL Font.custom with New York serif — judge
+  scripts on device or a macOS PIL proof, never the sim.**
+- Global player reverted — PlayerBar is Studio-only again (inset on the
+  NavigationStack). Tab bar spaces by equal gaps, not equal columns.
+- Alicia tab field = sparse contour (calm); Knowledge = particles.
+- `InkSquiggle` + `InkHighlightedText` (FlexWrap now takes `trailing:`)
+  underline the recurring shelf words (computed client-side from
+  syntheses titles+excerpts, ≥5 letters, ≥3 occurrences, top 8).
