@@ -196,3 +196,20 @@ composer lives inside the ink frame.
 - `InkSquiggle` + `InkHighlightedText` (FlexWrap now takes `trailing:`)
   underline the recurring shelf words (computed client-side from
   syntheses titles+excerpts, ≥5 letters, ≥3 occurrences, top 8).
+
+## v29 addenda (2026-07-08)
+
+- **Portrait audit**: all 313 names probed against Wikipedia REST. 15
+  disambiguation hits + ~20 vault typos fixed via a verified `wiki` slug
+  per entry in `skills/data/thinkers.json` (survives sync_thinker_themes;
+  Sonke/Sönke deduped + aliased; junk 'Podcast Thinkers Index' removed).
+  40 no-photo names keep the stipple fallback by design. WikiPortrait /
+  ThinkerSheet / share resolve through `thinker.wiki`.
+- **No dead thinker links**: `showThinker` = exact → folded → synthesized
+  sheet (episode thinkers outside the master map still open with portrait
+  + extract + share + pin). Thinker↔thinker edges audited clean.
+- **Search** atop THE THINKERS (folded match on name+tagline).
+- **Share**: `InkShareGlyph` + ShareLink on cards / thinker sheets /
+  synthesis reader.
+- **Dialogue feed 6→30** — the backend sends ~9/day; 6 was the whole
+  "why is Dialogue empty" bug.
