@@ -1,4 +1,4 @@
-# Session Handoff — Alicia iOS + Backend (as of v26, 2026-07-07)
+# Session Handoff — Alicia iOS + Backend (as of v27, 2026-07-07)
 
 Continuation doc for iterating on the iPhone app (`~/AliciaApp`) and its
 backend surface (`~/alicia`, `skills/ios_api.py`). Written at the close of the
@@ -165,3 +165,21 @@ composer lives inside the ink frame.
   vault `Alicia/Bridge/HANDOFF.md` 2026-07-05 entry ("you have a third body").
 - Device: iPhone Air "Pandaiux", iOS 26.5, Tailscale IP backend
   (`http://100.81.90.92:8766` in gitignored `Alicia/Secrets.plist`).
+
+## v27 addenda (2026-07-07, late)
+
+- **Her hand is TRUE CURSIVE now** — `InkTitleLine`/`InkTitle` use Snell
+  Roundhand (system script) with per-WORD lean/baseline drift. NEVER go
+  back to per-glyph jitter: it breaks script ligatures and Hector called
+  it "sloppy type". Scale script sizes ~1.22× (small x-height).
+- **Widget**: systemSmall/Medium/Large; paper tint follows the hour
+  (night = bone on ink); cache keys now include widget.todayLabel/
+  todayTitle/context/carry (written by AppStore.publishWidgetCache).
+- **Knowledge background** = `.particles` pattern (idea-nodes + faint
+  threads); Studio = `.soundwave`; Us/Dialogue contour; Alicia ripples.
+- **PlayerBar is global** (RootView hard sibling above the word-bar,
+  hidden while the Dialogue composer is up). Do not mount it per-tab.
+- **Thinkers open in place** via `store.showThinker(named:)` /
+  `presentThinker` (falls back to Knowledge deep-link pre-load).
+  ThinkerSheet: cursive name, `InkAnnotatedText` (underlined key words +
+  dashed connecting thread), `InkDividerCurl` between sections.
