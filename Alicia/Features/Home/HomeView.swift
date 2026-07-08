@@ -33,6 +33,7 @@ struct HomeView: View {
     @State private var showTimeline = false
 
     var body: some View {
+        @Bindable var store = store
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
@@ -129,6 +130,8 @@ struct HomeView: View {
             .waveBackground(.us(mood: store.waveMood), tinted: true)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showTimeline) { UsSheet() }
+            // Thinkers open where you are (v27).
+            .sheet(item: $store.presentThinker) { t in ThinkerSheet(thinker: t) }
         }
     }
 
@@ -740,8 +743,7 @@ struct ThinkerStrip: View {
             HStack(spacing: 14) {
                 ForEach(thinkers) { t in
                     Button {
-                        store.pendingThinker = t.name
-                        store.selectedSection = .knowledge
+                        store.showThinker(named: t.name)   // in place (v27)
                     } label: {
                         VStack(spacing: 6) {
                             WikiPortrait(name: t.name, size: 64)
@@ -1008,8 +1010,8 @@ struct KnowledgeCardView: View {
 
             if card.kind == "thinker" {
                 Button {
-                    store.pendingThinker = card.thinker
-                    store.selectedSection = .knowledge
+                    // v27: open the thinker right here, not in Knowledge.
+                    store.showThinker(named: card.thinker)
                 } label: {
                     HStack(spacing: 12) {
                         WikiPortrait(name: card.thinker, size: 54)

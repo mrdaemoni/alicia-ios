@@ -40,7 +40,9 @@ struct KnowledgeView: View {
                 .padding(.bottom, 24)
             }
             .refreshable { await store.load() }
-            .waveBackground(.mind(mood: store.waveMood + 3), tinted: true)
+            // v27: not water here — a constellation of idea-nodes drifting
+            // and faintly finding each other.
+            .waveBackground(.knowledge(mood: store.waveMood + 3), tinted: true)
             .toolbar(.hidden, for: .navigationBar)
         }
         .sheet(item: $reading) { syn in
@@ -336,37 +338,40 @@ struct ThinkerSheet: View {
                         .buttonStyle(.plain)
                         .offset(x: 34, y: -6)
                     }
-                Text(shown.name.uppercased())
-                    .font(.system(size: 12, design: .monospaced).weight(.bold))
-                    .tracking(2.6)
+                // The name in her hand — cursive, not a label (v27).
+                InkTitleLine(text: shown.name, size: 24)
                 Text(shown.tagline)
                     .font(.system(size: 16, design: .serif))
                     .italic()
                     .multilineTextAlignment(.center)
                     .lineSpacing(5)
-                HStack(spacing: 6) {
+                // Wraps instead of squeezing — six themes broke mid-word.
+                FlexWrap(spacing: 6) {
                     ForEach(shown.themes, id: \.self) { th in
                         Text(th.uppercased())
                             .font(.system(size: 8, design: .monospaced))
                             .tracking(1.4)
+                            .fixedSize()
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(Color.white.opacity(0.35), in: Capsule())
                     }
                 }
+                .frame(maxWidth: 300)
                 if !shown.relation.isEmpty {
-                    Theme.stroke.frame(width: 60, height: 1)
+                    InkDividerCurl(seed: shown.name.inkSeed)
+                        .frame(width: 96, height: 14)
                     Text("IN YOUR VAULT")
                         .font(.system(size: 10, design: .monospaced).weight(.semibold))
                         .tracking(2.0)
                         .foregroundStyle(Theme.accent)
-                    Text(shown.relation)
-                        .font(.system(size: 14, design: .serif))
-                        .lineSpacing(5)
-                        .multilineTextAlignment(.center)
+                    // Her marginalia: the load-bearing words underlined,
+                    // a faint thread arcing between them (v27).
+                    InkAnnotatedText(text: shown.relation, size: 14)
                 }
                 if !extract.isEmpty {
-                    Theme.stroke.frame(width: 60, height: 1)
+                    InkDividerCurl(seed: shown.name.inkSeed &+ 7)
+                        .frame(width: 96, height: 14)
                     Text("THE WORK")
                         .font(.system(size: 10, design: .monospaced).weight(.semibold))
                         .tracking(2.0)
@@ -390,6 +395,8 @@ struct ThinkerSheet: View {
                 // ── The graph, hand-stitched: her threads connecting the
                 // minds, faces staggered like a constellation she drew ──
                 if let related = shown.related, !related.isEmpty {
+                    InkDividerCurl(seed: shown.name.inkSeed &+ 13)
+                        .frame(width: 96, height: 14)
                     Text("MINDS LIKE THIS ONE")
                         .font(.system(size: 10, design: .monospaced).weight(.semibold))
                         .tracking(2.0)

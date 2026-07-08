@@ -46,6 +46,13 @@ struct RootView: View {
                         .toolbar(.hidden, for: .tabBar)
                 }
             }
+            // v27: the player travels with him — pause/scrub from any tab,
+            // not just Studio. Hard sibling above the word-bar (the same
+            // no-safeAreaInset doctrine as the bar itself); steps aside
+            // when the Dialogue composer owns the bottom edge.
+            if store.nowPlaying != nil, !store.composerFocused {
+                PlayerBar()
+            }
             EditorialTabBar()
         }
         .ignoresSafeArea(edges: .bottom)

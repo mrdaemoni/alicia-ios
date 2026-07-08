@@ -1,59 +1,129 @@
 import WidgetKit
 import SwiftUI
 
-/// Alicia on the home screen: her line of the moment and the synthesis of
-/// the day, ink on bone. The app writes the shared cache (app group) on
-/// every load; the widget just renders the freshest thing she said.
+/// Alicia on the home screen (v27): her line in her own hand, what's in
+/// your ears, and what she's asking you to carry — on paper that follows
+/// the hour (rose at dawn, bone by day, ochre at dusk, ink at night).
+/// The app writes the shared cache (app group) on every load; the widget
+/// renders the freshest layer of it and re-tints itself hourly.
 struct AliciaEntry: TimelineEntry {
     let date: Date
     let greeting: String
     let featuredTitle: String
     let note: String
+    let todayLabel: String
+    let todayTitle: String
+    let context: String
+    let carry: String
 }
 
 struct AliciaProvider: TimelineProvider {
     static let suite = UserDefaults(suiteName: "group.com.myalicia.app")
 
-    static func current() -> AliciaEntry {
+    static func entry(at date: Date) -> AliciaEntry {
         let d = suite
         return AliciaEntry(
-            date: .now,
+            date: date,
             greeting: d?.string(forKey: "widget.greeting")
                 ?? "She's thinking of you.",
             featuredTitle: d?.string(forKey: "widget.featuredTitle")
                 ?? "Open the app to let her speak.",
-            note: d?.string(forKey: "widget.note") ?? "")
+            note: d?.string(forKey: "widget.note") ?? "",
+            todayLabel: d?.string(forKey: "widget.todayLabel") ?? "",
+            todayTitle: d?.string(forKey: "widget.todayTitle") ?? "",
+            context: d?.string(forKey: "widget.context") ?? "",
+            carry: d?.string(forKey: "widget.carry") ?? "")
     }
 
-    func placeholder(in context: Context) -> AliciaEntry { Self.current() }
+    func placeholder(in context: Context) -> AliciaEntry { Self.entry(at: .now) }
 
     func getSnapshot(in context: Context, completion: @escaping (AliciaEntry) -> Void) {
-        completion(Self.current())
+        completion(Self.entry(at: .now))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<AliciaEntry>) -> Void) {
-        // Re-render hourly; the app refreshes the cache (and reloads the
-        // timeline) whenever it loads, so this is just the heartbeat.
-        let next = Calendar.current.date(byAdding: .hour, value: 1, to: .now) ?? .now
-        completion(Timeline(entries: [Self.current()], policy: .after(next)))
+        // One entry per hour boundary so the paper follows the light even
+        // when the app hasn't opened; the app reloads timelines on load.
+        let cal = Calendar.current
+        var entries: [AliciaEntry] = [Self.entry(at: .now)]
+        for h in 1...8 {
+            if let d = cal.date(byAdding: .hour, value: h, to: cal.date(
+                bySetting: .minute, value: 0, of: .now) ?? .now) {
+                entries.append(Self.entry(at: d))
+            }
+        }
+        completion(Timeline(entries: entries, policy: .atEnd))
     }
 }
 
-/// Ink on bone, matching Theme.swift (hardcoded — separate target).
-private enum Ink {
-    static let paper = Color(red: 0.953, green: 0.933, blue: 0.890)
-    static let ink   = Color(red: 0.165, green: 0.153, blue: 0.137)
-    static let soft  = Color(red: 0.42, green: 0.40, blue: 0.37)
-    static let slate = Color(red: 0.282, green: 0.380, blue: 0.475)
+/// Ink on paper, following the hour (hardcoded — separate target).
+private struct Hour {
+    let paper: Color
+    let ink: Color
+    let soft: Color
+    let slate: Color
+
+    static func at(_ date: Date) -> Hour {
+        let bone  = Color(red: 0.953, green: 0.933, blue: 0.890)
+        let ink   = Color(red: 0.165, green: 0.153, blue: 0.137)
+        let slate = Color(red: 0.282, green: 0.380, blue: 0.475)
+        switch Calendar.current.component(.hour, from: date) {
+        case 5..<9:    // dawn — rose washes the bone
+            return Hour(paper: Color(red: 0.955, green: 0.905, blue: 0.870),
+                        ink: ink, soft: ink.opacity(0.68), slate: slate)
+        case 9..<17:   // day — plain bone
+            return Hour(paper: bone,
+                        ink: ink, soft: ink.opacity(0.66), slate: slate)
+        case 17..<21:  // dusk — ochre leans in
+            return Hour(paper: Color(red: 0.945, green: 0.905, blue: 0.820),
+                        ink: ink, soft: ink.opacity(0.68), slate: slate)
+        default:       // night — she writes in bone on ink
+            return Hour(paper: Color(red: 0.135, green: 0.140, blue: 0.170),
+                        ink: bone, soft: bone.opacity(0.62),
+                        slate: Color(red: 0.560, green: 0.660, blue: 0.760))
+        }
+    }
 }
 
 struct AliciaWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: AliciaEntry
 
+    private var hour: Hour { Hour.at(entry.date) }
+
     var body: some View {
         content
-            .containerBackground(for: .widget) { Ink.paper }
+            .containerBackground(for: .widget) { hour.paper }
+    }
+
+    private var kickerRow: some View {
+        HStack(spacing: 4) {
+            if let rabbit = UIImage(named: "rabbit") {
+                Image(uiImage: rabbit)
+                    .resizable().renderingMode(.template).scaledToFit()
+                    .frame(width: 11, height: 11)
+                    .foregroundStyle(hour.ink)
+            }
+            Text("ALICIA")
+                .font(.system(size: 8, design: .monospaced).weight(.semibold))
+                .tracking(1.6)
+                .foregroundStyle(hour.soft)
+            Spacer()
+            if family != .systemSmall {
+                Text(entry.date, style: .date)
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundStyle(hour.soft)
+            }
+        }
+    }
+
+    private func hairline() -> some View {
+        Rectangle().fill(hour.ink.opacity(0.16)).frame(height: 0.7)
+    }
+
+    private var script: Font {
+        .custom("SnellRoundhand-Bold",
+                size: family == .systemLarge ? 23 : 19)
     }
 
     @ViewBuilder
@@ -61,61 +131,82 @@ struct AliciaWidgetView: View {
         switch family {
         case .systemSmall:
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 4) {
-                    if let rabbit = UIImage(named: "rabbit") {
-                        Image(uiImage: rabbit)
-                            .resizable().renderingMode(.template).scaledToFit()
-                            .frame(width: 11, height: 11)
-                            .foregroundStyle(Ink.ink)
-                    }
-                    Text("ALICIA")
-                        .font(.system(size: 8, design: .monospaced).weight(.semibold))
-                        .tracking(1.6)
-                        .foregroundStyle(Ink.soft)
-                }
+                kickerRow
                 Spacer(minLength: 0)
                 Text(entry.greeting)
-                    .font(.system(size: 15, design: .serif).weight(.medium))
-                    .foregroundStyle(Ink.ink)
-                    .minimumScaleFactor(0.7)
+                    .font(.custom("SnellRoundhand-Bold", size: 17))
+                    .foregroundStyle(hour.ink)
+                    .minimumScaleFactor(0.65)
                     .lineLimit(5)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        default:
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    if let rabbit = UIImage(named: "rabbit") {
-                        Image(uiImage: rabbit)
-                            .resizable().renderingMode(.template).scaledToFit()
-                            .frame(width: 12, height: 12)
-                            .foregroundStyle(Ink.ink)
-                    }
-                    Text("ALICIA")
-                        .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                        .tracking(1.8)
-                        .foregroundStyle(Ink.soft)
-                    Spacer()
-                    Text(entry.date, style: .date)
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(Ink.soft)
-                }
+
+        case .systemLarge:
+            VStack(alignment: .leading, spacing: 9) {
+                kickerRow
                 Text(entry.greeting)
-                    .font(.system(size: 16, design: .serif).weight(.semibold))
-                    .foregroundStyle(Ink.ink)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                Rectangle().fill(Ink.ink.opacity(0.15)).frame(height: 0.7)
-                Text("TODAY'S SYNTHESIS")
-                    .font(.system(size: 8, design: .monospaced).weight(.semibold))
-                    .tracking(1.6)
-                    .foregroundStyle(Ink.slate)
-                Text(entry.featuredTitle)
-                    .font(.system(size: 13, design: .serif))
-                    .italic()
-                    .foregroundStyle(Ink.ink.opacity(0.85))
+                    .font(script)
+                    .foregroundStyle(hour.ink)
                     .lineLimit(3)
-                    .minimumScaleFactor(0.85)
+                    .minimumScaleFactor(0.75)
+                hairline()
+                if !entry.todayTitle.isEmpty {
+                    Text("IN YOUR EARS · \(entry.todayLabel)")
+                        .font(.system(size: 8, design: .monospaced).weight(.semibold))
+                        .tracking(1.6)
+                        .foregroundStyle(hour.slate)
+                    Text(entry.todayTitle)
+                        .font(.system(size: 16, design: .serif).weight(.semibold))
+                        .foregroundStyle(hour.ink)
+                        .lineLimit(2)
+                }
+                if !entry.carry.isEmpty {
+                    Text("TO CARRY")
+                        .font(.system(size: 8, design: .monospaced).weight(.semibold))
+                        .tracking(1.6)
+                        .foregroundStyle(hour.slate)
+                    Text(entry.carry)
+                        .font(.system(size: 13, design: .serif))
+                        .italic()
+                        .foregroundStyle(hour.ink.opacity(0.85))
+                        .lineLimit(3)
+                }
+                Spacer(minLength: 0)
+                hairline()
+                Text(entry.featuredTitle)
+                    .font(.system(size: 12, design: .serif))
+                    .italic()
+                    .foregroundStyle(hour.soft)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+        default:  // systemMedium
+            VStack(alignment: .leading, spacing: 7) {
+                kickerRow
+                Text(entry.greeting)
+                    .font(script)
+                    .foregroundStyle(hour.ink)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                hairline()
+                if !entry.todayTitle.isEmpty {
+                    Text("IN YOUR EARS · \(entry.todayLabel)")
+                        .font(.system(size: 8, design: .monospaced).weight(.semibold))
+                        .tracking(1.6)
+                        .foregroundStyle(hour.slate)
+                    Text(entry.todayTitle)
+                        .font(.system(size: 13, design: .serif).weight(.semibold))
+                        .foregroundStyle(hour.ink)
+                        .lineLimit(1)
+                } else {
+                    Text(entry.featuredTitle)
+                        .font(.system(size: 13, design: .serif))
+                        .italic()
+                        .foregroundStyle(hour.ink.opacity(0.85))
+                        .lineLimit(2)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -128,8 +219,8 @@ struct AliciaWidget: Widget {
             AliciaWidgetView(entry: $0)
         }
         .configurationDisplayName("Alicia")
-        .description("Her line of the moment and the synthesis of the day.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .description("Her hand, what's in your ears, and what to carry today.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 

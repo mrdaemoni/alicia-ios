@@ -558,28 +558,36 @@ struct InkPinMark: View {
 
 // MARK: - Her hand-set display type (v26)
 
-/// One line of display type as if she set it by hand: each glyph leans and
-/// sits a hair off its baseline, deterministically per character — serif
-/// italic, unevenly pressed. For the big words: section titles, greetings,
-/// episode plates.
+/// One line of display type in her actual hand (v27): true cursive —
+/// Snell Roundhand, the system's calligraphic script — with each WORD
+/// leaning and settling a hair off the baseline (per-word so the script's
+/// in-word connections stay joined; per-glyph broke the ligatures and read
+/// as sloppy type, Hector's words).
 struct InkTitleLine: View {
     let text: String
     var size: CGFloat = 30
     var weight: Font.Weight = .semibold
     var color: Color = Theme.ink
 
+    private var scriptFont: Font {
+        // Snell's x-height runs small — scale up so it holds the same
+        // optical size the serif did.
+        .custom(weight == .regular ? "SnellRoundhand" : "SnellRoundhand-Bold",
+                size: size * 1.22)
+    }
+
     private func jitter(_ i: Int) -> (rot: Double, dy: CGFloat) {
-        var rand = InkRand(text.inkSeed &+ i &* 31)
-        return (rand.range(-2.3, 2.3), CGFloat(rand.range(-0.05, 0.05)) * size)
+        var rand = InkRand(text.inkSeed &+ i &* 47)
+        return (rand.range(-1.6, 1.6), CGFloat(rand.range(-0.04, 0.04)) * size)
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(text.enumerated()), id: \.offset) { i, ch in
+        HStack(alignment: .lastTextBaseline, spacing: size * 0.22) {
+            ForEach(Array(text.split(separator: " ").enumerated()),
+                    id: \.offset) { i, word in
                 let j = jitter(i)
-                Text(String(ch))
-                    .font(.system(size: size, weight: weight, design: .serif))
-                    .italic()
+                Text(String(word))
+                    .font(scriptFont)
                     .foregroundStyle(color)
                     .rotationEffect(.degrees(j.rot))
                     .offset(y: j.dy)
@@ -597,12 +605,127 @@ struct InkTitle: View {
     var color: Color = Theme.ink
 
     var body: some View {
-        FlexWrap(spacing: size * 0.3) {
+        FlexWrap(spacing: size * 0.26) {
             ForEach(Array(text.split(separator: " ").enumerated()),
                     id: \.offset) { _, word in
                 InkTitleLine(text: String(word), size: size,
                              weight: weight, color: color)
             }
+        }
+    }
+}
+
+/// A horizontal divider with a curl in its middle — the pen resting
+/// between thoughts (v27; replaces bare hairlines on her pages).
+struct InkDividerCurl: View {
+    var seed: Int = 91
+    var color: Color = Theme.ink
+
+    var body: some View {
+        Canvas { ctx, s in
+            var rand = InkRand(seed)
+            let y = s.height / 2
+            let mid = s.width / 2
+            let left = InkPen.stroke(from: CGPoint(x: 2, y: y),
+                                     to: CGPoint(x: mid - 7, y: y),
+                                     rand: &rand, overshoot: 2, bow: 1.4,
+                                     wobble: 0.5)
+            let right = InkPen.stroke(from: CGPoint(x: mid + 7, y: y),
+                                      to: CGPoint(x: s.width - 2, y: y),
+                                      rand: &rand, overshoot: 2, bow: 1.4,
+                                      wobble: 0.5)
+            let curl = InkPen.ring(center: CGPoint(x: mid, y: y),
+                                   radius: 4, rand: &rand,
+                                   sweep: 2 * .pi * 0.85, breathe: 0.7,
+                                   segments: 20)
+            for path in [left, right] {
+                ctx.stroke(path, with: .color(color.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: 0.9, lineCap: .round))
+            }
+            ctx.stroke(curl, with: .color(Theme.accent.opacity(0.5)),
+                       style: StrokeStyle(lineWidth: 0.9, lineCap: .round))
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// Prose with her marginalia (v27): the most substantial words are
+/// underlined in her hand, and a faint thread arcs from one to the next —
+/// the marks of a reader connecting ideas across the line.
+struct InkAnnotatedText: View {
+    let text: String
+    var size: CGFloat = 15
+    var color: Color = Theme.ink
+
+    private var words: [String] { text.split(separator: " ").map(String.init) }
+
+    /// The two longest distinct words carry her underline.
+    private var emphasized: Set<Int> {
+        let ranked = words.enumerated()
+            .filter { $0.element.trimmingCharacters(in: .punctuationCharacters).count > 5 }
+            .sorted { $0.element.count > $1.element.count }
+            .prefix(2)
+            .map(\.offset)
+        return Set(ranked)
+    }
+
+    private struct WordFrames: PreferenceKey {
+        static var defaultValue: [Int: CGRect] { [:] }
+        static func reduce(value: inout [Int: CGRect],
+                           nextValue: () -> [Int: CGRect]) {
+            value.merge(nextValue()) { $1 }
+        }
+    }
+
+    var body: some View {
+        let emph = emphasized
+        FlexWrap(spacing: size * 0.32) {
+            ForEach(Array(words.enumerated()), id: \.offset) { i, word in
+                VStack(spacing: 1) {
+                    Text(word)
+                        .font(.system(size: size, design: .serif))
+                        .foregroundStyle(color)
+                    if emph.contains(i) {
+                        InkUnderline(color: Theme.accent.opacity(0.65),
+                                     seed: word.inkSeed, lineWidth: 1.2)
+                            .frame(height: 4)
+                    }
+                }
+                .background {
+                    if emph.contains(i) {
+                        GeometryReader { g in
+                            Color.clear.preference(
+                                key: WordFrames.self,
+                                value: [i: g.frame(in: .named("annotated"))])
+                        }
+                    }
+                }
+            }
+        }
+        .coordinateSpace(name: "annotated")
+        .overlayPreferenceValue(WordFrames.self) { frames in
+            // The thread: a faint arc from one underlined word to the next.
+            Canvas { ctx, _ in
+                let pts = frames.sorted { $0.key < $1.key }.map(\.value)
+                guard pts.count >= 2 else { return }
+                var rand = InkRand(text.inkSeed)
+                for k in 0..<(pts.count - 1) {
+                    let a = CGPoint(x: pts[k].midX, y: pts[k].maxY + 1)
+                    let b = CGPoint(x: pts[k + 1].midX, y: pts[k + 1].maxY + 1)
+                    var path = Path()
+                    path.move(to: a)
+                    let dip = CGFloat(rand.range(10, 22))
+                    path.addQuadCurve(
+                        to: b,
+                        control: CGPoint(x: (a.x + b.x) / 2,
+                                         y: max(a.y, b.y) + dip))
+                    ctx.stroke(path, with: .color(Theme.accent.opacity(0.22)),
+                               style: StrokeStyle(lineWidth: 0.8,
+                                                  lineCap: .round,
+                                                  dash: [3, 2.5]))
+                }
+            }
+            .allowsHitTesting(false)
         }
     }
 }

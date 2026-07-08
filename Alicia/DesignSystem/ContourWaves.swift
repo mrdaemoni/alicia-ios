@@ -18,6 +18,9 @@ struct ContourWaves: View {
         /// Stacked horizontal lines that swell and hush like a waveform —
         /// the sound of the studio, not the sea (v26).
         case soundwave
+        /// Drifting nodes with faint threads between near neighbors —
+        /// ideas and thinkers finding each other (v27, Knowledge).
+        case particles
         case contour
         case ripple(squash: Double)
     }
@@ -53,6 +56,14 @@ struct ContourWaves: View {
             Config(speed: 1.0, levels: 5, alphaScale: 0.9,
                    seedOffset: 13 + mood, crossBoost: 3.2,
                    pattern: .soundwave)
+        }
+
+        /// Knowledge — a quiet constellation: idea-nodes drifting, faintly
+        /// finding each other. Much softer than the old ripples.
+        static func knowledge(mood: Int = 0) -> Config {
+            Config(speed: 0.4, levels: 4, alphaScale: 0.7,
+                   seedOffset: 23 + mood, crossBoost: 0,
+                   pattern: .particles)
         }
 
         /// The day breathes through every field: brisk mornings, still
@@ -189,6 +200,59 @@ struct ContourWaves: View {
                                 lineWidth: 0.9)
                             rowY += rowSpacing
                             idx += 1
+                        }
+                        return
+                    }
+
+                    // Particles: idea-nodes wandering the page; when two
+                    // drift close, a thread appears between them — the
+                    // knowledge graph breathing under the words.
+                    if case .particles = config.pattern {
+                        var nodes: [CGPoint] = []
+                        let count = 34
+                        for i in 0..<count {
+                            // Deterministic home position per node, slow
+                            // seeded orbit around it.
+                            var h = UInt64(bitPattern: Int64(seed &+ i &* 7919))
+                            h ^= h << 13; h ^= h >> 7; h ^= h << 17
+                            let hx = Double(h % 1000) / 1000
+                            h ^= h << 13; h ^= h >> 7; h ^= h << 17
+                            let hy = Double(h % 1000) / 1000
+                            h ^= h << 13; h ^= h >> 7; h ^= h << 17
+                            let phase = Double(h % 628) / 100
+                            let orbit = 14.0 + Double(h % 22)
+                            let x = hx * size.width
+                                + sin(t * 0.35 + phase) * orbit
+                            let y = hy * size.height
+                                + cos(t * 0.28 + phase * 1.7) * orbit
+                            nodes.append(CGPoint(x: x, y: y))
+                        }
+                        let alpha = 0.32 * config.alphaScale * Config.inkFactor
+                        // Threads first, under the nodes.
+                        for i in 0..<count {
+                            for j in (i + 1)..<count {
+                                let dx = nodes[i].x - nodes[j].x
+                                let dy = nodes[i].y - nodes[j].y
+                                let d = (dx * dx + dy * dy).squareRoot()
+                                guard d < 110 else { continue }
+                                let fade = 1 - d / 110
+                                var thread = Path()
+                                thread.move(to: nodes[i])
+                                thread.addLine(to: nodes[j])
+                                context.stroke(
+                                    thread,
+                                    with: .color(Theme.ink.opacity(alpha * 0.45 * fade)),
+                                    lineWidth: 0.6)
+                            }
+                        }
+                        for (i, p) in nodes.enumerated() {
+                            let r = 1.3 + Double(i % 3) * 0.7
+                            let dot = Path(ellipseIn: CGRect(
+                                x: p.x - r, y: p.y - r,
+                                width: 2 * r, height: 2 * r))
+                            context.fill(
+                                dot,
+                                with: .color(Theme.ink.opacity(alpha * (0.5 + 0.16 * Double(i % 3)))))
                         }
                         return
                     }
@@ -440,6 +504,6 @@ extension AppStore {
 /// at a glance whether his phone runs the latest build. BUMP THIS on every
 /// app change that ships (see CLAUDE.md).
 enum AppVersion {
-    static let tag = "v26"
+    static let tag = "v27"
     static let date = "Jul 7"
 }

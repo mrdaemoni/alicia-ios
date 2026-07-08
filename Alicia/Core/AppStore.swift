@@ -104,6 +104,19 @@ final class AppStore {
         if let quote {
             shared.set("“" + quote.text.strippedEmojis + "”", forKey: "widget.quote")
         }
+        // v27: the richer layers — today's episode, the context line, and
+        // the first thing she's asking him to carry.
+        if let today = homeContext?.today {
+            shared.set(today.label, forKey: "widget.todayLabel")
+            shared.set(today.title.strippedEmojis, forKey: "widget.todayTitle")
+        }
+        if let context = homeContext?.contextLine, !context.isEmpty {
+            shared.set(context.strippedEmojis, forKey: "widget.context")
+        }
+        if let carry = homeContext?.cards.first {
+            let line = carry.kind == "quote" ? carry.body : carry.title
+            shared.set(line.strippedEmojis, forKey: "widget.carry")
+        }
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -176,6 +189,20 @@ final class AppStore {
     var thinkerNetwork: ThinkerNetwork?
     /// Deep link into the Knowledge tab's thinker detail.
     var pendingThinker: String?
+    /// A thinker sheet presented IN PLACE (v27) — tapping a thinker on the
+    /// home screen opens them right there instead of yanking to Knowledge.
+    var presentThinker: Thinker?
+
+    /// Resolve + present a thinker wherever you are; falls back to the
+    /// Knowledge deep-link if the network hasn't loaded.
+    func showThinker(named name: String) {
+        if let t = thinkerNetwork?.thinkers.first(where: { $0.name == name }) {
+            presentThinker = t
+        } else {
+            pendingThinker = name
+            selectedSection = .knowledge
+        }
+    }
     /// Which room the Knowledge tab shows: 0 = the shelf, 1 = the thinkers.
     var knowledgeSegment = 0
     /// The whole arc since her birth (fetched when the sheet opens).
