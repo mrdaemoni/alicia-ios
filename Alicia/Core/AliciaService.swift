@@ -1,5 +1,31 @@
 import Foundation
 
+/// How the last exchange with the backend went — the difference between
+/// "she has nothing new" and "she's unreachable / the token died", which
+/// used to be invisible (every failure decayed to empty data).
+enum ConnectionState {
+    case ok
+    case unauthorized   // 401/403 — rotated or wrong token
+    case unreachable    // network error / non-200
+}
+
+/// Tiny shared signal set by the live fetch layer and read by the UI
+/// (RootView's banner). Mock mode never touches it, so it stays `.ok`.
+@MainActor
+@Observable
+final class ConnectionStatus {
+    static let shared = ConnectionStatus()
+    var state: ConnectionState = .ok
+
+    /// Callable from any thread (URLSession callbacks) — hops to the main
+    /// actor before mutating.
+    nonisolated static func note(_ new: ConnectionState) {
+        Task { @MainActor in
+            if shared.state != new { shared.state = new }
+        }
+    }
+}
+
 /// The single seam between the UI and Alicia's backend.
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
@@ -7,10 +33,13 @@ protocol AliciaService {
     /// Streams a reply as events: tokens, an optional voice-note URL, and a
     /// final `.done` carrying the backend message id (for reactions).
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent>
-    func thoughts() async -> [Thought]
-    func tracks() async -> [Track]
-    func gallery() async -> [Artwork]
-    func health() async -> [HealthMetric]
+    // The four tab-data fetches return nil when the fetch FAILED (network,
+    // auth, decode) so the store can keep last-known data — as opposed to
+    // an empty array, which means the backend really has nothing.
+    func thoughts() async -> [Thought]?
+    func tracks() async -> [Track]?
+    func gallery() async -> [Artwork]?
+    func health() async -> [HealthMetric]?
     /// Messages Alicia sent proactively (her own initiative) — newest first.
     func proactive(limit: Int) async -> [ProactiveMessage]
     /// React to one of her replies with an emoji. Feeds her learning loops.
@@ -145,10 +174,10 @@ struct MockAliciaService: AliciaService {
         }
     }
 
-    func thoughts() async -> [Thought] { SampleData.thoughts }
-    func tracks() async -> [Track] { SampleData.tracks }
-    func gallery() async -> [Artwork] { SampleData.gallery }
-    func health() async -> [HealthMetric] { SampleData.health }
+    func thoughts() async -> [Thought]? { SampleData.thoughts }
+    func tracks() async -> [Track]? { SampleData.tracks }
+    func gallery() async -> [Artwork]? { SampleData.gallery }
+    func health() async -> [HealthMetric]? { SampleData.health }
     func proactive(limit: Int) async -> [ProactiveMessage] { [] }
     func react(messageID: Int, emoji: String) async {}
     func react(proactiveID: String, emoji: String) async {}

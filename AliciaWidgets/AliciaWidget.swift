@@ -15,6 +15,10 @@ struct AliciaEntry: TimelineEntry {
     let todayTitle: String
     let context: String
     let carry: String
+    /// When the app last wrote LIVE content into the cache (nil on old
+    /// caches). Lets the widget admit its age instead of rendering a
+    /// week-old line as this morning's.
+    let cachedAt: Date?
 }
 
 struct AliciaProvider: TimelineProvider {
@@ -32,7 +36,9 @@ struct AliciaProvider: TimelineProvider {
             todayLabel: d?.string(forKey: "widget.todayLabel") ?? "",
             todayTitle: d?.string(forKey: "widget.todayTitle") ?? "",
             context: d?.string(forKey: "widget.context") ?? "",
-            carry: d?.string(forKey: "widget.carry") ?? "")
+            carry: d?.string(forKey: "widget.carry") ?? "",
+            cachedAt: (d?.object(forKey: "widget.cachedAt") as? Double)
+                .map { Date(timeIntervalSince1970: $0) })
     }
 
     func placeholder(in context: Context) -> AliciaEntry { Self.entry(at: .now) }
@@ -91,8 +97,16 @@ struct AliciaWidgetView: View {
 
     private var hour: Hour { Hour.at(entry.date) }
 
+    /// Cache older than 48 h — the backend hasn't fed the app in days, so
+    /// the words on the paper are not from "now". Dim them and date them.
+    private var isStale: Bool {
+        guard let cachedAt = entry.cachedAt else { return false }
+        return entry.date.timeIntervalSince(cachedAt) > 48 * 3600
+    }
+
     var body: some View {
         content
+            .opacity(isStale ? 0.66 : 1)
             .containerBackground(for: .widget) { hour.paper }
     }
 
@@ -109,7 +123,12 @@ struct AliciaWidgetView: View {
                 .tracking(1.6)
                 .foregroundStyle(hour.soft)
             Spacer()
-            if family != .systemSmall {
+            if isStale, let cachedAt = entry.cachedAt {
+                // The quiet confession: this paper was written days ago.
+                Text("as of \(cachedAt.formatted(.dateTime.month(.abbreviated).day()))")
+                    .font(.system(size: 8, design: .monospaced).italic())
+                    .foregroundStyle(hour.soft)
+            } else if family != .systemSmall {
                 Text(entry.date, style: .date)
                     .font(.system(size: 8, design: .monospaced))
                     .foregroundStyle(hour.soft)

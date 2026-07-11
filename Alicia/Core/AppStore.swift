@@ -7,8 +7,10 @@ import WidgetKit
 @MainActor
 @Observable
 final class AppStore {
-    // Content
-    var messages: [Message] = SampleData.messages
+    // Content — starts EMPTY in live mode: sample messages are seeded only
+    // in mock mode (see init), so an unreachable backend never puts words
+    // in Alicia's mouth that she didn't say.
+    var messages: [Message] = []
     var thoughts: [Thought] = []
     var tracks: [Track] = []
     var gallery: [Artwork] = []
@@ -24,9 +26,16 @@ final class AppStore {
 
     private let service: AliciaService
     private var ticker: Task<Void, Never>?
+    /// True when the app fell back to `MockAliciaService` (no Secrets.plist
+    /// / no override — see `AliciaConfig.makeService`). Sample data is a
+    /// mock-mode-only affordance: it must never masquerade as her live
+    /// words, and it must never reach the real home-screen widget.
+    private let isMock: Bool
 
     init(service: AliciaService) {
         self.service = service
+        self.isMock = service is MockAliciaService
+        if isMock { messages = SampleData.messages }
         Task { await load() }
     }
 
@@ -50,12 +59,22 @@ final class AppStore {
         async let kn = service.knowing()
         async let sy = service.syntheses()
         async let hc = service.homeContext()
-        (thoughts, tracks, gallery, health) = await (t, tr, g, h)
-        homeContext = await hc ?? homeContext
+        // Keep-last-known: nil means the fetch FAILED (network/auth/decode)
+        // — never wipe a populated tab over one bad refresh. A non-nil
+        // empty array is a real "backend has nothing" and does overwrite.
+        if let fresh = await t { thoughts = fresh }
+        if let fresh = await tr { tracks = fresh }
+        if let fresh = await g { gallery = fresh }
+        if let fresh = await h { health = fresh }
+        let freshHome = await hc
+        if let freshHome { homeContext = freshHome }
         (thinkingMode, walkWords) = await m
-        greeting = await gr ?? greeting
-        featured = await fs ?? featured
-        quote = await qt ?? quote
+        let freshGreeting = await gr
+        if let freshGreeting { greeting = freshGreeting }
+        let freshFeatured = await fs
+        if let freshFeatured { featured = freshFeatured }
+        let freshQuote = await qt
+        if let freshQuote { quote = freshQuote }
         let stats = await ar
         if !stats.isEmpty { archetypeStats = stats }
         knowing = await kn ?? knowing
@@ -64,7 +83,8 @@ final class AppStore {
         if thinkerNetwork == nil {
             thinkerNetwork = await service.thinkers()
         }
-        publishWidgetCache()
+        publishWidgetCache(hasFreshData: freshHome != nil || freshGreeting != nil
+                           || freshFeatured != nil || freshQuote != nil)
         Task { await refreshEpisodeThinkers() }
         let pro = await p
         if !pro.isEmpty {
@@ -89,7 +109,13 @@ final class AppStore {
     // MARK: home-screen widget
     /// The widget reads a shared app-group cache — no network of its own.
     /// Refresh it (and the timelines) whenever the app loads fresh data.
-    private func publishWidgetCache() {
+    /// `hasFreshData` stamps `widget.cachedAt` only when this load actually
+    /// got live content, so the widget can dim week-old words instead of
+    /// presenting them as today's.
+    private func publishWidgetCache(hasFreshData: Bool) {
+        // Mock mode must never write sample content into the REAL
+        // home-screen widget of a live install.
+        guard !isMock else { return }
         guard let shared = UserDefaults(suiteName: "group.com.myalicia.app") else { return }
         // The widget shows her words without the Telegram emoji markers —
         // strip at write time so the widget target needs no logic (v25).
@@ -118,6 +144,9 @@ final class AppStore {
         if let carry = homeContext?.cards.first {
             let line = carry.kind == "quote" ? carry.body : carry.title
             shared.set(line.strippedEmojis, forKey: "widget.carry")
+        }
+        if hasFreshData {
+            shared.set(Date().timeIntervalSince1970, forKey: "widget.cachedAt")
         }
         WidgetCenter.shared.reloadAllTimelines()
     }

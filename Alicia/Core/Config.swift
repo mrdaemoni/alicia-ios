@@ -35,7 +35,25 @@ enum AliciaConfig {
 
     /// The service the app should run with: live when fully configured,
     /// mock otherwise.
+    ///
+    /// PRECEDENCE GOTCHA: a UserDefaults override ("alicia.baseURL" /
+    /// "alicia.token", usually set once from the debugger) beats
+    /// Secrets.plist FOREVER — including a stale token that keeps 401-ing
+    /// long after Secrets.plist was fixed. There is no UI showing it.
+    /// If the app ignores a correct Secrets.plist, clear the overrides:
+    ///   defaults delete com.myalicia.app alicia.baseURL alicia.token
+    /// (or UserDefaults.standard.removeObject(forKey:) in the debugger).
     static func makeService() -> AliciaService {
+        #if DEBUG
+        if UserDefaults.standard.string(forKey: "alicia.baseURL") != nil
+            || UserDefaults.standard.string(forKey: "alicia.token") != nil {
+            print("""
+                [AliciaConfig] UserDefaults override ACTIVE — \
+                alicia.baseURL/alicia.token shadow Secrets.plist. \
+                Remove the defaults keys if this is stale.
+                """)
+        }
+        #endif
         if let base = baseURL, let token {
             return LiveAliciaService(baseURL: base, token: token)
         }

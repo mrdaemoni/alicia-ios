@@ -52,6 +52,13 @@ struct RootView: View {
             EditorialTabBar()
         }
         .ignoresSafeArea(edges: .bottom)
+        // v30: a whisper-thin pill when the backend can't be reached or the
+        // token died — otherwise a dead backend renders as an app that
+        // merely "has nothing new", which is worse than an honest word.
+        .overlay(alignment: .top) {
+            ConnectionBanner()
+                .padding(.top, 4)
+        }
         // Serif body type everywhere — the sketchbook voice.
         .fontDesign(.serif)
     }
@@ -64,6 +71,32 @@ struct RootView: View {
         case .mind:     MindView()
         case .studio:   StudioView()
         case .knowledge: KnowledgeView()
+        }
+    }
+}
+
+/// Small connection-state pill (top of every tab). Reads the shared
+/// `ConnectionStatus` the live fetch layer writes; in mock mode the state
+/// never leaves `.ok`, so nothing renders. Deliberately unobtrusive — a
+/// margin note, not an alert.
+private struct ConnectionBanner: View {
+    var body: some View {
+        if let text = label(for: ConnectionStatus.shared.state) {
+            Text(text)
+                .font(.system(size: 11, design: .serif).italic())
+                .foregroundStyle(Theme.rose)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Theme.paper.opacity(0.92)))
+                .overlay(Capsule().stroke(Theme.rose.opacity(0.35), lineWidth: 0.7))
+        }
+    }
+
+    private func label(for state: ConnectionState) -> String? {
+        switch state {
+        case .ok:           return nil
+        case .unreachable:  return "she's unreachable right now"
+        case .unauthorized: return "token rejected — check Secrets.plist"
         }
     }
 }

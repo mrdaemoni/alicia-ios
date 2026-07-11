@@ -42,14 +42,37 @@ struct LiveAliciaService: AliciaService {
         return comps?.url
     }
 
-    private func fetch<D: Decodable>(_ path: String, as type: [D].Type) async -> [D] {
+    /// One GET + decode. Returns nil on ANY failure — network, non-200,
+    /// auth, decode — and reports what happened to `ConnectionStatus` so a
+    /// dead backend or rotated token is visible instead of rendering as an
+    /// empty-but-alive-looking app. Decode failures log in DEBUG so field
+    /// drift between `skills/ios_api.py` and these DTOs is diagnosable.
+    private func fetchOne<D: Decodable>(_ path: String) async -> D? {
         do {
             let (data, resp) = try await URLSession.shared.data(for: request(path))
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return [] }
-            return try JSONDecoder().decode([D].self, from: data)
+            let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
+            guard status == 200 else {
+                ConnectionStatus.note(
+                    status == 401 || status == 403 ? .unauthorized : .unreachable)
+                return nil
+            }
+            ConnectionStatus.note(.ok)   // reachable + authorized
+            do {
+                return try JSONDecoder().decode(D.self, from: data)
+            } catch {
+                #if DEBUG
+                print("[LiveAliciaService] decode failed for \(path): \(error)")
+                #endif
+                return nil
+            }
         } catch {
-            return []   // every tab degrades gracefully to empty
+            ConnectionStatus.note(.unreachable)
+            return nil
         }
+    }
+
+    private func fetch<D: Decodable>(_ path: String, as type: [D].Type) async -> [D]? {
+        await fetchOne(path)
     }
 
     private static func parseDate(_ raw: String) -> Date {
@@ -140,7 +163,7 @@ struct LiveAliciaService: AliciaService {
     }
 
     func proactive(limit: Int) async -> [ProactiveMessage] {
-        await fetch("/api/proactive?limit=\(limit)", as: [ProactiveDTO].self).map {
+        (await fetch("/api/proactive?limit=\(limit)", as: [ProactiveDTO].self) ?? []).map {
             ProactiveMessage(id: $0.id, text: $0.text, kind: $0.kind,
                              archetype: $0.archetype,
                              date: Self.parseDate($0.date),
@@ -152,8 +175,8 @@ struct LiveAliciaService: AliciaService {
 
     private struct ThoughtDTO: Decodable { var title, body, tag, date: String }
 
-    func thoughts() async -> [Thought] {
-        await fetch("/api/thoughts", as: [ThoughtDTO].self).map {
+    func thoughts() async -> [Thought]? {
+        (await fetch("/api/thoughts", as: [ThoughtDTO].self))?.map {
             Thought(title: $0.title, body: $0.body, tag: $0.tag,
                     date: Self.parseDate($0.date))
         }
@@ -169,8 +192,8 @@ struct LiveAliciaService: AliciaService {
         var series: String?
     }
 
-    func tracks() async -> [Track] {
-        await fetch("/api/tracks", as: [TrackDTO].self).map {
+    func tracks() async -> [Track]? {
+        (await fetch("/api/tracks", as: [TrackDTO].self))?.map {
             Track(title: $0.title, mood: $0.mood, duration: $0.duration,
                   symbol: $0.symbol,
                   fileName: $0.fileName.flatMap { mediaURL($0)?.absoluteString },
@@ -257,15 +280,11 @@ struct LiveAliciaService: AliciaService {
     }
 
     func archetypes() async -> [ArchetypeStat] {
-        await fetch("/api/archetypes", as: [ArchetypeStat].self)
+        await fetch("/api/archetypes", as: [ArchetypeStat].self) ?? []
     }
 
     func knowing() async -> KnowingState? {
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: request("/api/knowing"))
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            return try JSONDecoder().decode(KnowingState.self, from: data)
-        } catch { return nil }
+        await fetchOne("/api/knowing")
     }
 
     private struct SynthesisDTO: Decodable {
@@ -273,22 +292,18 @@ struct LiveAliciaService: AliciaService {
     }
 
     func syntheses() async -> [FeaturedSynthesis] {
-        await fetch("/api/syntheses", as: [SynthesisDTO].self).map {
+        (await fetch("/api/syntheses", as: [SynthesisDTO].self) ?? []).map {
             FeaturedSynthesis(title: $0.title, excerpt: $0.excerpt,
                               body: $0.body, date: $0.date)
         }
     }
 
     func thinkers() async -> ThinkerNetwork? {
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: request("/api/thinkers"))
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            return try JSONDecoder().decode(ThinkerNetwork.self, from: data)
-        } catch { return nil }
+        await fetchOne("/api/thinkers")
     }
 
     func timeline() async -> [TimelineDay] {
-        await fetch("/api/timeline", as: [TimelineDay].self)
+        await fetch("/api/timeline", as: [TimelineDay].self) ?? []
     }
 
     // MARK: home context (the Us tab's loops)
@@ -333,67 +348,71 @@ struct LiveAliciaService: AliciaService {
     }
 
     func homeContext() async -> HomeContext? {
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: request("/api/home"))
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            let d = try JSONDecoder().decode(HomeDTO.self, from: data)
-            let season: HomeContext.Season? = d.season.flatMap { s in
-                guard let n = s.season, n > 0 else { return nil }
-                return HomeContext.Season(
-                    season: n, series: s.series ?? "", title: s.title ?? "",
-                    subtitle: s.subtitle ?? "", premise: s.premise ?? "",
-                    movements: (s.movements ?? []).map {
-                        .init(numeral: $0.numeral ?? "", title: $0.title ?? "",
-                              fromEpisode: $0.from_episode ?? 0,
-                              toEpisode: $0.to_episode ?? 0,
-                              summary: $0.summary ?? "")
-                    },
-                    movementNow: s.movement_now ?? "",
-                    episodes: (s.episodes ?? []).map {
-                        .init(episode: $0.episode ?? 0, label: $0.label ?? "",
-                              title: $0.title ?? "", claim: $0.claim ?? "",
-                              heard: $0.heard ?? false,
-                              isToday: $0.is_today ?? false)
-                    },
-                    heardCount: s.heard_count ?? 0, total: s.total ?? 0)
-            }
-            let today: HomeContext.Today? = d.today.flatMap { t in
-                guard let label = t.label, !label.isEmpty else { return nil }
-                return HomeContext.Today(
+        guard let d: HomeDTO = await fetchOne("/api/home") else { return nil }
+        // A failing /api/home returns `{}`, which decodes as a HomeDTO
+        // with every field nil — a "successful" fetch of nothing that
+        // would clobber good data in the store. No season, no today,
+        // no trail, no cards ⇒ treat it as a failed fetch.
+        if d.season == nil, d.today == nil,
+           (d.trail ?? []).isEmpty, (d.cards ?? []).isEmpty {
+            return nil
+        }
+        let season: HomeContext.Season? = d.season.flatMap { s in
+            guard let n = s.season, n > 0 else { return nil }
+            return HomeContext.Season(
+                season: n, series: s.series ?? "", title: s.title ?? "",
+                subtitle: s.subtitle ?? "", premise: s.premise ?? "",
+                movements: (s.movements ?? []).map {
+                    .init(numeral: $0.numeral ?? "", title: $0.title ?? "",
+                          fromEpisode: $0.from_episode ?? 0,
+                          toEpisode: $0.to_episode ?? 0,
+                          summary: $0.summary ?? "")
+                },
+                movementNow: s.movement_now ?? "",
+                episodes: (s.episodes ?? []).map {
+                    .init(episode: $0.episode ?? 0, label: $0.label ?? "",
+                          title: $0.title ?? "", claim: $0.claim ?? "",
+                          heard: $0.heard ?? false,
+                          isToday: $0.is_today ?? false)
+                },
+                heardCount: s.heard_count ?? 0, total: s.total ?? 0)
+        }
+        let today: HomeContext.Today? = d.today.flatMap { t in
+            guard let label = t.label, !label.isEmpty else { return nil }
+            return HomeContext.Today(
+                label: label, title: t.title ?? "",
+                pickedDate: t.picked_date ?? "",
+                isToday: t.is_today ?? false,
+                focus: t.focus ?? "", claim: t.claim ?? "",
+                about: t.about ?? "", quote: t.quote ?? "")
+        }
+        return HomeContext(
+            season: season,
+            trail: (d.trail ?? []).compactMap { t in
+                guard let label = t.label else { return nil }
+                return HomeContext.TrailItem(
                     label: label, title: t.title ?? "",
                     pickedDate: t.picked_date ?? "",
-                    isToday: t.is_today ?? false,
-                    focus: t.focus ?? "", claim: t.claim ?? "",
-                    about: t.about ?? "", quote: t.quote ?? "")
-            }
-            return HomeContext(
-                season: season,
-                trail: (d.trail ?? []).compactMap { t in
-                    guard let label = t.label else { return nil }
-                    return HomeContext.TrailItem(
-                        label: label, title: t.title ?? "",
-                        pickedDate: t.picked_date ?? "",
-                        daysAgo: t.days_ago, claim: t.claim ?? "")
-                },
-                today: today,
-                cards: (d.cards ?? []).compactMap { c in
-                    guard let id = c.id, let kind = c.kind else { return nil }
-                    return HomeContext.Card(
-                        id: id, kind: kind, title: c.title ?? "",
-                        body: c.body ?? "", thinker: c.thinker ?? "",
-                        tagline: c.tagline ?? "", themes: c.themes ?? [],
-                        source: c.source ?? "", badge: c.badge ?? "")
-                },
-                pinned: (d.pinned ?? []).compactMap { p in
-                    guard let id = p.id else { return nil }
-                    return HomeContext.Card(
-                        id: id, kind: p.kind ?? "note", title: p.title ?? "",
-                        body: p.body ?? "", thinker: p.thinker ?? "",
-                        tagline: "", themes: [],
-                        source: p.source ?? "", badge: "held")
-                },
-                contextLine: d.context_line ?? "")
-        } catch { return nil }
+                    daysAgo: t.days_ago, claim: t.claim ?? "")
+            },
+            today: today,
+            cards: (d.cards ?? []).compactMap { c in
+                guard let id = c.id, let kind = c.kind else { return nil }
+                return HomeContext.Card(
+                    id: id, kind: kind, title: c.title ?? "",
+                    body: c.body ?? "", thinker: c.thinker ?? "",
+                    tagline: c.tagline ?? "", themes: c.themes ?? [],
+                    source: c.source ?? "", badge: c.badge ?? "")
+            },
+            pinned: (d.pinned ?? []).compactMap { p in
+                guard let id = p.id else { return nil }
+                return HomeContext.Card(
+                    id: id, kind: p.kind ?? "note", title: p.title ?? "",
+                    body: p.body ?? "", thinker: p.thinker ?? "",
+                    tagline: "", themes: [],
+                    source: p.source ?? "", badge: "held")
+            },
+            contextLine: d.context_line ?? "")
     }
 
     private struct PinDTO: Decodable { var ok: Bool }
@@ -433,12 +452,8 @@ struct LiveAliciaService: AliciaService {
     private struct QuoteDTO: Decodable { var text: String; var author: String }
 
     func quote() async -> (text: String, author: String)? {
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: request("/api/quote"))
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            let q = try JSONDecoder().decode(QuoteDTO.self, from: data)
-            return q.text.isEmpty ? nil : (q.text, q.author)
-        } catch { return nil }
+        guard let q: QuoteDTO = await fetchOne("/api/quote") else { return nil }
+        return q.text.isEmpty ? nil : (q.text, q.author)
     }
 
     private struct FeaturedDTO: Decodable {
@@ -446,25 +461,16 @@ struct LiveAliciaService: AliciaService {
     }
 
     func featured() async -> FeaturedSynthesis? {
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: request("/api/featured"))
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            let f = try JSONDecoder().decode(FeaturedDTO.self, from: data)
-            return FeaturedSynthesis(title: f.title, excerpt: f.excerpt,
-                                     body: f.body, date: f.date)
-        } catch { return nil }
+        guard let f: FeaturedDTO = await fetchOne("/api/featured") else { return nil }
+        return FeaturedSynthesis(title: f.title, excerpt: f.excerpt,
+                                 body: f.body, date: f.date)
     }
 
     private struct GreetingDTO: Decodable { var greeting: String }
 
     func greeting() async -> String? {
-        do {
-            let (data, resp) = try await URLSession.shared.data(
-                for: request("/api/greeting"))
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            let g = try JSONDecoder().decode(GreetingDTO.self, from: data).greeting
-            return g.isEmpty ? nil : g
-        } catch { return nil }
+        guard let g: GreetingDTO = await fetchOne("/api/greeting") else { return nil }
+        return g.greeting.isEmpty ? nil : g.greeting
     }
 
     private struct ArtworkDTO: Decodable {
@@ -478,8 +484,8 @@ struct LiveAliciaService: AliciaService {
                 imageURL: dto.imageURL.flatMap { mediaURL($0) })
     }
 
-    func gallery() async -> [Artwork] {
-        await fetch("/api/gallery", as: [ArtworkDTO].self).map(artwork(from:))
+    func gallery() async -> [Artwork]? {
+        (await fetch("/api/gallery", as: [ArtworkDTO].self))?.map(artwork(from:))
     }
 
     private struct MetricDTO: Decodable {
@@ -487,8 +493,8 @@ struct LiveAliciaService: AliciaService {
         var value, hue: Double
     }
 
-    func health() async -> [HealthMetric] {
-        await fetch("/api/health", as: [MetricDTO].self).map {
+    func health() async -> [HealthMetric]? {
+        (await fetch("/api/health", as: [MetricDTO].self))?.map {
             HealthMetric(name: $0.name, value: $0.value, display: $0.display,
                          symbol: $0.symbol, hue: $0.hue)
         }
