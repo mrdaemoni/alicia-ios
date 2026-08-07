@@ -119,6 +119,9 @@ struct EpisodeDetailView: View {
     @Environment(AppStore.self) private var store
     let track: Track
     @State private var notes: AttributedString?
+    /// The shownotes as they arrived — the reader speaks the markdown, not
+    /// the restyled AttributedString.
+    @State private var notesMarkdown = ""
     @State private var loading = true
 
     /// Inline-markdown rendering keeps `#`/`-`/`>` markers literal — restyle
@@ -190,10 +193,20 @@ struct EpisodeDetailView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 32)
                 } else if let notes {
-                    Text(notes)
-                        .font(.subheadline)
-                        .textSelection(.enabled)
-                        .card(padding: 16, radius: 20)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(notes)
+                            .font(.subheadline)
+                            .textSelection(.enabled)
+                        HStack {
+                            Spacer()
+                            // Hear the shownotes rather than read them —
+                            // starting this pauses the episode itself.
+                            ListenLine(item: Readable(
+                                title: track.title, body: notesMarkdown,
+                                kind: "shownotes"), label: "READ TO ME")
+                        }
+                    }
+                    .card(padding: 16, radius: 20)
                 } else {
                     HStack(spacing: 8) {
                         InkSpark(size: 11, color: Theme.inkSoft, seed: 13)
@@ -222,6 +235,7 @@ struct EpisodeDetailView: View {
         .task {
             store.play(track)   // no-ops if this episode is already playing
             let md = await store.episodeNotes(for: track)
+            notesMarkdown = md
             notes = md.isEmpty ? nil : Self.render(md)
             loading = false
         }

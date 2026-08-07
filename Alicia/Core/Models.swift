@@ -40,6 +40,17 @@ struct FeaturedSynthesis: Hashable, Identifiable {
     var excerpt: String
     var body: String
     var date: String
+    /// A reading already rendered in her voice by the overnight pre-render
+    /// (`skills/reading_voice.py`) — nil means the reader starts on the
+    /// on-device voice and asks the backend to catch up.
+    var speechURL: URL? = nil
+    var speechDuration: TimeInterval = 0
+
+    /// This piece as something to press play on.
+    var readable: Readable {
+        Readable(title: title, body: body, kind: "synthesis",
+                 speechURL: speechURL, speechDuration: speechDuration)
+    }
 }
 
 struct ProactiveMessage: Identifiable, Hashable {

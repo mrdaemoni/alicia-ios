@@ -96,6 +96,12 @@ struct ThoughtCard: View {
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                ListenLine(item: Readable(title: thought.title,
+                                          body: thought.body,
+                                          kind: "thought"))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()

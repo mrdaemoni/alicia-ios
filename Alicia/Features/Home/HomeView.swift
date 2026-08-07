@@ -329,7 +329,10 @@ struct FeaturedSynthesisCard: View {
     @State private var reading = false
 
     var body: some View {
-        Button { reading = true } label: {
+        VStack(alignment: .leading, spacing: 12) {
+            // The card body opens the reader; the LISTEN word below is its
+            // own control. A nested Button inside a Button's label never
+            // gets the tap, so the reading region uses a tap gesture.
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("FEATURED SYNTHESIS")
@@ -350,16 +353,25 @@ struct FeaturedSynthesisCard: View {
                     .foregroundStyle(Theme.ink.opacity(0.75))
                     .lineLimit(4)
                     .multilineTextAlignment(.leading)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { reading = true }
+
+            HStack(spacing: 16) {
                 Text("READ")
                     .font(.system(.caption, design: .monospaced).weight(.semibold))
                     .tracking(1.4)
                     .underline()
                     .foregroundStyle(Theme.accent)
+                    .onTapGesture { reading = true }
+                Spacer()
+                // The day's synthesis is the one piece her overnight pass
+                // pre-renders, so this is almost always her own voice.
+                ListenLine(item: featured.readable)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .card(padding: 16, radius: 20)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 16, radius: 20)
         .sheet(isPresented: $reading) {
             SynthesisReader(featured: featured)
         }
@@ -382,11 +394,18 @@ struct SynthesisReader: View {
     @Environment(\.dismiss) private var dismiss
     let featured: FeaturedSynthesis
 
-    /// A parsed block of the synthesis body.
-    private enum Block: Identifiable {
-        case heading(String)
-        case paragraph(AttributedString)
-        var id: UUID { UUID() }
+    /// A parsed block of the synthesis body. `spokenLength` is how much of
+    /// the read-aloud text this block accounts for — the follow-along
+    /// highlight walks these proportions rather than trying to map the
+    /// synthesizer's character ranges back through the markdown.
+    private struct Block: Identifiable {
+        enum Kind {
+            case heading(String)
+            case paragraph(AttributedString)
+        }
+        let id = UUID()
+        var kind: Kind
+        var spokenLength: Int
     }
 
     /// [[Books/On Quality/OnQuality-21]] → "On Quality"; [[writing/X]] → "X".
@@ -421,20 +440,47 @@ struct SynthesisReader: View {
         featured.body.strippedEmojis.components(separatedBy: "\n\n").compactMap { raw in
             let p = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !p.isEmpty else { return nil }
+            let spoken = p.spokenPlainText.count
             if p.hasPrefix("## ") {
-                return .heading(String(p.dropFirst(3)))
+                return Block(kind: .heading(String(p.dropFirst(3))),
+                             spokenLength: spoken)
             }
             let cleaned = Self.cleanInline(p)
             let attr = (try? AttributedString(
                 markdown: cleaned,
                 options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
                 ?? AttributedString(cleaned)
-            return .paragraph(attr)
+            return Block(kind: .paragraph(attr), spokenLength: spoken)
         }
     }
 
+    /// Which block she is on, from how far through the piece she is. The
+    /// title is spoken first, so it takes the front of the runway.
+    private func readingIndex(_ blocks: [Block], progress: Double) -> Int? {
+        let titleLength = featured.title.spokenPlainText.count
+        let total = titleLength + blocks.reduce(0) { $0 + $1.spokenLength }
+        guard total > 0, progress > 0, progress < 1 else { return nil }
+        let spokenSoFar = Double(total) * progress
+        var cursor = Double(titleLength)
+        for (i, block) in blocks.enumerated() {
+            cursor += Double(block.spokenLength)
+            if spokenSoFar <= cursor { return i }
+        }
+        return blocks.indices.last
+    }
+
+    /// Non-nil while THIS piece is the one being read — the follow-along
+    /// highlight tracks her, not whatever was read last.
+    private var readingProgress: Double? {
+        guard store.reader.current?.id == featured.readable.id else { return nil }
+        return store.reader.progress
+    }
+
     var body: some View {
+        ScrollViewReader { scroller in
         ScrollView {
+            let blocks = self.blocks
+            let hereNow = readingProgress.flatMap { readingIndex(blocks, progress: $0) }
             VStack(alignment: .leading, spacing: 20) {
                 StippleIllustration(animated: true)
                     .frame(height: 140)
@@ -463,21 +509,33 @@ struct SynthesisReader: View {
                 Theme.stroke.frame(width: 60, height: 1)
                     .frame(maxWidth: .infinity)
 
-                ForEach(blocks) { block in
-                    switch block {
-                    case .heading(let h):
-                        Text(h.uppercased())
-                            .font(.system(size: 11, design: .monospaced).weight(.semibold))
-                            .tracking(2.0)
-                            .foregroundStyle(Theme.accent)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 10)
-                    case .paragraph(let p):
-                        Text(p)
-                            .font(.system(size: 16, design: .serif))
-                            .lineSpacing(6.5)
-                            .foregroundStyle(Theme.ink.opacity(0.92))
+                // Press play and she reads the whole piece to you.
+                ListenLine(item: featured.readable, label: "LISTEN")
+                    .frame(maxWidth: .infinity)
+
+                ForEach(Array(blocks.enumerated()), id: \.element.id) { i, block in
+                    let here = (i == hereNow)
+                    Group {
+                        switch block.kind {
+                        case .heading(let h):
+                            Text(h.uppercased())
+                                .font(.system(size: 11, design: .monospaced).weight(.semibold))
+                                .tracking(2.0)
+                                .foregroundStyle(Theme.accent)
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 10)
+                        case .paragraph(let p):
+                            Text(p)
+                                .font(.system(size: 16, design: .serif))
+                                .lineSpacing(6.5)
+                                // The paragraph she's on holds full ink; the
+                                // rest steps back a little, so the eye can
+                                // follow without anything flashing.
+                                .foregroundStyle(Theme.ink.opacity(
+                                    hereNow == nil ? 0.92 : (here ? 1.0 : 0.55)))
+                        }
                     }
+                    .id(block.id)
                 }
 
                 let thinkers = Self.thinkers(in: featured.body)
@@ -497,8 +555,17 @@ struct SynthesisReader: View {
             }
             .padding(24)
             .padding(.bottom, 40)
+            // Keep her place on screen while she reads, without stealing
+            // the scroll from a finger that's browsing ahead.
+            .onChange(of: hereNow) { _, now in
+                guard let now, now < blocks.count, store.reader.isSpeaking else { return }
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    scroller.scrollTo(blocks[now].id, anchor: .center)
+                }
+            }
         }
         .presentationBackground(Theme.paper)
+        }
     }
 }
 
@@ -643,22 +710,29 @@ struct QuoteCard: View {
                     .tracking(1.2)
                     .foregroundStyle(Theme.inkSoft)
             }
-            Button {
-                UIPasteboard.general.string = "“" + quote.text + "”"
-                    + (quote.author.isEmpty ? "" : " — " + quote.author)
-                withAnimation { copied = true }
-                Task {
-                    try? await Task.sleep(for: .seconds(2))
-                    withAnimation { copied = false }
+            HStack(spacing: 18) {
+                Button {
+                    UIPasteboard.general.string = "“" + quote.text + "”"
+                        + (quote.author.isEmpty ? "" : " — " + quote.author)
+                    withAnimation { copied = true }
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        withAnimation { copied = false }
+                    }
+                } label: {
+                    Text(copied ? "COPIED" : "COPY")
+                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                        .tracking(1.6)
+                        .underline()
+                        .foregroundStyle(copied ? Theme.mint : Theme.accent)
                 }
-            } label: {
-                Text(copied ? "COPIED" : "COPY")
-                    .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                    .tracking(1.6)
-                    .underline()
-                    .foregroundStyle(copied ? Theme.mint : Theme.accent)
+                .buttonStyle(.plain)
+                ListenLine(item: Readable(
+                    title: "",
+                    body: quote.text
+                        + (quote.author.isEmpty ? "" : ". \(quote.author)."),
+                    kind: "quote"))
             }
-            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity)
         .card(padding: 18, radius: 20)
@@ -1111,6 +1185,15 @@ struct KnowledgeCardView: View {
             }
 
             if revealed {
+                // LISTEN rides in with the feedback row so a resting card
+                // stays as quiet as v21 made it.
+                HStack {
+                    ListenLine(item: Readable(title: card.title,
+                                              body: card.body,
+                                              kind: "card"))
+                    Spacer()
+                }
+                .transition(.opacity)
                 feedbackRow
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             } else {

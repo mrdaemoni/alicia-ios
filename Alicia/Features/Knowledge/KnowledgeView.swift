@@ -205,10 +205,11 @@ struct SynthesisRow: View {
     var hot: Set<String> = []
     let open: () -> Void
 
+    private var leading: Bool { rank.isMultiple(of: 2) }
+
     var body: some View {
-        Button(action: open) {
-            VStack(alignment: rank.isMultiple(of: 2) ? .leading : .trailing,
-                   spacing: 5) {
+        VStack(alignment: leading ? .leading : .trailing, spacing: 5) {
+            VStack(alignment: leading ? .leading : .trailing, spacing: 5) {
                 Text(syn.date)
                     .font(.system(size: 9, design: .monospaced))
                     .tracking(1.4)
@@ -217,14 +218,21 @@ struct SynthesisRow: View {
                                    emphasize: hot,
                                    size: rank == 0 ? 20 : 15,
                                    weight: .semibold,
-                                   trailing: !rank.isMultiple(of: 2))
-                Theme.stroke.frame(height: 0.7)
+                                   trailing: !leading)
             }
-            .frame(maxWidth: .infinity,
-                   alignment: rank.isMultiple(of: 2) ? .leading : .trailing)
+            .frame(maxWidth: .infinity, alignment: leading ? .leading : .trailing)
             .contentShape(Rectangle())
+            .onTapGesture(perform: open)
+            // Every piece on the shelf can be listened to, not only read —
+            // the row's own control, so the tap that opens it still opens it.
+            HStack {
+                if !leading { Spacer() }
+                ListenLine(item: syn.readable)
+                if leading { Spacer() }
+            }
+            Theme.stroke.frame(height: 0.7)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: leading ? .leading : .trailing)
     }
 }
 

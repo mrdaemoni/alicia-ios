@@ -190,6 +190,10 @@ struct ArchetypeSheet: View {
                     .lineSpacing(6)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 6)
+                // Hear a voice describe itself in her voice.
+                ListenLine(item: Readable(title: arch.role,
+                                          body: arch.manifesto,
+                                          kind: "manifesto"))
 
                 if !recentLines.isEmpty {
                     Text("LATELY, IN THIS VOICE")

@@ -26,6 +26,16 @@ final class ConnectionStatus {
     }
 }
 
+/// Where a read-aloud request got to. Rendering her voice is minutes of
+/// chunked TTS on the Mac Mini, so this is a poll, not a wait — the app is
+/// already reading with the on-device voice while it resolves.
+enum SpeechStatus: Equatable {
+    case ready(url: URL, duration: TimeInterval)
+    case rendering
+    case failed          // TTS backends all fell over; try again later
+    case unavailable     // no live backend (mock mode / offline)
+}
+
 /// The single seam between the UI and Alicia's backend.
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
@@ -92,6 +102,9 @@ protocol AliciaService {
     /// signal — she records "he's holding this topic" (v26).
     func pin(action: String, id: String, kind: String, title: String,
              body: String, thinker: String, source: String) async -> Bool
+    /// Ask her to read `text` aloud. Returns immediately: `.ready` when the
+    /// backend already has the m4a, `.rendering` while it makes one.
+    func requestSpeech(text: String, kind: String) async -> SpeechStatus
 }
 
 struct TimelineDay: Decodable, Hashable, Identifiable {
@@ -217,6 +230,11 @@ struct MockAliciaService: AliciaService {
                       note: String) async -> Bool { true }
     func pin(action: String, id: String, kind: String, title: String,
              body: String, thinker: String, source: String) async -> Bool { true }
+    /// Mock mode has no TTS — read-aloud stays on the device voice, which is
+    /// the whole point of it being the instant path.
+    func requestSpeech(text: String, kind: String) async -> SpeechStatus {
+        .unavailable
+    }
 
     func homeContext() async -> HomeContext? {
         HomeContext(

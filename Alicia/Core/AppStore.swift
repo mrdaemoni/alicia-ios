@@ -32,11 +32,35 @@ final class AppStore {
     /// words, and it must never reach the real home-screen widget.
     private let isMock: Bool
 
+    /// Reads any page aloud (device voice instantly, her voice when the
+    /// backend has rendered it). Shares the audio session with the podcast
+    /// player, so the two hand off rather than talk over each other.
+    let reader = SpeechReader()
+
     init(service: AliciaService) {
         self.service = service
         self.isMock = service is MockAliciaService
         if isMock { messages = SampleData.messages }
+        reader.service = service
+        // A reading and an episode are both "her, in your ears" — only one
+        // of them at a time.
+        reader.willStartReading = { [weak self] in self?.pauseForReading() }
         Task { await load() }
+    }
+
+    /// Step the podcast aside for a reading (paused, not forgotten — the
+    /// player bar keeps its position so LISTEN picks it up again).
+    private func pauseForReading() {
+        guard nowPlaying != nil, isPlaying else { return }
+        togglePlay()
+    }
+
+    /// Press play on anything on screen.
+    func readAloud(_ item: Readable) {
+        // A session that only ever reads still deserves lock-screen controls
+        // — the podcast player used to be the only thing that armed them.
+        configureRemoteCommandsOnce()
+        reader.read(item)
     }
 
     /// True once the sample seed has been replaced by her real proactive
@@ -526,6 +550,9 @@ final class AppStore {
     private var stallObserver: NSObjectProtocol?
 
     func play(_ track: Track) {
+        // An episode starting ends a reading outright — unlike the reverse,
+        // there's no position worth keeping once you've chosen the podcast.
+        reader.stop()
         // Re-tapping the current track (e.g. opening its detail page)
         // must not restart it from zero.
         if nowPlaying?.id == track.id, player != nil {
@@ -647,33 +674,61 @@ final class AppStore {
         guard !remoteCommandsConfigured else { return }
         remoteCommandsConfigured = true
         let center = MPRemoteCommandCenter.shared()
+        // A reading and an episode never run at once, so whichever is live
+        // owns the lock screen. The reader is checked first: it's the one
+        // that just took the audio session.
         center.playCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.nowPlaying != nil else { return }
+                guard let self else { return }
+                if self.reader.isActive {
+                    if !self.reader.isSpeaking { self.reader.toggle() }
+                    return
+                }
+                guard self.nowPlaying != nil else { return }
                 if !self.isPlaying { self.togglePlay() }
             }
             return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.nowPlaying != nil else { return }
+                guard let self else { return }
+                if self.reader.isActive {
+                    if self.reader.isSpeaking { self.reader.toggle() }
+                    return
+                }
+                guard self.nowPlaying != nil else { return }
                 if self.isPlaying { self.togglePlay() }
             }
             return .success
         }
         center.nextTrackCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.next() }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                // Mid-reading there is no "next piece" — treat it as a jump.
+                self.reader.isActive ? self.reader.skip(15) : self.next()
+            }
             return .success
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.previous() }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.reader.isActive ? self.reader.skip(-15) : self.previous()
+            }
             return .success
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
             MainActor.assumeIsolated {
                 guard let self,
-                      let e = event as? MPChangePlaybackPositionCommandEvent,
-                      let p = self.player else { return }
+                      let e = event as? MPChangePlaybackPositionCommandEvent
+                else { return }
+                if self.reader.isActive {
+                    let d = self.reader.duration
+                    guard d > 0 else { return }
+                    self.reader.scrub(to: e.positionTime / d)
+                    self.reader.commitScrub()
+                    return
+                }
+                guard let p = self.player else { return }
                 p.seek(to: CMTime(seconds: e.positionTime, preferredTimescale: 600))
             }
             return .success

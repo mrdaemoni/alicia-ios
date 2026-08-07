@@ -130,6 +130,26 @@ struct KnowingCard: View {
 struct KnowingSheet: View {
     let k: KnowingState
 
+    /// Her model of you, spoken as prose — the claims read aloud in order,
+    /// horizon by horizon, rather than as a table of numbers.
+    private var readable: Readable {
+        var lines = ["Here is what I know of you."]
+        if !k.now.isEmpty {
+            lines.append("Today's claims.")
+            lines += k.now.map { $0.claim }
+        }
+        if !k.recent.isEmpty {
+            lines.append("From the last seven days.")
+            lines += k.recent.map { $0.claim }
+        }
+        lines.append("Over the long arc: \(k.longterm.learnings) learnings "
+                     + "across \(k.longterm.dimensions.count) dimensions, "
+                     + "over \(k.longterm.days) days.")
+        return Readable(title: "What she knows of you",
+                        body: lines.joined(separator: "\n\n"),
+                        kind: "knowing")
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
@@ -145,6 +165,7 @@ struct KnowingSheet: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(5)
                 Theme.stroke.frame(width: 60, height: 1)
+                ListenLine(item: readable)
 
                 horizon("NOW — TODAY'S CLAIMS", k.now,
                         empty: "Nothing yet today. Talk to her.")

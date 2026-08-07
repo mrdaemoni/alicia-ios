@@ -289,12 +289,15 @@ struct LiveAliciaService: AliciaService {
 
     private struct SynthesisDTO: Decodable {
         var title, date, excerpt, body: String
+        var speech: SpeechDTO?
     }
 
     func syntheses() async -> [FeaturedSynthesis] {
         (await fetch("/api/syntheses", as: [SynthesisDTO].self) ?? []).map {
             FeaturedSynthesis(title: $0.title, excerpt: $0.excerpt,
-                              body: $0.body, date: $0.date)
+                              body: $0.body, date: $0.date,
+                              speechURL: mediaURL($0.speech?.url ?? ""),
+                              speechDuration: $0.speech?.duration ?? 0)
         }
     }
 
@@ -456,14 +459,58 @@ struct LiveAliciaService: AliciaService {
         return q.text.isEmpty ? nil : (q.text, q.author)
     }
 
+    /// A reading the backend already rendered ({} when it hasn't — the
+    /// payload builders look in the cache but never start a render).
+    private struct SpeechDTO: Decodable {
+        var url: String?
+        var duration: Double?
+    }
+
     private struct FeaturedDTO: Decodable {
         var title, excerpt, body, date: String
+        var speech: SpeechDTO?
     }
 
     func featured() async -> FeaturedSynthesis? {
         guard let f: FeaturedDTO = await fetchOne("/api/featured") else { return nil }
         return FeaturedSynthesis(title: f.title, excerpt: f.excerpt,
-                                 body: f.body, date: f.date)
+                                 body: f.body, date: f.date,
+                                 speechURL: mediaURL(f.speech?.url ?? ""),
+                                 speechDuration: f.speech?.duration ?? 0)
+    }
+
+    // MARK: read aloud
+
+    private struct SpeakDTO: Decodable {
+        var status: String
+        var url: String?
+        var duration: Double?
+    }
+
+    func requestSpeech(text: String, kind: String) async -> SpeechStatus {
+        do {
+            let body = try JSONSerialization.data(
+                withJSONObject: ["text": text, "kind": kind])
+            let (data, resp) = try await URLSession.shared.data(
+                for: request("/api/speak", method: "POST", body: body))
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+                return .unavailable
+            }
+            let dto = try JSONDecoder().decode(SpeakDTO.self, from: data)
+            switch dto.status {
+            case "ready":
+                guard let url = mediaURL(dto.url ?? "") else { return .failed }
+                return .ready(url: url, duration: dto.duration ?? 0)
+            case "rendering":
+                return .rendering
+            default:
+                // "failed" (every TTS backend fell over) and "empty"
+                // (nothing speakable after cleaning) both end the poll.
+                return .failed
+            }
+        } catch {
+            return .unavailable
+        }
     }
 
     private struct GreetingDTO: Decodable { var greeting: String }

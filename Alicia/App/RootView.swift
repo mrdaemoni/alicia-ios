@@ -46,9 +46,14 @@ struct RootView: View {
                         .toolbar(.hidden, for: .tabBar)
                 }
             }
-            // v28: the global player was more clutter than comfort
+            // v28: the global PODCAST player was more clutter than comfort
             // (Hector: "then I have to close it") — it lives in Studio
             // again, and the lock screen / Dynamic Island covers the rest.
+            // The reading bar is global on purpose and doesn't repeat that
+            // mistake: it exists only while something is being read to you,
+            // it follows you off the page you started it from, and its
+            // crossed-out mark ends it in one tap.
+            ReadingBar()
             EditorialTabBar()
         }
         .ignoresSafeArea(edges: .bottom)
