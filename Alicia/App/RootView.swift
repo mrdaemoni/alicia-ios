@@ -57,6 +57,9 @@ struct RootView: View {
             EditorialTabBar()
         }
         .ignoresSafeArea(edges: .bottom)
+        // The dark band grows upward to take the player in, rather than a
+        // card appearing on top of the page.
+        .animation(.easeInOut(duration: 0.25), value: store.reader.isActive)
         // v30: a whisper-thin pill when the backend can't be reached or the
         // token died — otherwise a dead backend renders as an app that
         // merely "has nothing new", which is worse than an honest word.

@@ -41,15 +41,30 @@ struct FeaturedSynthesis: Hashable, Identifiable {
     var body: String
     var date: String
     /// A reading already rendered in her voice by the overnight pre-render
-    /// (`skills/reading_voice.py`) — nil means the reader starts on the
-    /// on-device voice and asks the backend to catch up.
-    var speechURL: URL? = nil
+    /// (`skills/reading_voice.py`) — empty means the reader asks the backend
+    /// for it and starts on the lead chunk a few seconds later.
+    var speechChunks: [SpeechChunk] = []
     var speechDuration: TimeInterval = 0
 
     /// This piece as something to press play on.
     var readable: Readable {
         Readable(title: title, body: body, kind: "synthesis",
-                 speechURL: speechURL, speechDuration: speechDuration)
+                 speechChunks: speechChunks, speechDuration: speechDuration)
+    }
+
+    /// Pin identity. Keyed on the title because that's what survives the
+    /// piece rotating off the shelf — the whole point of pinning one.
+    var pinID: String { "synthesis:\(title)" }
+}
+
+// In an extension so the memberwise initialiser survives.
+extension FeaturedSynthesis {
+    /// A pinned synthesis, read back out of the home payload.
+    init(pinned card: HomeContext.Card) {
+        self.init(title: card.title,
+                  excerpt: String(card.body.prefix(220)),
+                  body: card.body,
+                  date: card.source)
     }
 }
 

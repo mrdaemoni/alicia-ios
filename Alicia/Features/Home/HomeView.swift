@@ -65,7 +65,14 @@ struct HomeView: View {
                                 .foregroundStyle(Theme.accent)
                                 .padding(.leading, 2)
                             ForEach(held) { card in
-                                KnowledgeCardView(card: card)
+                                // A pinned synthesis is a whole finished
+                                // thought, not a card excerpt — it keeps its
+                                // reader and its LISTEN.
+                                if card.kind == "synthesis" {
+                                    HeldSynthesisCard(card: card)
+                                } else {
+                                    KnowledgeCardView(card: card)
+                                }
                             }
                         }
                     }
@@ -364,9 +371,10 @@ struct FeaturedSynthesisCard: View {
                     .underline()
                     .foregroundStyle(Theme.accent)
                     .onTapGesture { reading = true }
+                SynthesisPin(syn: featured, size: 19)
                 Spacer()
                 // The day's synthesis is the one piece her overnight pass
-                // pre-renders, so this is almost always her own voice.
+                // always pre-renders, so this starts instantly in her voice.
                 ListenLine(item: featured.readable)
             }
         }
@@ -492,6 +500,11 @@ struct SynthesisReader: View {
                         .tracking(2.0)
                         .foregroundStyle(Theme.inkSoft)
                     Spacer()
+                }
+                .overlay(alignment: .leading) {
+                    // v31: hold this one — it stops mattering that the shelf
+                    // rotates at midnight.
+                    SynthesisPin(syn: featured)
                 }
                 .overlay(alignment: .trailing) {
                     // v29: pass the finished thought along.

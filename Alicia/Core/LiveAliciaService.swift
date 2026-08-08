@@ -296,7 +296,7 @@ struct LiveAliciaService: AliciaService {
         (await fetch("/api/syntheses", as: [SynthesisDTO].self) ?? []).map {
             FeaturedSynthesis(title: $0.title, excerpt: $0.excerpt,
                               body: $0.body, date: $0.date,
-                              speechURL: mediaURL($0.speech?.url ?? ""),
+                              speechChunks: speechChunks($0.speech?.chunks),
                               speechDuration: $0.speech?.duration ?? 0)
         }
     }
@@ -460,9 +460,15 @@ struct LiveAliciaService: AliciaService {
     }
 
     /// A reading the backend already rendered ({} when it hasn't — the
-    /// payload builders look in the cache but never start a render).
-    private struct SpeechDTO: Decodable {
+    /// payload builders look in the cache but never start a render, and
+    /// advertise only COMPLETE readings).
+    private struct ChunkDTO: Decodable {
         var url: String?
+        var duration: Double?
+    }
+
+    private struct SpeechDTO: Decodable {
+        var chunks: [ChunkDTO]?
         var duration: Double?
     }
 
@@ -475,7 +481,7 @@ struct LiveAliciaService: AliciaService {
         guard let f: FeaturedDTO = await fetchOne("/api/featured") else { return nil }
         return FeaturedSynthesis(title: f.title, excerpt: f.excerpt,
                                  body: f.body, date: f.date,
-                                 speechURL: mediaURL(f.speech?.url ?? ""),
+                                 speechChunks: speechChunks(f.speech?.chunks),
                                  speechDuration: f.speech?.duration ?? 0)
     }
 
@@ -483,8 +489,15 @@ struct LiveAliciaService: AliciaService {
 
     private struct SpeakDTO: Decodable {
         var status: String
-        var url: String?
+        var chunks: [ChunkDTO]?
         var duration: Double?
+    }
+
+    private func speechChunks(_ dtos: [ChunkDTO]?) -> [SpeechChunk] {
+        (dtos ?? []).compactMap { c in
+            guard let url = mediaURL(c.url ?? "") else { return nil }
+            return SpeechChunk(url: url, duration: c.duration ?? 0)
+        }
     }
 
     func requestSpeech(text: String, kind: String) async -> SpeechStatus {
@@ -497,10 +510,14 @@ struct LiveAliciaService: AliciaService {
                 return .unavailable
             }
             let dto = try JSONDecoder().decode(SpeakDTO.self, from: data)
+            let chunks = speechChunks(dto.chunks)
             switch dto.status {
             case "ready":
-                guard let url = mediaURL(dto.url ?? "") else { return .failed }
-                return .ready(url: url, duration: dto.duration ?? 0)
+                guard !chunks.isEmpty else { return .failed }
+                return .ready(chunks: chunks, duration: dto.duration ?? 0)
+            case "streaming":
+                guard !chunks.isEmpty else { return .rendering }
+                return .streaming(chunks: chunks, duration: dto.duration ?? 0)
             case "rendering":
                 return .rendering
             default:

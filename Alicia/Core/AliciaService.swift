@@ -26,11 +26,21 @@ final class ConnectionStatus {
     }
 }
 
-/// Where a read-aloud request got to. Rendering her voice is minutes of
-/// chunked TTS on the Mac Mini, so this is a poll, not a wait — the app is
-/// already reading with the on-device voice while it resolves.
+/// One rendered piece of a reading, in speaking order.
+struct SpeechChunk: Hashable {
+    var url: URL
+    var duration: TimeInterval
+}
+
+/// Where a read-aloud request got to.
+///
+/// Her voice is rendered in chunks, smallest first, so `streaming` arrives
+/// within seconds and playback starts on the lead chunk while the rest of a
+/// long piece is still being made. `duration` is the whole piece either way —
+/// estimated while incomplete — so the scrub bar never grows under the finger.
 enum SpeechStatus: Equatable {
-    case ready(url: URL, duration: TimeInterval)
+    case ready(chunks: [SpeechChunk], duration: TimeInterval)
+    case streaming(chunks: [SpeechChunk], duration: TimeInterval)
     case rendering
     case failed          // TTS backends all fell over; try again later
     case unavailable     // no live backend (mock mode / offline)

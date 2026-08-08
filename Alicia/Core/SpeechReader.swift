@@ -14,7 +14,8 @@ struct Readable: Equatable {
     /// — see `STYLE_FOR_KIND` in skills/reading_voice.py.
     var kind: String
     /// A reading already rendered in her voice, handed over in the payload.
-    var speechURL: URL? = nil
+    /// Only ever complete readings — the backend won't advertise a partial.
+    var speechChunks: [SpeechChunk] = []
     var speechDuration: TimeInterval = 0
     /// Stable identity so re-tapping the same piece resumes instead of
     /// restarting, and so the reader can tell "this card" from "that card".
@@ -29,8 +30,8 @@ struct Readable: Equatable {
 
 extension String {
     /// What a voice should actually say — the Swift-side mirror of
-    /// `_clean_for_tts` in skills/voice_skill.py. Without this the on-device
-    /// voice reads asterisks, hashes and wikilink brackets out loud.
+    /// `_clean_for_tts` in skills/voice_skill.py. Only the offline device
+    /// voice reads from this; her own renders are cleaned on the backend.
     var spokenPlainText: String {
         var t = strippedEmojis
         // Wikilinks: [[Books/On Quality/OnQuality-21]] → "OnQuality 21"
@@ -68,58 +69,49 @@ extension String {
     }
 }
 
-/// Reads the page aloud. Two engines behind one set of controls:
+/// Reads the page aloud, in Alicia's own voice.
 ///
-/// * **QUICK** — `AVSpeechSynthesizer`, on-device. Starts on the same
-///   runloop tick as the tap, works offline, has no length limit. It is not
-///   her voice, and it is never made to sound like it is.
-/// * **HER VOICE** — the m4a `skills/reading_voice.py` renders through the
-///   same Gemini voice her Telegram voice notes use, played by AVPlayer.
+/// The backend renders her voice in chunks that start small
+/// (`skills/reading_voice.py`), so the first words arrive in ~10–15s instead
+/// of the minutes a whole synthesis takes, and playback then stays ahead of
+/// the renderer. This plays that sequence as one continuous track: one scrub
+/// bar, one clock, chunk seams inaudible.
 ///
-/// Pressing play never waits: if her reading isn't cached yet the device
-/// voice starts immediately and the backend render is requested in the
-/// background. When it lands, `herVoiceReady` goes true and the bar offers
-/// the swap — the reader never switches voices mid-sentence on its own,
-/// because having the narrator change identity underneath you is worse than
-/// finishing in the stand-in.
+/// The on-device synthesizer is a **last resort only**, for when there is no
+/// backend at all (mock mode, or the Mac Mini unreachable). Hector's verdict
+/// on it was plain — "the standard iOS voice is not nice" — so it is never
+/// the default, and the bar says so when it's what you're hearing.
 @MainActor
 @Observable
 final class SpeechReader: NSObject {
 
     enum Voice: Equatable {
-        case device      // the stand-in
-        case her         // the rendered m4a
+        case her         // her rendered m4a chunks
+        case device      // offline last resort
     }
 
     // MARK: what the UI reads
 
     private(set) var current: Readable?
     private(set) var isSpeaking = false
-    private(set) var voice: Voice = .device
-    /// Her rendering finished while the device voice was reading — the bar
-    /// shows the swap affordance.
-    private(set) var herVoiceReady = false
-    /// True while the backend is still rendering her voice.
-    private(set) var herVoiceRendering = false
-    var progress: Double = 0            // 0…1 through the piece
+    private(set) var voice: Voice = .her
+    /// Waiting on her first chunk — the bar shows this rather than looking
+    /// like a play button that did nothing.
+    private(set) var isPreparing = false
+    /// Playing, but the tail is still rendering behind us.
+    private(set) var isStreaming = false
+    var progress: Double = 0            // 0…1 through the whole piece
     private(set) var isScrubbing = false
     var rate: Float = 1.0               // 1× → 1.5× → 2×
-    /// Character range being spoken right now (device voice only) — the
-    /// reader highlights it so the eye can follow along.
-    private(set) var spokenRange: NSRange?
-    /// Set when a reading genuinely can't be produced, so the UI can say so
-    /// instead of showing a play button that does nothing.
+    /// Set when a reading genuinely can't be produced, so the UI can say so.
     private(set) var failure: String?
 
     var isActive: Bool { current != nil }
 
-    /// Seconds of audio, real for her voice and estimated for the device
-    /// voice (which has no duration API — the estimate is only ever used to
-    /// draw a clock, never to seek).
-    var duration: TimeInterval {
-        if voice == .her, herDuration > 0 { return herDuration }
-        return Double(spoken.count) / (Self.charsPerSecond * Double(rate))
-    }
+    /// Whole-piece length: exact once rendered, estimated while streaming
+    /// (the backend extrapolates from the rate it has measured so far), so
+    /// the scrub bar never grows under the finger.
+    private(set) var duration: TimeInterval = 0
     var elapsed: TimeInterval { duration * progress }
 
     /// Injected by AppStore — the network seam stays out of this class.
@@ -129,26 +121,29 @@ final class SpeechReader: NSObject {
 
     // MARK: engine state
 
-    /// Roughly what an English voice covers per second at 1×. Only used for
-    /// the clock and for turning ±15s into a character jump.
-    private static let charsPerSecond = 14.5
-
-    private let synth = AVSpeechSynthesizer()
-    private var herPlayer: AVPlayer?
-    private var herTimeObserver: Any?
-    private var herEndObserver: NSObjectProtocol?
-    private var herDuration: TimeInterval = 0
-    /// The cleaned text both engines work from.
-    private var spoken = ""
-    /// Where the current utterance began in `spoken` — device-voice progress
-    /// is `(utteranceStart + rangeInUtterance) / spoken.count`, so resuming
-    /// mid-piece still reports absolute position.
-    private var utteranceStart = 0
+    private let queue = AVQueuePlayer()
+    /// Chunks known so far, in speaking order.
+    private var chunks: [SpeechChunk] = []
+    /// How many of `chunks` have been handed to the queue player.
+    private var queuedCount = 0
+    /// Which chunk each queued item is, so progress survives the seams.
+    private var indexOfItem: [ObjectIdentifier: Int] = [:]
+    private var currentIndex = 0
+    private var timeObserver: Any?
+    private var endObserver: NSObjectProtocol?
     private var pollTask: Task<Void, Never>?
+
+    // Offline last resort.
+    private let synth = AVSpeechSynthesizer()
+    private var spoken = ""
+    private var utteranceStart = 0
+    /// Only used to draw a clock for the device voice, which has no timeline.
+    private static let deviceCharsPerSecond = 14.5
 
     override init() {
         super.init()
         synth.delegate = self
+        queue.actionAtItemEnd = .advance
     }
 
     // MARK: starting and stopping
@@ -161,30 +156,30 @@ final class SpeechReader: NSObject {
             return
         }
         stop()
-        let text = item.spokenText.spokenPlainText
-        guard !text.isEmpty else {
+        guard !item.spokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             failure = "There's nothing here to read."
             return
         }
         willStartReading?()
         current = item
-        spoken = text
         progress = 0
-        utteranceStart = 0
         failure = nil
-        herVoiceReady = false
-        herVoiceRendering = false
-
         activateAudioSession()
-        if let url = item.speechURL {
-            // Already rendered — she reads it herself from the first second.
+
+        if !item.speechChunks.isEmpty {
+            // Pre-rendered overnight: her voice from the first second.
             voice = .her
-            herDuration = item.speechDuration
-            startHerVoice(url: url, from: 0)
+            isStreaming = false
+            duration = item.speechDuration
+            start(chunks: item.speechChunks)
         } else {
-            voice = .device
-            herDuration = 0
-            speakOnDevice(from: 0)
+            // Nothing cached — hold the play button in a visible "preparing"
+            // state while the lead chunk renders, rather than falling to a
+            // voice Hector doesn't want to hear.
+            voice = .her
+            isPreparing = true
+            isStreaming = true
+            duration = item.speechDuration
             requestHerVoice(for: item)
         }
         publishNowPlaying()
@@ -194,21 +189,19 @@ final class SpeechReader: NSObject {
         guard isActive else { return }
         if isSpeaking {
             isSpeaking = false
-            switch voice {
-            case .device: synth.pauseSpeaking(at: .word)
-            case .her:    herPlayer?.pause()
+            if voice == .her {
+                queue.pause()
+            } else {
+                synth.pauseSpeaking(at: .word)
             }
         } else {
             isSpeaking = true
             activateAudioSession()
-            switch voice {
-            case .device:
-                // A paused synthesizer resumes; one that finished or was
-                // stopped has to be re-primed from where the eye left off.
-                if !synth.continueSpeaking() { speakOnDevice(from: charIndex(for: progress)) }
-            case .her:
-                herPlayer?.play()
-                herPlayer?.rate = rate
+            if voice == .her {
+                queue.play()
+                queue.rate = rate
+            } else if !synth.continueSpeaking() {
+                speakOnDevice(from: deviceCharIndex(for: progress))
             }
         }
         publishNowPlaying()
@@ -218,49 +211,39 @@ final class SpeechReader: NSObject {
         pollTask?.cancel()
         pollTask = nil
         synth.stopSpeaking(at: .immediate)
-        teardownHerPlayer()
+        teardownQueue()
         current = nil
         isSpeaking = false
-        spokenRange = nil
+        isPreparing = false
+        isStreaming = false
         progress = 0
+        duration = 0
+        chunks = []
+        queuedCount = 0
+        currentIndex = 0
         spoken = ""
         utteranceStart = 0
-        herVoiceReady = false
-        herVoiceRendering = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
     /// 1× → 1.5× → 2× → 1×.
     func cycleRate() {
         rate = rate >= 2.0 ? 1.0 : (rate >= 1.5 ? 2.0 : 1.5)
-        switch voice {
-        case .her:
-            if isSpeaking { herPlayer?.rate = rate }
-        case .device:
-            // AVSpeechUtterance rate is fixed once speaking starts — re-prime
-            // from the current position at the new rate.
-            if isSpeaking { speakOnDevice(from: charIndex(for: progress)) }
+        if isSpeaking {
+            if voice == .her {
+                queue.rate = rate
+            } else {
+                // AVSpeechUtterance rate is fixed once speaking starts.
+                speakOnDevice(from: deviceCharIndex(for: progress))
+            }
         }
         publishNowPlaying()
     }
 
-    /// Jump ±15 seconds. The device voice has no timeline, so the same
-    /// gesture moves by the number of characters it would have spoken.
+    /// Jump ±15 seconds through the whole piece, across chunk seams.
     func skip(_ seconds: Double) {
-        guard isActive else { return }
-        switch voice {
-        case .her:
-            guard let p = herPlayer, herDuration > 0 else { return }
-            let target = min(herDuration, max(0, p.currentTime().seconds + seconds))
-            p.seek(to: CMTime(seconds: target, preferredTimescale: 600))
-            progress = target / herDuration
-        case .device:
-            let delta = Int(seconds * Self.charsPerSecond * Double(rate))
-            let target = min(spoken.count - 1, max(0, charIndex(for: progress) + delta))
-            progress = Double(target) / Double(max(1, spoken.count))
-            if isSpeaking { speakOnDevice(from: target) }
-        }
-        publishNowPlaying()
+        guard isActive, duration > 0 else { return }
+        seek(to: min(1, max(0, (elapsed + seconds) / duration)))
     }
 
     func scrub(to fraction: Double) {
@@ -271,38 +254,216 @@ final class SpeechReader: NSObject {
     func commitScrub() {
         defer { isScrubbing = false }
         guard isActive else { return }
-        switch voice {
-        case .her:
-            guard let p = herPlayer, herDuration > 0 else { return }
-            p.seek(to: CMTime(seconds: progress * herDuration, preferredTimescale: 600))
-        case .device:
-            if isSpeaking { speakOnDevice(from: charIndex(for: progress)) }
+        seek(to: progress)
+    }
+
+    // MARK: her voice — one track out of many chunks
+
+    /// Seconds of audio before chunk `index` begins.
+    private func offsetOfChunk(_ index: Int) -> TimeInterval {
+        chunks.prefix(index).reduce(0) { $0 + $1.duration }
+    }
+
+    /// Which chunk a whole-piece position lands in, and how far into it.
+    private func locate(_ seconds: TimeInterval) -> (index: Int, offset: TimeInterval) {
+        var remaining = max(0, seconds)
+        for (i, chunk) in chunks.enumerated() {
+            if remaining < chunk.duration || i == chunks.count - 1 {
+                return (i, min(remaining, max(0, chunk.duration)))
+            }
+            remaining -= chunk.duration
         }
+        return (0, 0)
+    }
+
+    private func seek(to fraction: Double) {
+        progress = min(1, max(0, fraction))
+        guard voice == .her else {
+            if isSpeaking { speakOnDevice(from: deviceCharIndex(for: progress)) }
+            publishNowPlaying()
+            return
+        }
+        // Only what's rendered can be sought into; a scrub past the rendered
+        // edge lands on the last chunk we actually have.
+        let target = locate(duration * progress)
+        rebuildQueue(from: target.index, offset: target.offset)
         publishNowPlaying()
     }
 
-    /// Hand the rest of the piece to her real voice, picking up where the
-    /// stand-in got to. Only meaningful once `herVoiceReady`.
-    func switchToHerVoice() {
-        guard let item = current, let url = item.speechURL ?? pendingHerURL else { return }
-        let resumeAt = progress
-        synth.stopSpeaking(at: .immediate)
-        spokenRange = nil
-        voice = .her
-        herDuration = pendingHerDuration > 0 ? pendingHerDuration : item.speechDuration
-        herVoiceReady = false
-        startHerVoice(url: url, from: resumeAt)
+    private func start(chunks newChunks: [SpeechChunk]) {
+        chunks = newChunks
+        if duration <= 0 { duration = chunks.reduce(0) { $0 + $1.duration } }
+        rebuildQueue(from: 0, offset: 0)
+    }
+
+    /// Rebuild the queue starting at a chunk, seeking into it. Used to begin
+    /// playback and to land a scrub.
+    private func rebuildQueue(from index: Int, offset: TimeInterval) {
+        guard !chunks.isEmpty else { return }
+        let start = min(max(0, index), chunks.count - 1)
+        detachObservers()
+        queue.removeAllItems()
+        indexOfItem = [:]
+        queuedCount = start
+        for i in start..<chunks.count { append(chunkAt: i) }
+        currentIndex = start
+        attachObservers()
+        if offset > 0, let item = queue.currentItem {
+            item.seek(to: CMTime(seconds: offset, preferredTimescale: 600),
+                      completionHandler: nil)
+        }
+        isSpeaking = true
+        isPreparing = false
+        queue.play()
+        queue.rate = rate
+    }
+
+    private func append(chunkAt index: Int) {
+        guard index < chunks.count else { return }
+        let item = AVPlayerItem(url: chunks[index].url)
+        // Each chunk is small and +faststart, so a short buffer is plenty.
+        item.preferredForwardBufferDuration = 15
+        indexOfItem[ObjectIdentifier(item)] = index
+        if queue.canInsert(item, after: nil) {
+            queue.insert(item, after: nil)
+            queuedCount = max(queuedCount, index + 1)
+        }
+    }
+
+    private func attachObservers() {
+        timeObserver = queue.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.3, preferredTimescale: 600), queue: .main
+        ) { [weak self] time in
+            MainActor.assumeIsolated {
+                guard let self, !self.isScrubbing, self.duration > 0 else { return }
+                // Keep currentIndex honest: the queue advances on its own at
+                // a chunk seam, and progress must not snap back to zero.
+                if let item = self.queue.currentItem,
+                   let index = self.indexOfItem[ObjectIdentifier(item)] {
+                    self.currentIndex = index
+                }
+                let played = self.offsetOfChunk(self.currentIndex) + time.seconds
+                self.progress = min(1, max(0, played / self.duration))
+                self.updateNowPlayingElapsed(played)
+            }
+        }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification,
+            object: nil, queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, let item = note.object as? AVPlayerItem,
+                      let index = self.indexOfItem[ObjectIdentifier(item)] else { return }
+                // The last chunk of a finished reading ends the piece; the
+                // last chunk of a still-rendering one just means we've caught
+                // up with the renderer.
+                if index >= self.chunks.count - 1 {
+                    if self.isStreaming {
+                        self.isPreparing = true      // waiting on more audio
+                    } else {
+                        self.finishReading()
+                    }
+                }
+            }
+        }
+    }
+
+    private func detachObservers() {
+        if let timeObserver { queue.removeTimeObserver(timeObserver) }
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        timeObserver = nil
+        endObserver = nil
+    }
+
+    private func teardownQueue() {
+        detachObservers()
+        queue.pause()
+        queue.removeAllItems()
+        indexOfItem = [:]
+    }
+
+    /// Fold newly-rendered chunks into a reading already in progress.
+    private func extend(with newChunks: [SpeechChunk], total: TimeInterval,
+                        complete: Bool) {
+        guard newChunks.count >= chunks.count else { return }
+        let hadNone = chunks.isEmpty
+        chunks = newChunks
+        duration = total > 0 ? total : chunks.reduce(0) { $0 + $1.duration }
+        isStreaming = !complete
+        if hadNone {
+            rebuildQueue(from: 0, offset: 0)        // the lead chunk landed
+            return
+        }
+        for i in queuedCount..<chunks.count { append(chunkAt: i) }
+        // We may have run dry waiting for this; get moving again.
+        if isPreparing, isSpeaking == false || queue.rate == 0 {
+            isPreparing = false
+            queue.play()
+            queue.rate = rate
+            isSpeaking = true
+        }
+        isPreparing = false
+    }
+
+    /// Ask the backend for her voice and follow the render until it's done.
+    private func requestHerVoice(for item: Readable) {
+        guard let service else { fallBackToDevice(item, reason: nil); return }
+        pollTask?.cancel()
+        pollTask = Task { [weak self] in
+            for attempt in 0..<200 {
+                if Task.isCancelled { return }
+                let result = await service.requestSpeech(text: item.spokenText,
+                                                         kind: item.kind)
+                guard let self, self.current?.id == item.id else { return }
+                switch result {
+                case .ready(let chunks, let duration):
+                    self.extend(with: chunks, total: duration, complete: true)
+                    return
+                case .streaming(let chunks, let duration):
+                    self.extend(with: chunks, total: duration, complete: false)
+                case .rendering:
+                    break
+                case .unavailable:
+                    // No backend at all — this is the only case that earns
+                    // the device voice.
+                    self.fallBackToDevice(item, reason: nil)
+                    return
+                case .failed:
+                    if self.chunks.isEmpty {
+                        self.fallBackToDevice(
+                            item, reason: "She couldn't voice this one.")
+                    } else {
+                        self.isStreaming = false     // keep what we have
+                    }
+                    return
+                }
+                // Poll fast at first — the lead chunk lands in ~10–15s — then
+                // ease off while the tail renders.
+                try? await Task.sleep(for: .seconds(attempt < 20 ? 1.5 : 4.0))
+            }
+        }
+    }
+
+    // MARK: offline last resort
+
+    private func fallBackToDevice(_ item: Readable, reason: String?) {
+        voice = .device
+        isPreparing = false
+        isStreaming = false
+        failure = reason
+        spoken = item.spokenText.spokenPlainText
+        guard !spoken.isEmpty else { finishReading(); return }
+        duration = Double(spoken.count) / (Self.deviceCharsPerSecond * Double(rate))
+        speakOnDevice(from: 0)
         publishNowPlaying()
     }
 
-    // MARK: device voice
-
-    private func charIndex(for fraction: Double) -> Int {
+    private func deviceCharIndex(for fraction: Double) -> Int {
         min(max(0, Int(fraction * Double(spoken.count))), max(0, spoken.count - 1))
     }
 
-    /// Speak `spoken` from a character offset, snapped back to a word start
-    /// so a resume never begins mid-syllable.
+    /// Speak from a character offset, snapped back to a word start so a
+    /// resume never begins mid-syllable.
     private func speakOnDevice(from index: Int) {
         synth.stopSpeaking(at: .immediate)
         var start = min(max(0, index), max(0, spoken.count - 1))
@@ -311,21 +472,16 @@ final class SpeechReader: NSObject {
         utteranceStart = start
         let rest = String(chars[start...])
         guard !rest.isEmpty else { finishReading(); return }
-
         let utterance = AVSpeechUtterance(string: rest)
         utterance.voice = Self.deviceVoice
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * rate
-        // A touch below default: her register is unhurried, and the pitch
-        // ceiling is where synthetic voices sound most synthetic.
         utterance.pitchMultiplier = 0.97
-        utterance.postUtteranceDelay = 0
         isSpeaking = true
         synth.speak(utterance)
     }
 
-    /// The closest the device has to her: an English voice at the best
-    /// quality installed, preferring the accents her TTS backends use
-    /// (Gemini "Aoede" and the en-AU edge-tts fallback) over en-US.
+    /// The best English voice installed, preferring the accents her TTS
+    /// backends use. Still not her — just the least-bad stand-in.
     private static let deviceVoice: AVSpeechSynthesisVoice? = {
         let all = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix("en") }
@@ -347,109 +503,21 @@ final class SpeechReader: NSObject {
         return best ?? AVSpeechSynthesisVoice(language: "en-AU")
     }()
 
-    // MARK: her voice
-
-    private var pendingHerURL: URL?
-    private var pendingHerDuration: TimeInterval = 0
-
-    private func startHerVoice(url: URL, from fraction: Double) {
-        teardownHerPlayer()
-        let item = AVPlayerItem(url: url)
-        item.preferredForwardBufferDuration = 30
-        let p = AVPlayer(playerItem: item)
-        p.automaticallyWaitsToMinimizeStalling = true
-        herPlayer = p
-        herTimeObserver = p.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.4, preferredTimescale: 600), queue: .main
-        ) { [weak self] time in
-            MainActor.assumeIsolated {
-                guard let self, !self.isScrubbing else { return }
-                // The sidecar duration can be missing (ffprobe absent); fall
-                // back to what the player itself reports once it's loaded.
-                if self.herDuration <= 0 {
-                    let d = p.currentItem?.duration.seconds ?? 0
-                    if d.isFinite, d > 0 { self.herDuration = d }
-                }
-                guard self.herDuration > 0 else { return }
-                self.progress = min(1, time.seconds / self.herDuration)
-                self.updateNowPlayingElapsed(time.seconds)
-            }
-        }
-        herEndObserver = NotificationCenter.default.addObserver(
-            forName: AVPlayerItem.didPlayToEndTimeNotification,
-            object: item, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.finishReading() }
-        }
-        if fraction > 0, herDuration > 0 {
-            p.seek(to: CMTime(seconds: fraction * herDuration, preferredTimescale: 600))
-        }
-        isSpeaking = true
-        p.play()
-        p.rate = rate
-    }
-
-    private func teardownHerPlayer() {
-        if let herTimeObserver { herPlayer?.removeTimeObserver(herTimeObserver) }
-        if let herEndObserver { NotificationCenter.default.removeObserver(herEndObserver) }
-        herTimeObserver = nil
-        herEndObserver = nil
-        herPlayer?.pause()
-        herPlayer = nil
-    }
-
-    /// Ask the backend to render this piece in her voice, then poll.
-    /// Everything here is best-effort: the device voice is already reading,
-    /// so a failure costs nothing but the swap affordance.
-    private func requestHerVoice(for item: Readable) {
-        guard let service else { return }
-        herVoiceRendering = true
-        pollTask?.cancel()
-        pollTask = Task { [weak self] in
-            // ~5 minutes of patience: a long synthesis is several chunked
-            // TTS calls, and Hector is listening the whole time anyway.
-            for attempt in 0..<100 {
-                if Task.isCancelled { return }
-                let result = await service.requestSpeech(text: item.spokenText,
-                                                         kind: item.kind)
-                guard let self else { return }
-                if self.current?.id != item.id { return }   // moved on
-                switch result {
-                case .ready(let url, let seconds):
-                    self.pendingHerURL = url
-                    self.pendingHerDuration = seconds
-                    self.herVoiceRendering = false
-                    if self.voice == .device { self.herVoiceReady = true }
-                    return
-                case .failed, .unavailable:
-                    self.herVoiceRendering = false
-                    return
-                case .rendering:
-                    break
-                }
-                // Back off from 1.5s to 6s — the first chunks land quickly,
-                // after that polling harder just burns battery.
-                let delay = attempt < 4 ? 1.5 : (attempt < 12 ? 3.0 : 6.0)
-                try? await Task.sleep(for: .seconds(delay))
-            }
-            self?.herVoiceRendering = false
-        }
-    }
-
     // MARK: finishing
 
     fileprivate func finishReading() {
         isSpeaking = false
+        isPreparing = false
+        isStreaming = false
         progress = 1
-        spokenRange = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
     // MARK: audio session + lock screen
 
     private func activateAudioSession() {
-        // .spokenAudio ducks other audio the way an audiobook does, and
-        // keeps reading when the screen locks (the `audio` background mode).
+        // .spokenAudio ducks other audio the way an audiobook does, and keeps
+        // reading when the screen locks (the `audio` background mode).
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
         try? AVAudioSession.sharedInstance().setActive(true)
     }
@@ -464,7 +532,8 @@ final class SpeechReader: NSObject {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: item.title.isEmpty ? "A reading" : item.title,
             MPMediaItemPropertyArtist: "Alicia",
-            MPMediaItemPropertyAlbumTitle: voice == .her ? "Read aloud" : "Read aloud · stand-in voice",
+            MPMediaItemPropertyAlbumTitle: voice == .her ? "Read aloud"
+                                                         : "Read aloud · stand-in voice",
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyPlaybackRate: isSpeaking ? Double(rate) : 0.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
@@ -482,7 +551,7 @@ final class SpeechReader: NSObject {
     }
 }
 
-// MARK: - Following along
+// MARK: - Offline voice progress
 
 extension SpeechReader: AVSpeechSynthesizerDelegate {
     /// Delegate callbacks arrive on the synthesizer's own queue, so every one
@@ -496,12 +565,8 @@ extension SpeechReader: AVSpeechSynthesizerDelegate {
                                        utterance: AVSpeechUtterance) {
         onMain { [weak self] in
             guard let self, !self.isScrubbing, self.voice == .device else { return }
-            // Ranges are relative to the current utterance; shift them into
-            // the whole piece so highlighting survives a skip or a resume.
-            let absolute = NSRange(location: self.utteranceStart + characterRange.location,
-                                   length: characterRange.length)
-            self.spokenRange = absolute
-            let end = Double(absolute.location + absolute.length)
+            let end = Double(self.utteranceStart + characterRange.location
+                             + characterRange.length)
             self.progress = min(1, end / Double(max(1, self.spoken.count)))
             self.updateNowPlayingElapsed(self.elapsed)
         }
@@ -510,11 +575,7 @@ extension SpeechReader: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer,
                                        didFinish utterance: AVSpeechUtterance) {
         onMain { [weak self] in
-            guard let self, self.voice == .device else { return }
-            // Only a genuine run to the end finishes the piece — a skip or a
-            // rate change also lands here, having already re-primed the
-            // synthesizer with the remainder.
-            guard self.synth.isSpeaking == false, self.isSpeaking else { return }
+            guard let self, self.voice == .device, self.isSpeaking else { return }
             self.finishReading()
         }
     }

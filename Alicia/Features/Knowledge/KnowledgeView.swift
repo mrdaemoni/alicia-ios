@@ -225,9 +225,10 @@ struct SynthesisRow: View {
             .onTapGesture(perform: open)
             // Every piece on the shelf can be listened to, not only read —
             // the row's own control, so the tap that opens it still opens it.
-            HStack {
+            HStack(spacing: 12) {
                 if !leading { Spacer() }
                 ListenLine(item: syn.readable)
+                SynthesisPin(syn: syn, size: 19)
                 if leading { Spacer() }
             }
             Theme.stroke.frame(height: 0.7)
