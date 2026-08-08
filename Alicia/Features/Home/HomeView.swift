@@ -1330,9 +1330,13 @@ struct UsSheet: View {
     }
 }
 
-/// The context drawn as an onion (v26): today at the heart, the trail
-/// around it, the season as the outermost skin — three hand-pulled rings,
-/// in to out, the way she actually holds the day.
+/// The podcast context drawn as an onion (v26): today at the heart, the
+/// trail around it, the season as the outermost skin.
+///
+/// Superseded on the Today sheet by `ContextOrbit` (v33), which draws the
+/// live conversation instead of the authored season. Kept for the season
+/// view and because the episode arc is still real context — just no longer
+/// the FIRST thing the Us tab says about us.
 struct ContextOnion: View {
     let home: HomeContext
 
@@ -1428,24 +1432,306 @@ struct ContextOnion: View {
     }
 }
 
+/// Her self-reflections, morning and evening.
+///
+/// These existed only on Telegram until v33 — the sends went to
+/// TELEGRAM_CHAT_ID and had no iOS surface at all, so on the phone her
+/// journal simply did not exist. Each one is readable and listenable: the
+/// backend prerenders her voice at write time, so LISTEN usually starts
+/// immediately rather than warming up.
+struct ReflectionsSection: View {
+    @Environment(AppStore.self) private var store
+
+    private func readable(_ r: Reflection) -> Readable {
+        var item = Readable(title: "\(r.kind.capitalized) — \(r.date)",
+                            body: r.text, kind: "reflection")
+        if case let .ready(chunks, duration)? = r.speech {
+            item.speechChunks = chunks
+            item.speechDuration = duration
+        }
+        return item
+    }
+
+    var body: some View {
+        if !store.reflections.isEmpty {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("WHAT SHE SAID TO HERSELF")
+                    .font(.system(size: 10, design: .monospaced).weight(.bold))
+                    .tracking(2.6)
+                    .foregroundStyle(Theme.inkSoft)
+
+                ForEach(store.reflections.prefix(6)) { r in
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 10) {
+                            Text(r.isEvening ? "EVENING" : "MORNING")
+                                .font(.system(size: 8.5, design: .monospaced).weight(.semibold))
+                                .tracking(1.7)
+                                .foregroundStyle(Theme.accent)
+                            Text(r.date)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(Theme.inkSoft.opacity(0.65))
+                            Spacer()
+                            ListenLine(item: readable(r), label: "LISTEN")
+                        }
+                        Text(r.text.strippedEmojis)
+                            .font(.system(size: 14, design: .serif))
+                            .lineSpacing(5)
+                            .foregroundStyle(Theme.ink.opacity(0.88))
+                            .fixedSize(horizontal: false, vertical: true)
+                        HandDrawnBorder()
+                            .frame(height: 1)
+                            .opacity(0.25)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The live orbit: what we actually talk about, drawn as three rings.
+///
+/// Ring = when a subject last moved (now / recent / long — the short-to-long
+/// binding). Ink density = salience, so the things that matter are darker.
+/// A doubled ring around a node means it keeps coming back across months.
+/// Tapping a node draws it to the centre and opens its receipts; tapping the
+/// paper puts it back.
+///
+/// Everything is deterministic — every InkRand is seeded from the node's own
+/// id, never from @State or a lifecycle event, so the hand-drawn geometry is
+/// stable across redraws (v26 lesson: @State-seeded ink re-scribbles on
+/// every frame and reads as noise).
+struct ContextOrbit: View {
+    let context: SharedContext
+    @Binding var focused: SharedContext.Node?
+
+    private let ringLabels = ["now", "the weeks behind", "the long arc"]
+
+    /// Fixed angular slots per ring so a node keeps its place between
+    /// refreshes. Offset per ring so the three don't line up into spokes.
+    private func angle(ring: Int, index: Int, count: Int) -> Double {
+        guard count > 0 else { return 0 }
+        let step = 2 * Double.pi / Double(max(count, 3))
+        let offset = [-.pi / 2, -.pi / 2 + 0.55, -.pi / 2 + 1.15][ring]
+        return offset + step * Double(index)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let c = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+            let u = min(geo.size.width, geo.size.height) / 2
+            let radii: [CGFloat] = [u * 0.34, u * 0.63, u * 0.92]
+
+            ZStack {
+                Canvas { ctx, size in
+                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                    for (i, r) in radii.enumerated() {
+                        var rand = InkRand("orbit-ring-\(i)".inkSeed)
+                        let dim = focused == nil ? 1.0 : 0.28
+                        let ring = InkPen.ring(
+                            center: center, radius: r, rand: &rand,
+                            sweep: 2 * .pi * rand.range(0.90, 0.99),
+                            squashX: CGFloat(rand.range(0.97, 1.03)),
+                            squashY: CGFloat(rand.range(0.96, 1.02)),
+                            breathe: 2.0)
+                        ctx.stroke(ring,
+                                   with: .color(Theme.ink.opacity((0.40 - Double(i) * 0.08) * dim)),
+                                   style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+                    }
+                }
+
+                // The rings' own names, quiet, down the right.
+                if focused == nil {
+                    ForEach(Array(ringLabels.enumerated()), id: \.offset) { i, name in
+                        Text(name)
+                            .font(.system(size: 8.5, design: .serif))
+                            .italic()
+                            .foregroundStyle(Theme.inkSoft.opacity(0.6))
+                            .position(x: c.x + radii[i] * 0.70,
+                                      y: c.y + radii[i] * 0.70)
+                    }
+                }
+
+                ForEach(0..<3, id: \.self) { ring in
+                    let nodes = context.nodes(on: ring)
+                    ForEach(Array(nodes.enumerated()), id: \.element.id) { idx, node in
+                        let a = angle(ring: ring, index: idx, count: nodes.count)
+                        let isFocused = focused?.id == node.id
+                        OrbitNode(node: node, focused: isFocused,
+                                  dimmed: focused != nil && !isFocused)
+                            .position(
+                                x: isFocused ? c.x : c.x + CGFloat(cos(a)) * radii[ring],
+                                y: isFocused ? c.y : c.y + CGFloat(sin(a)) * radii[ring])
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                                    focused = isFocused ? nil : node
+                                }
+                            }
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    focused = nil
+                }
+            }
+        }
+        .frame(height: 340)
+    }
+}
+
+/// One subject in the orbit. Darker and larger the more it matters; a second
+/// hand-drawn ring around it means it keeps returning.
+struct OrbitNode: View {
+    let node: SharedContext.Node
+    let focused: Bool
+    let dimmed: Bool
+
+    /// Salience drives ink weight, but never to invisibility — the long ring
+    /// is the point of the outer orbit, not its leftovers.
+    private var weight: Double {
+        let base = 0.34 + node.salience * 0.66
+        return dimmed ? base * 0.22 : base
+    }
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(node.label)
+                .font(.system(size: focused ? 15 : 11 + node.salience * 2.5,
+                              design: .serif))
+                .italic(focused)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Theme.ink.opacity(weight))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            if focused || node.salience > 0.55 {
+                Text("\(node.mentions)")
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundStyle(Theme.accent.opacity(dimmed ? 0.2 : 0.7))
+            }
+        }
+        .frame(maxWidth: focused ? 190 : 104)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .background {
+            // Paper behind the label so it reads where it crosses a ring.
+            Theme.paper.opacity(dimmed ? 0.35 : 0.86).blur(radius: 3)
+        }
+        .overlay {
+            if node.recurring {
+                // "This keeps coming back" — a second pass of the pen.
+                Canvas { ctx, size in
+                    var rand = InkRand(node.id.inkSeed)
+                    let ring = InkPen.ring(
+                        center: CGPoint(x: size.width / 2, y: size.height / 2),
+                        radius: max(size.width, size.height) * 0.56,
+                        rand: &rand, sweep: 2 * .pi * rand.range(0.55, 0.85),
+                        squashY: 0.72, breathe: 1.4)
+                    ctx.stroke(ring,
+                               with: .color(Theme.accent.opacity(dimmed ? 0.12 : 0.42)),
+                               style: StrokeStyle(lineWidth: 0.85, lineCap: .round))
+                }
+                .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
+/// What a tapped node is actually made of: the real dated lines he wrote.
+/// Nothing here is generated — if this list is empty the node should not
+/// have been drawn.
+struct OrbitDetail: View {
+    let node: SharedContext.Node
+
+    private var span: String {
+        if node.mentions <= 1 { return node.lastSeen }
+        return "\(node.firstSeen) — \(node.lastSeen)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HandDrawnBorder()
+                .frame(height: 1)
+                .opacity(0.35)
+
+            HStack(spacing: 8) {
+                Text(node.horizon == "now" ? "LIVE NOW"
+                     : node.horizon == "recent" ? "THESE WEEKS" : "THE LONG ARC")
+                    .font(.system(size: 8.5, design: .monospaced).weight(.semibold))
+                    .tracking(1.8)
+                    .foregroundStyle(Theme.accent)
+                if node.recurring {
+                    Text("KEEPS RETURNING")
+                        .font(.system(size: 8.5, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(Theme.inkSoft.opacity(0.75))
+                }
+                Spacer()
+            }
+
+            Text("\(node.mentions) times · \(span)")
+                .font(.system(size: 10, design: .serif))
+                .italic()
+                .foregroundStyle(Theme.inkSoft)
+
+            if node.moments.isEmpty {
+                Text("No lines kept for this one.")
+                    .font(.system(size: 12, design: .serif))
+                    .italic()
+                    .foregroundStyle(Theme.inkSoft.opacity(0.7))
+            } else {
+                ForEach(node.moments) { m in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(m.date + (m.channel == "ios" ? "  ·  on the phone" : ""))
+                            .font(.system(size: 8.5, design: .monospaced))
+                            .tracking(1.1)
+                            .foregroundStyle(Theme.inkSoft.opacity(0.65))
+                        Text(m.text.strippedEmojis)
+                            .font(.system(size: 13, design: .serif))
+                            .foregroundStyle(Theme.ink.opacity(0.88))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 26)
+        .padding(.bottom, 12)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+}
+
 /// The context of today, readable: the sentence, the episode, the season
 /// around it, the trail behind it, and what she's surfacing.
 struct TodayContextSheet: View {
     @Environment(AppStore.self) private var store
+    @State private var focused: SharedContext.Node?
 
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
-                Text("WHAT WE'RE TALKING ABOUT TODAY")
+                Text("WHAT WE'RE TALKING ABOUT")
                     .font(.system(size: 11, design: .monospaced).weight(.bold))
                     .tracking(3.0)
                     .foregroundStyle(Theme.inkSoft)
                     .padding(.top, 22)
 
-                if let home = store.homeContext {
-                    // The onion: the day's context as layers, in to out.
-                    ContextOnion(home: home)
+                // The live orbit first: the subjects HE keeps raising, mined
+                // from what he actually said. The authored season arc below
+                // it is context for this, not the other way round.
+                if let ctx = store.sharedContext, !ctx.nodes.isEmpty {
+                    ContextOrbit(context: ctx, focused: $focused)
+                    if let node = focused {
+                        OrbitDetail(node: node)
+                    } else {
+                        Text("\(ctx.nodes.count) threads across \(ctx.messageCount) things you said. Tap one.")
+                            .font(.system(size: 11, design: .serif))
+                            .italic()
+                            .foregroundStyle(Theme.inkSoft.opacity(0.75))
+                    }
+                    Theme.stroke.frame(width: 60, height: 1)
+                }
 
+                if let home = store.homeContext {
                     if !home.contextLine.isEmpty {
                         Text(home.contextLine)
                             .font(.system(.title3, design: .serif, weight: .semibold))
@@ -1510,6 +1796,8 @@ struct TodayContextSheet: View {
                         .padding(.vertical, 40)
                 }
             }
+
+                ReflectionsSection()
             .frame(maxWidth: .infinity)
             .padding(24)
             .padding(.bottom, 40)

@@ -213,6 +213,68 @@ extension HealthMetric {
     /// pigment on paper, not neon on glass.
     var color: Color { Color(hue: hue, saturation: 0.38, brightness: 0.52) }
 }
+/// The Us tab's live orbit (`/api/context`) — what we actually talk about,
+/// mined from the real record rather than authored in advance.
+///
+/// Two axes, deliberately separate. `horizon` is the RING (now / recent /
+/// long — the short-to-long-term binding the three orbits draw) and
+/// `recurring` is a MARK for a subject that keeps coming back across
+/// months. A thread can be both: something raised today that he has also
+/// been circling since May sits on the inner ring wearing the mark.
+struct SharedContext {
+    struct Moment: Hashable, Identifiable {
+        var id: String
+        var date: String
+        var channel: String     // "telegram" | "ios"
+        var text: String
+    }
+    struct Node: Hashable, Identifiable {
+        var id: String
+        var label: String
+        /// 0…1. Drives ink density — this is the "darker when it matters"
+        /// the orbit is built around.
+        var salience: Double
+        var horizon: String     // "now" | "recent" | "long"
+        var recurring: Bool
+        var mentions: Int
+        var firstSeen: String
+        var lastSeen: String
+        var daysSince: Int
+        var channels: [String: Int]
+        /// The receipts: real dated lines he wrote. A node that cannot show
+        /// these is a node something invented.
+        var moments: [Moment]
+
+        var ringIndex: Int {
+            switch horizon {
+            case "now": return 0
+            case "recent": return 1
+            default: return 2
+            }
+        }
+        var onIOS: Bool { (channels["ios"] ?? 0) > 0 }
+    }
+    var nodes: [Node]
+    var messageCount: Int
+    var generatedAt: String
+
+    func nodes(on ring: Int) -> [Node] { nodes.filter { $0.ringIndex == ring } }
+}
+
+/// One of her self-reflections (`/api/reflections`) — morning or evening,
+/// text plus a reading when her voice has already been rendered.
+// Equatable rather than Hashable: SpeechStatus carries chunk payloads
+// and is only Equatable. ForEach needs Identifiable, which is what matters.
+struct Reflection: Equatable, Identifiable {
+    var id: String
+    var kind: String            // "morning" | "evening"
+    var date: String
+    var text: String
+    var speech: SpeechStatus?
+
+    var isEvening: Bool { kind == "evening" }
+}
+
 extension String {
     /// Proactive messages arrive with her Telegram emoji prefix (🕯️, 🧵…).
     /// The app draws its own emblems — shed leading pictographs here.

@@ -500,6 +500,89 @@ struct LiveAliciaService: AliciaService {
         }
     }
 
+    // MARK: - Shared context (the Us orbit)
+
+    private struct MomentDTO: Decodable {
+        var id: String?; var date: String?; var channel: String?; var text: String?
+    }
+    private struct ContextNodeDTO: Decodable {
+        var id: String?; var label: String?; var salience: Double?
+        var horizon: String?; var recurring: Bool?; var mentions: Int?
+        var first_seen: String?; var last_seen: String?; var days_since: Int?
+        var channels: [String: Int]?; var examples: [MomentDTO]?
+    }
+    private struct ContextDTO: Decodable {
+        var nodes: [ContextNodeDTO]?; var message_count: Int?; var generated_at: String?
+    }
+
+    private func moments(_ dtos: [MomentDTO]?) -> [SharedContext.Moment] {
+        (dtos ?? []).compactMap { m in
+            guard let text = m.text, !text.isEmpty else { return nil }
+            return .init(id: m.id ?? UUID().uuidString, date: m.date ?? "",
+                         channel: m.channel ?? "telegram", text: text)
+        }
+    }
+
+    func sharedContext() async -> SharedContext? {
+        guard let d: ContextDTO = await fetchOne("/api/context") else { return nil }
+        // A failing /api/context returns {} — a "successful" fetch of nothing
+        // that would wipe a populated orbit. No nodes ⇒ treat as failed, the
+        // same keep-last-known rule /api/home follows.
+        let raw = d.nodes ?? []
+        if raw.isEmpty { return nil }
+        let nodes: [SharedContext.Node] = raw.compactMap { n in
+            guard let id = n.id, let label = n.label, !label.isEmpty else { return nil }
+            return .init(id: id, label: label,
+                         salience: min(max(n.salience ?? 0, 0), 1),
+                         horizon: n.horizon ?? "long",
+                         recurring: n.recurring ?? false,
+                         mentions: n.mentions ?? 0,
+                         firstSeen: n.first_seen ?? "", lastSeen: n.last_seen ?? "",
+                         daysSince: n.days_since ?? 0,
+                         channels: n.channels ?? [:],
+                         moments: moments(n.examples))
+        }
+        if nodes.isEmpty { return nil }
+        return SharedContext(nodes: nodes, messageCount: d.message_count ?? 0,
+                             generatedAt: d.generated_at ?? "")
+    }
+
+    // MARK: - Her self-reflections
+
+    /// Every field optional on purpose. SpeakDTO.status is non-optional, so
+    /// a `"speech": {}` from an older backend would throw and take the whole
+    /// reflections list down with it — one missing reading must not cost the
+    /// journal.
+    private struct ReflectionSpeechDTO: Decodable {
+        var status: String?; var chunks: [ChunkDTO]?; var duration: Double?
+    }
+    private struct ReflectionDTO: Decodable {
+        var id: String?; var kind: String?; var date: String?; var text: String?
+        var speech: ReflectionSpeechDTO?
+    }
+
+    func reflections() async -> [Reflection]? {
+        guard let rows: [ReflectionDTO] = await fetchOne("/api/reflections") else {
+            return nil
+        }
+        return rows.compactMap { r in
+            guard let text = r.text, !text.isEmpty else { return nil }
+            var status: SpeechStatus?
+            // The backend only advertises COMPLETE readings here, so anything
+            // present is playable start to finish; a tap falls back to
+            // /api/speak when it is not.
+            if let sp = r.speech, sp.status == "ready" {
+                let chunks = speechChunks(sp.chunks)
+                if !chunks.isEmpty {
+                    status = .ready(chunks: chunks, duration: sp.duration ?? 0)
+                }
+            }
+            return Reflection(id: r.id ?? UUID().uuidString,
+                              kind: r.kind ?? "evening", date: r.date ?? "",
+                              text: text, speech: status)
+        }
+    }
+
     func requestSpeech(text: String, kind: String) async -> SpeechStatus {
         do {
             let body = try JSONSerialization.data(

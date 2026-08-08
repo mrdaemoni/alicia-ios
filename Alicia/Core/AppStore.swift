@@ -83,6 +83,8 @@ final class AppStore {
         async let kn = service.knowing()
         async let sy = service.syntheses()
         async let hc = service.homeContext()
+        async let sc = service.sharedContext()
+        async let rf = service.reflections()
         // Keep-last-known: nil means the fetch FAILED (network/auth/decode)
         // — never wipe a populated tab over one bad refresh. A non-nil
         // empty array is a real "backend has nothing" and does overwrite.
@@ -92,6 +94,10 @@ final class AppStore {
         if let fresh = await h { health = fresh }
         let freshHome = await hc
         if let freshHome { homeContext = freshHome }
+        // Keep-last-known, same rule: a failed orbit fetch must not empty
+        // the Us tab (v30).
+        if let fresh = await sc { sharedContext = fresh }
+        if let fresh = await rf { reflections = fresh }
         (thinkingMode, walkWords) = await m
         let freshGreeting = await gr
         if let freshGreeting { greeting = freshGreeting }
@@ -277,6 +283,10 @@ final class AppStore {
     // MARK: the loops (Us tab home context)
     /// Season arc → episode trail → today's episode → knowledge cards.
     var homeContext: HomeContext?
+    /// The live orbit of what we actually talk about (`/api/context`).
+    var sharedContext: SharedContext?
+    /// Her morning/evening self-reflections (`/api/reflections`).
+    var reflections: [Reflection] = []
 
     /// Verdicts already given this run (card id → verdict), persisted so a
     /// relaunch doesn't re-ask for cards he already judged today.

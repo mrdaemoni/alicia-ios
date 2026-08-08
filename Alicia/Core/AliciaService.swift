@@ -114,6 +114,12 @@ protocol AliciaService {
              body: String, thinker: String, source: String) async -> Bool
     /// Ask her to read `text` aloud. Returns immediately: `.ready` when the
     /// backend already has the m4a, `.rendering` while it makes one.
+    /// The live orbit of what we actually talk about (`/api/context`).
+    func sharedContext() async -> SharedContext?
+
+    /// Her morning/evening self-reflections (`/api/reflections`).
+    func reflections() async -> [Reflection]?
+
     func requestSpeech(text: String, kind: String) async -> SpeechStatus
 }
 
@@ -197,6 +203,8 @@ struct MockAliciaService: AliciaService {
         }
     }
 
+    func sharedContext() async -> SharedContext? { SampleData.sharedContext }
+    func reflections() async -> [Reflection]? { SampleData.reflections }
     func thoughts() async -> [Thought]? { SampleData.thoughts }
     func tracks() async -> [Track]? { SampleData.tracks }
     func gallery() async -> [Artwork]? { SampleData.gallery }
