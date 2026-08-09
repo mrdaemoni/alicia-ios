@@ -113,6 +113,12 @@ to Telegram by the backend. Endpoints in use:
 | `POST /api/reply` | reply to a proactive message (lands in capture/history/memory) |
 | `GET /api/greeting` | Us-page greeting |
 | `GET /api/context` · `/api/context/<id>` | the Us orbit: salience-scored subjects + one node's receipts |
+| `GET /api/home` | the authored season arc: season → episode trail → today (The Arc segment) |
+| `GET /api/timeline` | every lived day since she began (Timeline sheet) |
+| `GET /api/featured` · `/api/syntheses` · `/api/quote` | the day's synthesis, the shelf, the rotating quote |
+| `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Knowledge tab + her archetype balance |
+| `POST /api/speak` | render arbitrary text in her voice (read-aloud fallback when nothing is cached) |
+| `POST /api/pin` · `/api/card_feedback` | hold a card on the home screen; 👍/👎 on a card |
 | `GET /api/reflections` | her morning/evening self-reflections, text + a playable reading when rendered |
 | `GET/POST /api/mode` | walk/drive thinking-mode state + start/end |
 | `GET /api/episode/<label>` | shownotes markdown |
