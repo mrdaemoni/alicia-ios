@@ -4,15 +4,17 @@ Context handoff for continuing this project in Claude Code.
 **Read `SESSION_HANDOFF.md` first** — the live continuation doc (current
 version, ship loop, design rules, known gaps). This file carries stable
 architecture; details below were last fully refreshed at v11 — the app is now
-at **v19**: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
-into Studio), widget target, hard-VStack bottom bar (safeAreaInset banned).
+at **v33**: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
+into Studio), widget target, hard-VStack bottom bar (safeAreaInset banned),
+her real voice on any page (v31/v32), and the **live context orbit** on Us
+(v33) — what we actually talk about, replacing the authored podcast season.
 
 ## What this is
 
 A native **pure-SwiftUI** iOS app for "Alicia," Hector's personal AI agent.
 The backend is the separate Python service in the `alicia` repo
-(github.com/mrdaemoni/alicia — also reachable via Telegram; one relationship,
-two surfaces). Target **iOS 17.0**, Swift 5.9+, Xcode 16, **zero third-party
+(github.com/mrdaemoni/alicia — also reachable via Telegram and Cowork; one
+relationship, three touchpoints). Target **iOS 17.0**, Swift 5.9+, Xcode 16, **zero third-party
 dependencies**. Runs live against the backend on a real iPhone; falls back to
 mock data so the repo stays runnable for anyone who clones it.
 
@@ -26,6 +28,18 @@ Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`
    (`ProactiveReplyCard`), a day-thought card, now-playing chip, and a status
    strip that pushes **Health** (`Features/Health/HealthView.swift` — vitals
    gauges; deliberately no NavigationStack of its own).
+   Tapping the **Us** title opens `UsSheet` → **Today** / **The Arc**.
+   Today leads with `ContextOrbit` (v33, `/api/context`): three rings — now /
+   the weeks behind / the long arc — of the subjects Hector actually raises.
+   Ink density is salience; a doubled pen-stroke means the subject keeps
+   returning across months (a separate axis from the ring, deliberately).
+   Tapping a node draws it to centre and opens `OrbitDetail` — the real dated
+   lines he wrote, marked when they came from the phone. Nothing there is
+   generated; a node that cannot show its lines should not be drawn.
+   Below it, `ReflectionsSection` (`/api/reflections`) — her morning and
+   evening self-reflections, each readable and listenable through
+   `ListenLine`. The backend prerenders her voice at write time, so LISTEN
+   usually starts rather than warming up. These were Telegram-only until v33.
 2. **Dialogue** (`Features/Talk/TalkView.swift`) — chat. SSE token streaming,
    emoji reactions, optional voice-note replies, mic dictation in the
    composer, and a **Walk** toolbar button (same session as Telegram's
@@ -98,6 +112,8 @@ to Telegram by the backend. Endpoints in use:
 | `POST /api/react` | emoji reactions, by `message_id` or `proactive_id` |
 | `POST /api/reply` | reply to a proactive message (lands in capture/history/memory) |
 | `GET /api/greeting` | Us-page greeting |
+| `GET /api/context` · `/api/context/<id>` | the Us orbit: salience-scored subjects + one node's receipts |
+| `GET /api/reflections` | her morning/evening self-reflections, text + a playable reading when rendered |
 | `GET/POST /api/mode` | walk/drive thinking-mode state + start/end |
 | `GET /api/episode/<label>` | shownotes markdown |
 | `POST /api/cocreate` (base64 PNG + size + anchor, 120 s timeout) | canvas co-creation: she draws from where the pencil stopped, returns an overlay layer + caption |
@@ -148,14 +164,23 @@ ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
 - Keep the `AliciaService` seam clean — views never touch the network, only
   `AppStore`.
 - The section enum is `AppSection` (not `Section`) to avoid SwiftUI's `Section`.
-- Tab icons are line-art SF Symbols (never filled) to match the ink identity —
-  except the Alicia tab, which uses the `TabRabbit` template image.
+- **HARD RULE: no stock SF Symbols and no emoji anywhere in the app** (v21–v25,
+  enforced repeatedly). Verified: zero `systemName:` in `Alicia/`. Every glyph is
+  hand-drawn Canvas from `DesignSystem/InkDrawn.swift` (InkPlayPause, InkSkip,
+  InkChevron, InkWaveBars, InkSpark, InkSubmitArrow, InkBackButton, InkTabs,
+  InkUnderline, HandDrawnBorder, PortraitTrace, InkReactionTag), with
+  deterministic seeds — never `@State`-seeded, or the ink re-scribbles every
+  frame and reads as noise. The Alicia tab uses the `TabRabbit` template image.
+  Her text renders through `String.strippedEmojis` on every surface; reactions
+  display as words (LOVE/FIRE/MIND/YES/HMM/NO) while the emoji strings still
+  travel to the backend, which keys `reaction_scorer` on them — never change
+  that wire format.
 
 ## Version tag
 
 `AppVersion.tag` (DesignSystem/ContourWaves.swift) shows on the Alicia tab so
 Hector can tell which build his phone runs. **Bump it (v8 → v9 → …) and its
-date in every change that ships.** Current: v11 (2026-07-04).
+date in every change that ships.** Current: **v33 (2026-08-08)**.
 
 ## Actually pending
 

@@ -1,10 +1,27 @@
-# Session Handoff — Alicia iOS + Backend (as of v27, 2026-07-07)
+# Session Handoff — Alicia iOS + Backend (as of v33, 2026-08-08)
 
 Continuation doc for iterating on the iPhone app (`~/AliciaApp`) and its
 backend surface (`~/alicia`, `skills/ios_api.py`). Written at the close of the
 July 3–5 build marathon (v1 → v19); v20 (2026-07-07) added the
 loop-architecture home; v21 (same day) the hand-drawn chrome. Read this,
 then `CLAUDE.md`, then go.
+
+**v33 (2026-08-08) — the Us tab stopped telling a story and started showing one.**
+`ContextOrbit` replaces the podcast `ContextOnion` at the top of the Today sheet:
+three rings from `/api/context`, ink density = salience, a doubled pen-stroke =
+the subject keeps returning, tap to drill into the real dated lines. Two axes on
+purpose — the ring is *when it last moved*, the mark is *whether it recurs*; the
+first cut collapsed them and emptied the inner ring on a day Hector had been
+talking. `ReflectionsSection` gives her journal an iOS surface for the first time
+(it was Telegram-only), readable and listenable via `ListenLine`.
+
+Two traps worth remembering from that build:
+- `"speech": {}` from the backend threw on decode because `SpeakDTO.status` is
+  non-optional — and because it threw *inside an array element*, one unrendered
+  reading would have emptied the whole reflections list. Backend omits the key
+  now; `ReflectionSpeechDTO` is all-optional as a second line of defence.
+- A new module lands in web_dashboard's "Other" bucket and fails a backend test
+  until it is categorised in `_SKILL_BUCKETS`. Cheap to fix, easy to miss.
 
 ## The two repos, one feature loop
 
