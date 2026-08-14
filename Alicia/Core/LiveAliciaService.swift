@@ -485,6 +485,69 @@ struct LiveAliciaService: AliciaService {
                                  speechDuration: f.speech?.duration ?? 0)
     }
 
+    // MARK: playlists
+
+    private struct PlaylistDTO: Decodable {
+        struct ItemDTO: Decodable {
+            var id, kind, title: String?
+            var body, source: String?
+            var duration: Double?
+            var speech: SpeechDTO?
+        }
+        var id, name: String?
+        var items: [ItemDTO]?
+        var duration: Double?
+        var ready: Int?
+    }
+
+    private func playlist(from dto: PlaylistDTO) -> Playlist {
+        Playlist(
+            id: dto.id ?? "",
+            name: dto.name ?? "Untitled",
+            items: (dto.items ?? []).map { i in
+                Playlist.Item(id: i.id ?? "",
+                              kind: i.kind ?? "synthesis",
+                              title: i.title ?? "",
+                              body: i.body ?? "",
+                              source: i.source ?? "",
+                              duration: i.duration ?? 0,
+                              speechChunks: speechChunks(i.speech?.chunks))
+            },
+            duration: dto.duration ?? 0,
+            ready: dto.ready ?? 0)
+    }
+
+    func playlists() async -> [Playlist] {
+        (await fetch("/api/playlists", as: [PlaylistDTO].self) ?? []).map(playlist(from:))
+    }
+
+    private struct PlaylistActionDTO: Decodable {
+        var ok: Bool
+        var error: String?
+        var playlists: [PlaylistDTO]?
+    }
+
+    func playlistAction(_ action: String, body: [String: Any]) async -> [Playlist]? {
+        do {
+            var payload = body
+            payload["action"] = action
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            let (resp, http) = try await URLSession.shared.data(
+                for: request("/api/playlist", method: "POST", body: data))
+            guard (http as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            let dto = try JSONDecoder().decode(PlaylistActionDTO.self, from: resp)
+            guard dto.ok else {
+                #if DEBUG
+                print("[LiveAliciaService] playlist \(action) refused: \(dto.error ?? "")")
+                #endif
+                return nil
+            }
+            return (dto.playlists ?? []).map(playlist(from:))
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: read aloud
 
     private struct SpeakDTO: Decodable {

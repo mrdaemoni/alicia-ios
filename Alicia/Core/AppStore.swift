@@ -63,6 +63,68 @@ final class AppStore {
         reader.read(item)
     }
 
+    // MARK: playlists — the listening queues (Studio)
+
+    var playlists: [Playlist] = []
+
+    func loadPlaylists() async {
+        playlists = await service.playlists()
+    }
+
+    /// Play a whole queue from a position. This is the driving/walking path:
+    /// press once, then the phone goes in a pocket.
+    func playPlaylist(_ playlist: Playlist, from index: Int = 0) {
+        configureRemoteCommandsOnce()
+        reader.play(queue: playlist.readables, from: index,
+                    playlist: playlist.name)
+    }
+
+    /// Every mutation goes through here: the backend returns the whole
+    /// refreshed shelf, so there is no local copy to drift.
+    @discardableResult
+    private func playlistAction(_ action: String,
+                                _ body: [String: Any]) async -> Bool {
+        guard let updated = await service.playlistAction(action, body: body) else {
+            return false
+        }
+        playlists = updated
+        return true
+    }
+
+    func createPlaylist(named name: String) async {
+        await playlistAction("create", ["name": name])
+    }
+
+    func renamePlaylist(_ id: String, to name: String) async {
+        await playlistAction("rename", ["playlist_id": id, "name": name])
+    }
+
+    func deletePlaylist(_ id: String) async {
+        await playlistAction("delete", ["playlist_id": id])
+    }
+
+    func addToPlaylist(_ id: String, synthesis: FeaturedSynthesis) async {
+        await playlistAction("add", [
+            "playlist_id": id, "id": synthesis.pinID, "kind": "synthesis",
+            "title": synthesis.title, "body": synthesis.body,
+            "source": synthesis.date,
+        ])
+    }
+
+    func removeFromPlaylist(_ id: String, itemID: String) async {
+        await playlistAction("remove", ["playlist_id": id, "id": itemID])
+    }
+
+    func reorderPlaylist(_ id: String, order: [String]) async {
+        await playlistAction("reorder", ["playlist_id": id, "order": order])
+    }
+
+    /// Which playlists already hold this piece — drives the picker's ticks.
+    func playlistsHolding(_ itemID: String) -> Set<String> {
+        Set(playlists.filter { p in p.items.contains { $0.id == itemID } }
+                     .map(\.id))
+    }
+
     /// True once the sample seed has been replaced by her real proactive
     /// feed — never clobber a conversation in progress on refresh.
     private var liveTimelineSeeded = false
@@ -85,6 +147,7 @@ final class AppStore {
         async let hc = service.homeContext()
         async let sc = service.sharedContext()
         async let rf = service.reflections()
+        async let pls = service.playlists()
         // Keep-last-known: nil means the fetch FAILED (network/auth/decode)
         // — never wipe a populated tab over one bad refresh. A non-nil
         // empty array is a real "backend has nothing" and does overwrite.
@@ -110,6 +173,10 @@ final class AppStore {
         knowing = await kn ?? knowing
         let shelf = await sy
         if !shelf.isEmpty { syntheses = shelf }
+        // Same keep-last-known rule: a failed fetch must not empty Studio's
+        // shelf of queues he built.
+        let queues = await pls
+        if !queues.isEmpty { playlists = queues }
         if thinkerNetwork == nil {
             thinkerNetwork = await service.thinkers()
         }
@@ -714,15 +781,20 @@ final class AppStore {
         center.nextTrackCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                // Mid-reading there is no "next piece" — treat it as a jump.
-                self.reader.isActive ? self.reader.skip(15) : self.next()
+                guard self.reader.isActive else { self.next(); return }
+                // In a playlist these are real track buttons — the steering
+                // wheel controls have to move between pieces. Reading one
+                // piece alone, there is nowhere to skip to but forward.
+                self.reader.hasNext ? self.reader.next() : self.reader.skip(15)
             }
             return .success
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.reader.isActive ? self.reader.skip(-15) : self.previous()
+                guard self.reader.isActive else { self.previous(); return }
+                self.reader.queueItems.count > 1
+                    ? self.reader.previous() : self.reader.skip(-15)
             }
             return .success
         }

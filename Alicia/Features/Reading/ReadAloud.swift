@@ -171,6 +171,12 @@ struct ReadingBar: View {
     /// her — if you're hearing the phone, the bar tells you so.
     private var status: String {
         let reader = store.reader
+        // In a queue, where-am-I matters more than which-engine — that's the
+        // line he reads at a red light.
+        if let name = reader.playlistName, reader.queueItems.count > 1 {
+            let place = "\(name.uppercased()) · \(reader.queuePosition + 1)/\(reader.queueItems.count)"
+            return reader.isPreparing ? place + " · WARMING UP" : place
+        }
         if reader.voice == .device { return "STAND-IN VOICE · SHE'S OFFLINE" }
         if reader.isPreparing { return "HER VOICE · WARMING UP" }
         if reader.isStreaming { return "HER VOICE · STILL ARRIVING" }
@@ -212,7 +218,13 @@ struct ReadingBar: View {
                                 .strokeBorder(Theme.paper.opacity(0.25)))
                     }
                     .buttonStyle(.plain)
-                    Button { reader.skip(-15) } label: {
+                    // In a queue the outer arrows move between PIECES, and
+                    // ±15s lives on the lock screen and the scrub bar. One
+                    // piece alone, they're ±15s as before.
+                    Button {
+                        reader.queueItems.count > 1 ? reader.previous()
+                                                    : reader.skip(-15)
+                    } label: {
                         InkSkip(forward: false, size: 24, color: Theme.paper, seed: 5)
                     }
                     .buttonStyle(.plain)
@@ -221,7 +233,9 @@ struct ReadingBar: View {
                                      color: Theme.paper, seed: 19)
                     }
                     .buttonStyle(.plain)
-                    Button { reader.skip(15) } label: {
+                    Button {
+                        reader.hasNext ? reader.next() : reader.skip(15)
+                    } label: {
                         InkSkip(forward: true, size: 24, color: Theme.paper, seed: 11)
                     }
                     .buttonStyle(.plain)

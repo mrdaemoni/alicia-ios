@@ -372,6 +372,7 @@ struct FeaturedSynthesisCard: View {
                     .foregroundStyle(Theme.accent)
                     .onTapGesture { reading = true }
                 SynthesisPin(syn: featured, size: 19)
+                AddToPlaylistLine(synthesis: featured)
                 Spacer()
                 // The day's synthesis is the one piece her overnight pass
                 // always pre-renders, so this starts instantly in her voice.
@@ -522,9 +523,14 @@ struct SynthesisReader: View {
                 Theme.stroke.frame(width: 60, height: 1)
                     .frame(maxWidth: .infinity)
 
-                // Press play and she reads the whole piece to you.
-                ListenLine(item: featured.readable, label: "LISTEN")
-                    .frame(maxWidth: .infinity)
+                // Press play and she reads the whole piece to you — or put
+                // it in a queue for the drive.
+                HStack(spacing: 20) {
+                    Spacer()
+                    ListenLine(item: featured.readable, label: "LISTEN")
+                    AddToPlaylistLine(synthesis: featured)
+                    Spacer()
+                }
 
                 ForEach(Array(blocks.enumerated()), id: \.element.id) { i, block in
                     let here = (i == hereNow)

@@ -228,6 +228,7 @@ struct SynthesisRow: View {
             HStack(spacing: 12) {
                 if !leading { Spacer() }
                 ListenLine(item: syn.readable)
+                AddToPlaylistLine(synthesis: syn)
                 SynthesisPin(syn: syn, size: 19)
                 if leading { Spacer() }
             }

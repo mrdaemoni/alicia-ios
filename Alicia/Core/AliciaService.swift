@@ -121,6 +121,12 @@ protocol AliciaService {
     func reflections() async -> [Reflection]?
 
     func requestSpeech(text: String, kind: String) async -> SpeechStatus
+    /// Studio's listening queues. Empty offline.
+    func playlists() async -> [Playlist]
+    /// One queue mutation — create / rename / delete / add / remove /
+    /// reorder. Returns the whole refreshed shelf, so the app never has to
+    /// reconcile a local copy against the server's. Nil on failure.
+    func playlistAction(_ action: String, body: [String: Any]) async -> [Playlist]?
 }
 
 struct TimelineDay: Decodable, Hashable, Identifiable {
@@ -248,11 +254,16 @@ struct MockAliciaService: AliciaService {
                       note: String) async -> Bool { true }
     func pin(action: String, id: String, kind: String, title: String,
              body: String, thinker: String, source: String) async -> Bool { true }
-    /// Mock mode has no TTS — read-aloud stays on the device voice, which is
-    /// the whole point of it being the instant path.
+    /// Mock mode has no TTS — read-aloud falls to the device voice, the one
+    /// case that still earns it.
     func requestSpeech(text: String, kind: String) async -> SpeechStatus {
         .unavailable
     }
+
+    /// Playlists live server-side; mock mode shows the empty shelf rather
+    /// than inventing queues Hector never made.
+    func playlists() async -> [Playlist] { [] }
+    func playlistAction(_ action: String, body: [String: Any]) async -> [Playlist]? { nil }
 
     func homeContext() async -> HomeContext? {
         HomeContext(

@@ -4,10 +4,12 @@ Context handoff for continuing this project in Claude Code.
 **Read `SESSION_HANDOFF.md` first** — the live continuation doc (current
 version, ship loop, design rules, known gaps). This file carries stable
 architecture; details below were last fully refreshed at v11 — the app is now
-at **v33**: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
+at **v34**: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
 into Studio), widget target, hard-VStack bottom bar (safeAreaInset banned),
-her real voice on any page (v31/v32), and the **live context orbit** on Us
-(v33) — what we actually talk about, replacing the authored podcast season.
+her real voice on any page (v31/v32), the **live context orbit** on Us
+(v33) — what we actually talk about, replacing the authored podcast season —
+and **listening queues** (v34): Studio now hosts named playlists of syntheses
+alongside the podcast, played continuously for a drive or a walk.
 
 ## What this is
 
@@ -122,6 +124,8 @@ to Telegram by the backend. Endpoints in use:
 | `GET /api/reflections` | her morning/evening self-reflections, text + a playable reading when rendered |
 | `GET/POST /api/mode` | walk/drive thinking-mode state + start/end |
 | `GET /api/episode/<label>` | shownotes markdown |
+| `POST /api/speak` · `GET /api/speech/<name>` | read-aloud: her voice rendered in ramped chunks (`skills/reading_voice.py`), returned as an ordered chunk list — `ready` / `streaming` / `rendering`, never blocking |
+| `GET /api/playlists` · `POST /api/playlist` | Studio's listening queues (create/rename/delete/add/remove/reorder); adding also renders that piece's audio so a queue is warm before he drives |
 | `POST /api/cocreate` (base64 PNG + size + anchor, 120 s timeout) | canvas co-creation: she draws from where the pencil stopped, returns an overlay layer + caption |
 | `POST /api/complement` (base64 PNG, 120 s timeout) | drawing reply w/ vision — superseded by cocreate in the UI; `requestComplement` is currently unused |
 

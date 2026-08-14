@@ -92,6 +92,16 @@ final class SpeechReader: NSObject {
 
     // MARK: what the UI reads
 
+    /// The queue being listened to. One piece for a tapped page; many for a
+    /// playlist — the 20–40 minutes Hector assembles for a drive or a walk.
+    private(set) var queueItems: [Readable] = []
+    private(set) var queuePosition = 0
+    /// The playlist this queue came from, when it came from one.
+    private(set) var playlistName: String?
+
+    var hasNext: Bool { queuePosition + 1 < queueItems.count }
+    var hasPrevious: Bool { queuePosition > 0 }
+
     private(set) var current: Readable?
     private(set) var isSpeaking = false
     private(set) var voice: Voice = .her
@@ -132,6 +142,7 @@ final class SpeechReader: NSObject {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var pollTask: Task<Void, Never>?
+    private var prefetchTask: Task<Void, Never>?
 
     // Offline last resort.
     private let synth = AVSpeechSynthesizer()
@@ -148,7 +159,33 @@ final class SpeechReader: NSObject {
 
     // MARK: starting and stopping
 
-    /// Press play on `item`. Re-pressing the piece already loaded toggles
+    /// Press play on a whole queue — a playlist, from a given position.
+    ///
+    /// Auto-advance across pieces is the point: on a walk or in the car the
+    /// phone is in a pocket, so reaching the end of one synthesis must roll
+    /// into the next without a tap.
+    func play(queue items: [Readable], from index: Int = 0,
+              playlist: String? = nil) {
+        let items = items.filter { !$0.spokenText.isEmpty }
+        guard !items.isEmpty else {
+            failure = "There's nothing in this playlist to read."
+            return
+        }
+        let start = min(max(0, index), items.count - 1)
+        // Re-pressing play on the piece already sounding just toggles.
+        if playlistName == playlist, queueItems.map(\.id) == items.map(\.id),
+           queuePosition == start, current != nil {
+            toggle()
+            return
+        }
+        stop()
+        queueItems = items
+        queuePosition = start
+        playlistName = playlist
+        begin(items[start])
+    }
+
+    /// Press play on one piece. Re-pressing the piece already loaded toggles
     /// pause rather than starting it over.
     func read(_ item: Readable) {
         if current?.id == item.id {
@@ -156,6 +193,40 @@ final class SpeechReader: NSObject {
             return
         }
         stop()
+        queueItems = [item]
+        queuePosition = 0
+        playlistName = nil
+        begin(item)
+    }
+
+    /// Move to another piece in the queue, keeping the queue intact.
+    func advance(by offset: Int) {
+        let next = queuePosition + offset
+        guard queueItems.indices.contains(next) else {
+            if next >= queueItems.count { finishQueue() }
+            return
+        }
+        queuePosition = next
+        let item = queueItems[next]
+        // Tear down the audio but NOT the queue.
+        pollTask?.cancel()
+        pollTask = nil
+        synth.stopSpeaking(at: .immediate)
+        teardownQueue()
+        chunks = []
+        queuedCount = 0
+        currentIndex = 0
+        progress = 0
+        begin(item)
+    }
+
+    func next() { advance(by: 1) }
+    func previous() {
+        // Like every player: a tap early in a piece goes back, later restarts.
+        if elapsed > 5 { seek(to: 0) } else { advance(by: -1) }
+    }
+
+    private func begin(_ item: Readable) {
         guard !item.spokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             failure = "There's nothing here to read."
             return
@@ -182,6 +253,7 @@ final class SpeechReader: NSObject {
             duration = item.speechDuration
             requestHerVoice(for: item)
         }
+        prefetchNext()
         publishNowPlaying()
     }
 
@@ -210,8 +282,13 @@ final class SpeechReader: NSObject {
     func stop() {
         pollTask?.cancel()
         pollTask = nil
+        prefetchTask?.cancel()
+        prefetchTask = nil
         synth.stopSpeaking(at: .immediate)
         teardownQueue()
+        queueItems = []
+        queuePosition = 0
+        playlistName = nil
         current = nil
         isSpeaking = false
         isPreparing = false
@@ -505,12 +582,41 @@ final class SpeechReader: NSObject {
 
     // MARK: finishing
 
+    /// This piece is done. In a playlist that means the next one starts —
+    /// the phone is in a pocket on a walk, so silence between pieces would
+    /// end the listening session.
     fileprivate func finishReading() {
+        if hasNext {
+            advance(by: 1)
+            return
+        }
+        finishQueue()
+    }
+
+    private func finishQueue() {
         isSpeaking = false
         isPreparing = false
         isStreaming = false
         progress = 1
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
+
+    /// Warm the NEXT piece while this one plays.
+    ///
+    /// Adding to a playlist already triggers a render, so this is usually a
+    /// cache hit that costs one request. When it isn't — a piece queued
+    /// while the backend was down — this is what stops the gap between
+    /// tracks being ~15s of silence at the roadside.
+    private func prefetchNext() {
+        guard hasNext, let service else { return }
+        let upcoming = queueItems[queuePosition + 1]
+        guard upcoming.speechChunks.isEmpty else { return }   // already have it
+        prefetchTask?.cancel()
+        prefetchTask = Task { [weak self] in
+            _ = await service.requestSpeech(text: upcoming.spokenText,
+                                            kind: upcoming.kind)
+            _ = self
+        }
     }
 
     // MARK: audio session + lock screen
@@ -529,11 +635,16 @@ final class SpeechReader: NSObject {
 
     private func publishNowPlaying() {
         guard let item = current else { return }
+        // On the lock screen in a car, the album line is where "which of the
+        // eight am I on" has to live.
+        var album = voice == .her ? "Read aloud" : "Read aloud · stand-in voice"
+        if let playlistName, queueItems.count > 1 {
+            album = "\(playlistName) · \(queuePosition + 1) of \(queueItems.count)"
+        }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: item.title.isEmpty ? "A reading" : item.title,
             MPMediaItemPropertyArtist: "Alicia",
-            MPMediaItemPropertyAlbumTitle: voice == .her ? "Read aloud"
-                                                         : "Read aloud · stand-in voice",
+            MPMediaItemPropertyAlbumTitle: album,
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyPlaybackRate: isSpeaking ? Double(rate) : 0.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,

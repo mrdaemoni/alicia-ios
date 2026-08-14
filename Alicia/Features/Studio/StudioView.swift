@@ -20,7 +20,7 @@ struct StudioView: View {
                     ZStack {
                         SectionHeader(title: drawing ? "Canvas" : "Studio",
                                       kicker: drawing ? "drawn together"
-                                                      : "memories of my future self")
+                                                      : "everything worth listening to")
                         HStack {
                             Spacer()
                             // Canvas lives inside Studio now — the pencil
@@ -51,6 +51,28 @@ struct StudioView: View {
                             .frame(minHeight: 560)
                     }
                     if !drawing {
+                    // ── Her queues, above the podcast ────────────────────
+                    // Studio is no longer only "Memories of My Future Self":
+                    // it's where listening lives, and the queues he built
+                    // himself come first.
+                    if !store.playlists.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("YOUR PLAYLISTS")
+                                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                                .tracking(2.0)
+                                .foregroundStyle(Theme.inkSoft)
+                                .padding(.leading, 2)
+                            ForEach(store.playlists) { playlist in
+                                NavigationLink(value: playlist) {
+                                    PlaylistRow(playlist: playlist)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.bottom, 6)
+                        Theme.stroke.frame(height: 0.7)
+                    }
+
                     playlistHeader
                     ForEach(seasons, id: \.number) { season in
                         if season.number > 0 {
@@ -75,7 +97,11 @@ struct StudioView: View {
             .navigationDestination(for: Track.self) { track in
                 EpisodeDetailView(track: track)
             }
+            .navigationDestination(for: Playlist.self) { playlist in
+                PlaylistDetailView(playlistID: playlist.id)
+            }
             .refreshable { await store.load() }
+            .task { await store.loadPlaylists() }
             // Sister field to Us: the current runs horizontal — a waveform.
             .waveBackground(.studio(mood: store.waveMood), tinted: true)
             .toolbar(.hidden, for: .navigationBar)

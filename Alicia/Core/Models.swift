@@ -88,6 +88,41 @@ struct Thought: Identifiable, Hashable {
     var date: Date = .now
 }
 
+/// A listening queue Hector assembled — syntheses (and episodes) lined up to
+/// play one after another on a drive or a walk. Order is kept server-side
+/// (`skills/playlists.py`) so it survives reinstalls and she can see what he
+/// is choosing to spend an hour with.
+struct Playlist: Identifiable, Hashable {
+    struct Item: Identifiable, Hashable {
+        var id: String
+        var kind: String          // "synthesis" | "episode" | …
+        var title: String
+        var body: String
+        var source: String
+        var duration: TimeInterval
+        /// Audio that already exists. Empty means it still needs rendering —
+        /// the reader asks for it and streams the lead chunk.
+        var speechChunks: [SpeechChunk]
+
+        var isReady: Bool { !speechChunks.isEmpty }
+
+        var readable: Readable {
+            Readable(title: title, body: body, kind: kind,
+                     speechChunks: speechChunks, speechDuration: duration)
+        }
+    }
+
+    var id: String
+    var name: String
+    var items: [Item]
+    /// Whole-queue length, and how many pieces can play right now.
+    var duration: TimeInterval
+    var ready: Int
+
+    var isFullyReady: Bool { ready >= items.count }
+    var readables: [Readable] { items.map(\.readable) }
+}
+
 /// A piece of audio Alicia has made for you (wav / mp3).
 struct Track: Identifiable, Hashable {
     let id = UUID()
