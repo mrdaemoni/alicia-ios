@@ -9,6 +9,12 @@
 	<!-- The Alicia backend speaks plain HTTP on a private network (home
 	     Wi-Fi / Tailscale tailnet, port 8766) — never the open internet.
 	     ATS would otherwise block http:// to anything but localhost. -->
+	<!-- TestFlight/App Store Connect asks about export compliance on every
+	     upload. Alicia uses only HTTPS/TLS through URLSession and the OS's
+	     own crypto — no proprietary or non-exempt encryption — so this is
+	     the honest answer, declared once instead of re-answered per build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
