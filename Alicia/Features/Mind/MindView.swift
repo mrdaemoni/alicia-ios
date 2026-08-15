@@ -3,6 +3,9 @@ import SwiftUI
 /// Alicia's own space — how she is doing, what she is thinking about.
 struct MindView: View {
     @Environment(AppStore.self) private var store
+#if DEBUG
+    @State private var showsMotionLab = false
+#endif
 
     var body: some View {
         NavigationStack {
@@ -22,6 +25,10 @@ struct MindView: View {
                                 .font(.system(size: 10, design: .monospaced))
                                 .tracking(2.0)
                                 .foregroundStyle(Theme.inkSoft)
+#if DEBUG
+                                .onTapGesture { showsMotionLab = true }
+                                .accessibilityHint("Opens the Motion Lab")
+#endif
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.top, 14)
@@ -62,6 +69,12 @@ struct MindView: View {
             .waveBackground(.mind(mood: store.waveMood), tinted: true)
             .toolbar(.hidden, for: .navigationBar)
         }
+#if DEBUG
+        .sheet(isPresented: $showsMotionLab) {
+            MotionLabView()
+                .preferredColorScheme(.light)
+        }
+#endif
     }
 
     private func scrollToPending(_ proxy: ScrollViewProxy) {
@@ -272,4 +285,3 @@ struct EditorialThought: View {
         .padding(.trailing, 40)
     }
 }
-

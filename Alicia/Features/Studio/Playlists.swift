@@ -49,6 +49,8 @@ struct PlaylistDetailView: View {
     @State private var draftName = ""
     @State private var confirmingDelete = false
     @State private var editing = false
+    /// The piece being read along with — tapping a row plays it and opens it.
+    @State private var opened: Playlist.Item?
 
     /// Always read through the store so a mutation's refreshed shelf shows
     /// up here without a local copy to reconcile.
@@ -96,7 +98,12 @@ struct PlaylistDetailView: View {
                     PlaylistItemRow(item: item, index: i, playlist: playlist)
                         .listRowBackground(Color.clear)
                         .contentShape(Rectangle())
-                        .onTapGesture { store.playPlaylist(playlist, from: i) }
+                        .onTapGesture {
+                            // Start it playing AND open it, so he can read
+                            // along with her rather than staring at a list.
+                            store.playPlaylist(playlist, from: i)
+                            opened = item
+                        }
                 }
                 .onMove { from, to in
                     var ids = playlist.items.map(\.id)
@@ -121,6 +128,21 @@ struct PlaylistDetailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .environment(\.editMode, .constant(editing ? .active : .inactive))
+        // Read along while she reads aloud. Episodes have no text to show,
+        // so only the written pieces open.
+        .sheet(item: $opened) { item in
+            if item.kind == "episode" {
+                EpisodeNotesSheet(title: item.title, label: item.source)
+            } else {
+                SynthesisReader(featured: FeaturedSynthesis(
+                    title: item.title,
+                    excerpt: String(item.body.prefix(220)),
+                    body: item.body,
+                    date: item.source,
+                    speechChunks: item.speechChunks,
+                    speechDuration: item.duration))
+            }
+        }
         .alert("Name this playlist", isPresented: $renaming) {
             TextField("Name", text: $draftName)
             Button("Save") {
@@ -256,6 +278,56 @@ private struct PlaylistItemRow: View {
             Spacer()
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// Shownotes for a queued episode — the read-along for something that has
+/// no body text of its own.
+struct EpisodeNotesSheet: View {
+    @Environment(AppStore.self) private var store
+    let title: String
+    let label: String
+    @State private var notes: AttributedString?
+    @State private var loading = true
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                InkTitle(text: title, size: 21, weight: .semibold)
+                Theme.stroke.frame(height: 0.7)
+                if loading {
+                    ProgressView("Fetching shownotes…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                } else if let notes {
+                    Text(notes)
+                        .font(.system(size: 15, design: .serif))
+                        .lineSpacing(5)
+                        .textSelection(.enabled)
+                } else {
+                    HStack(spacing: 8) {
+                        InkSpark(size: 11, color: Theme.inkSoft, seed: 13)
+                        Text("No shownotes for this one.")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.inkSoft)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 32)
+                }
+            }
+            .padding(24)
+            .padding(.bottom, 40)
+        }
+        .presentationBackground(Theme.paper)
+        .task {
+            // A queued episode keeps its label in `source`; that's all the
+            // shownotes lookup needs.
+            let md = await store.episodeNotes(
+                for: Track(title: title, mood: "", duration: 0, symbol: "",
+                           label: label))
+            notes = md.isEmpty ? nil : EpisodeDetailView.render(md)
+            loading = false
+        }
     }
 }
 

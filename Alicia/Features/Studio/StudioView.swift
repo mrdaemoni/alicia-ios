@@ -3,12 +3,27 @@ import SwiftUI
 struct StudioView: View {
     @Environment(AppStore.self) private var store
 
-    /// Episodes grouped by season, newest season first. Tracks without a
-    /// season (sample data) fall into a single unnumbered group.
-    private var seasons: [(number: Int, tracks: [Track])] {
-        Dictionary(grouping: store.tracks, by: \.season)
-            .map { (number: $0.key, tracks: $0.value) }
-            .sorted { $0.number > $1.number }
+    /// Episodes grouped into COLLECTIONS, in the order the backend returned
+    /// them (named runs like "Nights" first, then numbered seasons). Keyed
+    /// on the collection string, not the season number — a named run has no
+    /// number, and grouping on the integer hid a whole season.
+    private var collections: [PodcastCollection] {
+        var order: [String] = []
+        var byKey: [String: [Track]] = [:]
+        for track in store.tracks {
+            let key = track.collection.isEmpty ? "S\(track.season)" : track.collection
+            if byKey[key] == nil { order.append(key) }
+            byKey[key, default: []].append(track)
+        }
+        return order.map { key in
+            let tracks = byKey[key] ?? []
+            return PodcastCollection(
+                id: key,
+                title: tracks.first?.collectionTitle.isEmpty == false
+                    ? tracks.first!.collectionTitle
+                    : (key == "S0" ? "Episodes" : "Season \(key.dropFirst())"),
+                tracks: tracks)
+        }
     }
 
     @State private var drawing = false
@@ -74,21 +89,19 @@ struct StudioView: View {
                     }
 
                     playlistHeader
-                    ForEach(seasons, id: \.number) { season in
-                        if season.number > 0 {
-                            Text("Season \(season.number)")
-                                .font(.headline)
-                                .foregroundStyle(Theme.accentSoft)
-                                .padding(.top, 8)
+                    // v35: each season is a row you open, not eighty rows to
+                    // scroll past. Named runs come first.
+                    Text("SEASONS")
+                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                        .tracking(2.0)
+                        .foregroundStyle(Theme.inkSoft)
+                        .padding(.top, 6)
+                        .padding(.leading, 2)
+                    ForEach(collections) { collection in
+                        NavigationLink(value: collection) {
+                            CollectionRow(collection: collection)
                         }
-                        ForEach(season.tracks) { track in
-                            NavigationLink(value: track) {
-                                TrackRow(track: track,
-                                         isCurrent: store.nowPlaying?.id == track.id,
-                                         isPlaying: store.isPlaying && store.nowPlaying?.id == track.id)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        .buttonStyle(.plain)
                     }
                     }
                 }
@@ -99,6 +112,9 @@ struct StudioView: View {
             }
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlistID: playlist.id)
+            }
+            .navigationDestination(for: PodcastCollection.self) { collection in
+                CollectionDetailView(collection: collection)
             }
             .refreshable { await store.load() }
             .task { await store.loadPlaylists() }

@@ -4,7 +4,7 @@ Context handoff for continuing this project in Claude Code.
 **Read `SESSION_HANDOFF.md` first** — the live continuation doc (current
 version, ship loop, design rules, known gaps). This file carries stable
 architecture; details below were last fully refreshed at v11 — the app is now
-at **v34**: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
+at **v35**: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
 into Studio), widget target, hard-VStack bottom bar (safeAreaInset banned),
 her real voice on any page (v31/v32), the **live context orbit** on Us
 (v33) — what we actually talk about, replacing the authored podcast season —

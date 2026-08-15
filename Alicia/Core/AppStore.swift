@@ -111,6 +111,17 @@ final class AppStore {
         ])
     }
 
+    /// Queue a podcast episode. Unlike a synthesis this needs no voicing —
+    /// the wav already exists, so it carries its own URL and plays at once.
+    func addEpisodeToPlaylist(_ id: String, track: Track) async {
+        await playlistAction("add", [
+            "playlist_id": id, "id": track.playlistItemID, "kind": "episode",
+            "title": track.title, "source": track.label ?? "",
+            "duration": track.duration,
+            "audio_url": track.fileName ?? "",
+        ])
+    }
+
     func removeFromPlaylist(_ id: String, itemID: String) async {
         await playlistAction("remove", ["playlist_id": id, "id": itemID])
     }

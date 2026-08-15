@@ -134,8 +134,17 @@ struct Track: Identifiable, Hashable {
     // Podcast metadata (0/nil for non-episode tracks e.g. sample data)
     var season: Int = 0
     var episode: Int = 0
-    var label: String? = nil    // "S11E04" — keys the shownotes lookup
+    var label: String? = nil    // "S11E04" / "NIGHT2" — keys the shownotes lookup
     var series: String = ""
+    /// What Studio shelves this under. A numbered season ("S13") or a named
+    /// run ("NIGHTS") — not every run of the podcast has a number, and
+    /// grouping on the integer made a whole season invisible.
+    var collection: String = ""
+    var collectionTitle: String = ""
+
+    /// This episode as a playlist entry — already-rendered audio, so it
+    /// needs no voicing and plays the moment it's queued.
+    var playlistItemID: String { "episode:\(label ?? title)" }
 }
 
 /// A drawing — either one you made or one Alicia made for you.

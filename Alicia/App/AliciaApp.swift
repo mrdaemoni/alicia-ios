@@ -34,7 +34,17 @@ struct AliciaApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            Group {
+#if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--motion-lab") {
+                    MotionLabView()
+                } else {
+                    RootView()
+                }
+#else
+                RootView()
+#endif
+            }
                 .environment(store)
                 .tint(Theme.accent)
                 // Paper wants light: the drawings are ink on bone, and the

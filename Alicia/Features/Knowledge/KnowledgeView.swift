@@ -96,8 +96,32 @@ struct KnowledgeView: View {
         }
     }
 
-    /// Segment 0 — the syntheses shelf.
+    /// Everything he has starred, newest pin first. Read from the home
+    /// payload's pinned list, which the backend keeps whole (full text), so
+    /// a starred piece stays readable and playable long after it has
+    /// rotated off the fresh shelf — the point of starring it.
+    private var starred: [FeaturedSynthesis] {
+        (store.homeContext?.pinned ?? [])
+            .filter { $0.kind == "synthesis" }
+            .map(FeaturedSynthesis.init(pinned:))
+    }
+
+    /// Segment 0 — the syntheses shelf, starred pieces held above it.
     @ViewBuilder private var shelf: some View {
+        if !starred.isEmpty {
+            HStack(spacing: 8) {
+                InkPinMark(pinned: true, size: 15, seed: 11)
+                Text("STARRED · KEPT")
+                    .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                    .tracking(2.0)
+                    .foregroundStyle(Theme.accent)
+            }
+            let hotStars = hotWords
+            ForEach(Array(starred.enumerated()), id: \.element.title) { i, syn in
+                SynthesisRow(syn: syn, rank: i, hot: hotStars) { reading = syn }
+            }
+            Theme.stroke.frame(height: 0.7).padding(.vertical, 8)
+        }
         if !store.syntheses.isEmpty {
             Text("FRESH FROM THE SHELF")
                 .font(.system(size: 10, design: .monospaced).weight(.semibold))

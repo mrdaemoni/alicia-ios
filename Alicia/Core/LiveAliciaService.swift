@@ -37,6 +37,12 @@ struct LiveAliciaService: AliciaService {
     /// (e.g. "/api/drawing/x.png" → "http://host:8766/api/drawing/x.png?token=…").
     private func mediaURL(_ path: String) -> URL? {
         guard !path.isEmpty else { return nil }
+        // A queued podcast episode was stored with its full, already-tokened
+        // URL, so it comes back absolute. Appending it to baseURL would
+        // produce nonsense — pass it straight through.
+        if path.hasPrefix("http://") || path.hasPrefix("https://") {
+            return URL(string: path)
+        }
         var comps = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false)
         comps?.queryItems = [URLQueryItem(name: "token", value: token)]
         return comps?.url
@@ -182,6 +188,7 @@ struct LiveAliciaService: AliciaService {
         }
     }
 
+    // Note: `collection` groups Studio's shelf (see Models.Track).
     private struct TrackDTO: Decodable {
         var title, mood, symbol: String
         var duration: Double
@@ -190,6 +197,8 @@ struct LiveAliciaService: AliciaService {
         var episode: Int?
         var label: String?
         var series: String?
+        var collection: String?
+        var collectionTitle: String?
     }
 
     func tracks() async -> [Track]? {
@@ -200,7 +209,10 @@ struct LiveAliciaService: AliciaService {
                   season: $0.season ?? 0,
                   episode: $0.episode ?? 0,
                   label: $0.label,
-                  series: $0.series ?? "")
+                  series: $0.series ?? "",
+                  collection: $0.collection ?? "S\($0.season ?? 0)",
+                  collectionTitle: $0.collectionTitle
+                      ?? "Season \($0.season ?? 0)")
         }
     }
 
