@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- ship.sh injects these without editing source. Empty values are normal
+	     for local Xcode builds; AppVersion displays only a non-main branch. -->
+	<key>AliciaBuildBranch</key>
+	<string>$(ALICIA_BUILD_BRANCH)</string>
+	<key>AliciaBuildCommit</key>
+	<string>$(ALICIA_BUILD_COMMIT)</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.alicia.app.refresh</string>

@@ -501,9 +501,21 @@ extension AppStore {
 }
 
 /// App-wide version tag, shown small on the Alicia tab so Hector can tell
-/// at a glance whether his phone runs the latest build. BUMP THIS on every
-/// app change that ships (see CLAUDE.md).
+/// at a glance whether his phone runs the latest build. Bump `baseTag` when a
+/// promoted app version ships; branch archives add their identity at build time.
 enum AppVersion {
-    static let tag = "v35"
-    static let date = "Aug 8"
+    static let baseTag = "v35"
+    static let date = "Aug 15"
+
+    /// TestFlight archives inject the source branch into Info.plist. Normal
+    /// Xcode builds have no override and therefore keep the stable bare tag.
+    static var tag: String {
+        guard let rawBranch = Bundle.main.object(
+            forInfoDictionaryKey: "AliciaBuildBranch"
+        ) as? String else { return baseTag }
+
+        let branch = rawBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !branch.isEmpty, branch != "main" else { return baseTag }
+        return "\(baseTag) · \(branch)"
+    }
 }

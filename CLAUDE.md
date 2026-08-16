@@ -193,8 +193,9 @@ ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
 ## Version tag
 
 `AppVersion.tag` (DesignSystem/ContourWaves.swift) shows on the Alicia tab so
-Hector can tell which build his phone runs. **Bump it (v8 → v9 → …) and its
-date in every change that ships.** Current: **v33 (2026-08-08)**.
+Hector can tell which build his phone runs. Bump `AppVersion.baseTag` and its
+date when an app change is promoted. TestFlight branch archives append their
+branch automatically through `ship.sh`. Current base: **v35 (2026-08-08)**.
 
 ## Actually pending
 
