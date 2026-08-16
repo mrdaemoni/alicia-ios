@@ -18,13 +18,13 @@ bloom, and Musubi knot.
 
 The two frames differ after excluding the simulator status area:
 
-- Frame A pixel MD5: `6bc32fbd59df9757d6f7e78950fd147d`
-- Frame B pixel MD5: `b8bb422d93d8d2691cd6e32abe3516b0`
+- Frame A pixel MD5: `79ae8f9448df3251da2a6ac329183d01`
+- Frame B pixel MD5: `7d68ff71142b1fd221c94982452cd9ba`
 
 ![Muse intentional Reduce Motion still](reduce-motion.png)
 
 Two Reduce Motion captures one second apart produced the same cropped pixel
-MD5: `da5948cbbacb0260d3b2ea8c641f8a31`.
+MD5: `d96c628268dc964943f84c6817933ffe`.
 
 ## Bounds and resource evidence
 

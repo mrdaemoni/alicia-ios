@@ -36,6 +36,8 @@ Repeatable DEBUG captures can also pass
   State scales an archetype's native tempo; it does not replace its identity.
 - ATTENTION is the semantic control. It increases point density and opacity,
   gathers the body, and strengthens its response to the dragged focus point.
+- Family density is compensated inside `AliciaPresence`, so point count stays
+  a performance budget rather than becoming a product-level opacity contract.
 - Pause, then use PHASE to compare exact moments instead of judging two
   different animation frames. Phase is a lab inspection tool, not personality.
 - Use SHOW MATH to reveal the center axes and attention vector.
