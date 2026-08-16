@@ -65,7 +65,7 @@ struct TalkView: View {
                 composer
             }
             // Sister field to Us: calmer, sparser — quiet water under words.
-            .waveBackground(.dialogue(mood: store.waveMood), tinted: true)
+            .presenceBackground(.dialogue, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .animation(.easeOut(duration: 0.2), value: focused)
             .onChange(of: focused) { _, now in store.composerFocused = now }

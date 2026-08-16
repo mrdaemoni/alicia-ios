@@ -66,7 +66,7 @@ struct MindView: View {
             // The face emerging from the grain — her page.
             // Sister field to Us: slow and dense — her inner weather. Seeded
             // by her current archetype, so her page reshapes with her mood.
-            .waveBackground(.mind(mood: store.waveMood), tinted: true)
+            .presenceBackground(.mind, store: store)
             .toolbar(.hidden, for: .navigationBar)
         }
 #if DEBUG

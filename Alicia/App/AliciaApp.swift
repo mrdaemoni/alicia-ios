@@ -46,6 +46,21 @@ struct AliciaApp: App {
 #endif
             }
                 .environment(store)
+#if DEBUG
+                // Repeatable per-tab capture: `--tab us|dialogue|alicia|studio|
+                // knowledge` opens straight onto one surface. Comparing five
+                // presences otherwise means five hand-driven screenshots, which
+                // is neither repeatable nor something an agent can do headlessly.
+                // Same shape as --motion-lab, and gone from Release.
+                .task {
+                    let args = ProcessInfo.processInfo.arguments
+                    guard let flag = args.firstIndex(of: "--tab"),
+                          args.index(after: flag) < args.endIndex,
+                          let section = AppSection(launchName: args[args.index(after: flag)])
+                    else { return }
+                    store.selectedSection = section
+                }
+#endif
                 .tint(Theme.accent)
                 // Paper wants light: the drawings are ink on bone, and the
                 // whole app is now that sketchbook.

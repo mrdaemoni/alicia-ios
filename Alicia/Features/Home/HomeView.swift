@@ -134,7 +134,7 @@ struct HomeView: View {
             .refreshable { await store.load() }
             // The living field — contour waves under the hour's color and
             // a fine paper grain. Dawn washes rose, night runs indigo.
-            .waveBackground(.us(mood: store.waveMood), tinted: true)
+            .presenceBackground(.us, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showTimeline) { UsSheet() }
             // Thinkers open where you are (v27).

@@ -119,7 +119,7 @@ struct StudioView: View {
             .refreshable { await store.load() }
             .task { await store.loadPlaylists() }
             // Sister field to Us: the current runs horizontal — a waveform.
-            .waveBackground(.studio(mood: store.waveMood), tinted: true)
+            .presenceBackground(.studio, store: store)
             .toolbar(.hidden, for: .navigationBar)
         }
         // Inset on the NavigationStack itself — the bar stays put when an

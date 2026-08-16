@@ -70,7 +70,7 @@ struct KnowledgeView: View {
             .refreshable { await store.load() }
             // v27: not water here — a constellation of idea-nodes drifting
             // and faintly finding each other.
-            .waveBackground(.knowledge(mood: store.waveMood + 3), tinted: true)
+            .presenceBackground(.knowledge, store: store)
             .toolbar(.hidden, for: .navigationBar)
         }
         .sheet(item: $reading) { syn in
