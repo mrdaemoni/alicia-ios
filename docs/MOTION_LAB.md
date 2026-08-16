@@ -8,7 +8,7 @@ tabs until they are deliberately promoted.
 
 1. Run the Alicia scheme with the Debug configuration.
 2. Open the Alicia tab.
-3. Tap `HER INNER WEATHER · v34` beneath her name.
+3. Tap `HER INNER WEATHER · v35` beneath her name.
 
 The entry point and the lab controls are removed from Release builds.
 
@@ -20,21 +20,40 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   xcrun simctl launch booted com.myalicia.app --motion-lab
 ```
 
+Repeatable DEBUG captures can also pass
+`--presence-voice=beatrice|ariadne|psyche|daimon|muse|musubi`,
+`--presence-state=resting|listening|thinking`,
+`--presence-attention=0...1`, `--presence-reduce-motion`, and
+`--presence-audit`. These inspection seams are not product settings.
+
 ## Review an experiment
 
-- Compare RESTING, LISTENING, and THINKING at the same settings.
+- Compare all six voices at the same ATTENTION value. Each voice uses a
+  different geometric family, not a small parameter variation: Beatrice
+  drifts vertically, Ariadne weaves, Psyche folds a dimensional field, Daimon
+  carries controlled singular edges, Muse blooms, and Musubi knots.
+- Compare RESTING, LISTENING, and THINKING at the same voice and attention.
+  State scales an archetype's native tempo; it does not replace its identity.
+- ATTENTION is the semantic control. It increases point density and opacity,
+  gathers the body, and strengthens its response to the dragged focus point.
 - Pause, then use PHASE to compare exact moments instead of judging two
-  different animation frames.
-- Drag on the figure to test how attention deforms the body. RESET clears it.
-- Use SHOW THE MATH to reveal the center axes and attention vector.
-- Check 5 and 20 lines to expose density or performance problems.
-- Check 0.2 and 2.0 speed before choosing the intended rhythm.
-- Turn on Reduce Motion in iOS Accessibility settings. The representation
-  must settle into a meaningful still rather than disappear.
+  different animation frames. Phase is a lab inspection tool, not personality.
+- Use SHOW MATH to reveal the center axes and attention vector.
+- Use REDUCE MOTION to preview each voice's intentional deterministic still.
+- AUDIT ALL checks every voice/state combination across representative phases
+  for finite values and sufficient visible bounds at the current attention.
+- The readout reports effective tempo, point budget, the fixed 15 FPS cadence,
+  visible-point percentage, and finite-value status.
+
+The point field is capped at 2,800 samples and 15 FPS, clips outliers before
+adding them to one batched Canvas path, renders asynchronously, and pauses when
+inactive, backgrounded, reduced-motion, or held at a lab phase. Browser
+performance is not evidence of iOS performance.
 
 For an animation claim, capture two simulator frames at different phases and
-pixel-compare them. For typography, rhythm, touch, and final scale, judge on
-the real device; the iOS 26 simulator substitutes custom fonts.
+pixel-compare them. Capture representative voices plus the Reduce Motion still.
+For typography, rhythm, touch, battery, and final scale, judge on the real
+device; the iOS 26 simulator substitutes custom fonts.
 
 ## Promotion gate
 
