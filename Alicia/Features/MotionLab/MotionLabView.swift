@@ -5,25 +5,60 @@ import SwiftUI
 /// reachable in Release builds; approved pieces move into a product surface.
 struct MotionLabView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var state: AliciaPresence.State = .resting
+    @State private var voice: AliciaPresence.Voice = .ariadne
+    @State private var state: AliciaPresence.State = .listening
+    @State private var attention = 0.72
     @State private var isPlaying = true
-    @State private var phase = 0.0
-    @State private var speed = 1.0
-    @State private var complexity = 12.0
+    @State private var phase = 4.2
     @State private var focus: UnitPoint?
     @State private var showsConstruction = false
+    @State private var previewsReduceMotion = false
+    @State private var auditReport: String?
+    private let runsAuditOnLaunch: Bool
+
+    init() {
+        let arguments = ProcessInfo.processInfo.arguments
+        let voiceArgument = arguments.first { $0.hasPrefix("--presence-voice=") }
+            .map { String($0.dropFirst("--presence-voice=".count)) }
+        let stateArgument = arguments.first { $0.hasPrefix("--presence-state=") }
+            .map { String($0.dropFirst("--presence-state=".count)) }
+        let attentionArgument = arguments.first { $0.hasPrefix("--presence-attention=") }
+            .map { String($0.dropFirst("--presence-attention=".count)) }
+
+        _voice = State(initialValue: voiceArgument
+            .flatMap(AliciaPresence.Voice.init(rawValue:)) ?? .ariadne)
+        _state = State(initialValue: AliciaPresence.State.allCases.first {
+            $0.rawValue.lowercased() == stateArgument?.lowercased()
+        } ?? .listening)
+        _attention = State(initialValue: min(1, max(0,
+            attentionArgument.flatMap(Double.init) ?? 0.72
+        )))
+        _previewsReduceMotion = State(initialValue:
+            arguments.contains("--presence-reduce-motion"))
+        runsAuditOnLaunch = arguments.contains("--presence-audit")
+    }
+
+    private var metrics: AliciaPresence.Metrics {
+        AliciaPresence.metrics(for: voice, state: state, attention: attention)
+    }
+
+    private var currentAudit: AliciaPresence.Audit {
+        AliciaPresence.audit(voice: voice, state: state, attention: attention,
+                             phase: isPlaying ? 4.2 : phase, focus: focus)
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 GeometryReader { proxy in
                     AliciaPresence(
+                        voice: voice,
                         state: state,
-                        speed: speed,
-                        complexity: Int(complexity),
+                        attention: attention,
                         focus: focus,
                         phase: isPlaying ? nil : phase,
-                        showsConstruction: showsConstruction
+                        showsConstruction: showsConstruction,
+                        previewsReduceMotion: previewsReduceMotion
                     )
                     .contentShape(Rectangle())
                     .gesture(
@@ -38,11 +73,15 @@ struct MotionLabView: View {
                 }
                 .frame(maxHeight: .infinity)
                 .overlay(alignment: .topLeading) {
-                    Text("DRAG TO MOVE HER ATTENTION")
-                        .font(.system(size: 9, design: .monospaced))
-                        .tracking(1.5)
-                        .foregroundStyle(Theme.inkSoft)
-                        .padding(14)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("DRAG TO MOVE HER ATTENTION")
+                        Text("\(voice.name) · \(voice.role)")
+                            .foregroundStyle(Theme.ink)
+                    }
+                    .font(.system(size: 9, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.inkSoft)
+                    .padding(14)
                 }
 
                 controls
@@ -61,13 +100,16 @@ struct MotionLabView: View {
                     .foregroundStyle(Theme.ink)
                     .padding(16)
             }
+            .task {
+                if runsAuditOnLaunch { runAudit() }
+            }
         }
     }
 
     private var controls: some View {
-        VStack(alignment: .leading, spacing: 13) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("MOTION LAB · PRESENCE 001")
+                Text("MOTION LAB · PRESENCE 002")
                     .font(.system(size: 10, design: .monospaced).weight(.semibold))
                     .tracking(1.5)
                 Spacer()
@@ -77,41 +119,89 @@ struct MotionLabView: View {
                     .labButton()
             }
 
-            HStack(spacing: 7) {
-                ForEach(AliciaPresence.State.allCases) { option in
-                    Button(option.rawValue) { state = option }
-                        .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                        .tracking(0.8)
-                        .foregroundStyle(state == option ? Theme.paper : Theme.ink)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 7)
-                        .background(state == option ? Theme.ink : Color.clear,
-                                    in: Capsule())
-                        .overlay(Capsule().stroke(Theme.ink.opacity(0.28), lineWidth: 0.7))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(AliciaPresence.Voice.allCases) { option in
+                        choiceButton(option.name, selected: voice == option) {
+                            voice = option
+                            auditReport = nil
+                        }
+                    }
                 }
             }
+
+            HStack(spacing: 7) {
+                ForEach(AliciaPresence.State.allCases) { option in
+                    choiceButton(option.rawValue, selected: state == option) {
+                        state = option
+                        auditReport = nil
+                    }
+                }
+            }
+
+            labSlider("ATTENTION", value: $attention, range: 0...1,
+                      valueText: "\(Int((attention * 100).rounded()))%")
 
             if !isPlaying {
                 labSlider("PHASE", value: $phase, range: 0...20,
                           valueText: phase.formatted(.number.precision(.fractionLength(2))))
             }
-            labSlider("SPEED", value: $speed, range: 0.2...2,
-                      valueText: speed.formatted(.number.precision(.fractionLength(2))))
-            labSlider("LINES", value: $complexity, range: 5...20,
-                      valueText: "\(Int(complexity))")
 
-            Toggle("SHOW THE MATH", isOn: $showsConstruction)
-                .font(.system(size: 10, design: .monospaced))
-                .tracking(1.2)
-                .tint(Theme.accent)
+            HStack {
+                Toggle("REDUCE MOTION", isOn: $previewsReduceMotion)
+                Toggle("SHOW MATH", isOn: $showsConstruction)
+            }
+            .font(.system(size: 9, design: .monospaced))
+            .tracking(1)
+            .tint(Theme.accent)
+
+            HStack(spacing: 7) {
+                Text(performanceLine)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer()
+                Button("AUDIT ALL") { runAudit() }
+                    .labButton()
+            }
+            .font(.system(size: 8, design: .monospaced))
+            .tracking(0.8)
+            .foregroundStyle(currentAudit.isSafe ? Theme.inkSoft : Theme.rose)
+
+            if let auditReport {
+                Text(auditReport)
+                    .font(.system(size: 8, design: .monospaced))
+                    .tracking(0.8)
+                    .foregroundStyle(auditReport.hasPrefix("PASS")
+                                     ? Theme.inkSoft : Theme.rose)
+            }
         }
+    }
+
+    private var performanceLine: String {
+        let visible = Int((currentAudit.visibleFraction * 100).rounded())
+        let finite = currentAudit.finite == currentAudit.total ? "FINITE" : "NONFINITE"
+        return String(format: "%.2f TEMPO · %d PTS · %d FPS · %d%% VISIBLE · %@",
+                      metrics.tempo, metrics.pointCount, metrics.framesPerSecond,
+                      visible, finite)
+    }
+
+    private func choiceButton(_ label: String, selected: Bool,
+                              action: @escaping () -> Void) -> some View {
+        Button(label, action: action)
+            .font(.system(size: 9, design: .monospaced).weight(.semibold))
+            .tracking(0.8)
+            .foregroundStyle(selected ? Theme.paper : Theme.ink)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .background(selected ? Theme.ink : Color.clear, in: Capsule())
+            .overlay(Capsule().stroke(Theme.ink.opacity(0.28), lineWidth: 0.7))
     }
 
     private func labSlider(_ label: String, value: Binding<Double>,
                            range: ClosedRange<Double>, valueText: String) -> some View {
         HStack(spacing: 10) {
             Text(label)
-                .frame(width: 46, alignment: .leading)
+                .frame(width: 74, alignment: .leading)
             Slider(value: value, in: range)
             Text(valueText)
                 .frame(width: 34, alignment: .trailing)
@@ -121,14 +211,24 @@ struct MotionLabView: View {
         .foregroundStyle(Theme.inkSoft)
     }
 
+    private func runAudit() {
+        let summary = AliciaPresence.auditAll(attention: attention)
+        let visible = Int((summary.lowestVisibleFraction * 100).rounded())
+        auditReport = summary.isSafe
+            ? "PASS · \(summary.combinations) COMBINATIONS · LOWEST \(visible)% VISIBLE"
+            : "FAIL · \(summary.failures) OF \(summary.combinations) COMBINATIONS"
+    }
+
     private func reset() {
-        state = .resting
+        voice = .ariadne
+        state = .listening
+        attention = 0.72
         isPlaying = true
-        phase = 0
-        speed = 1
-        complexity = 12
+        phase = 4.2
         focus = nil
         showsConstruction = false
+        previewsReduceMotion = false
+        auditReport = nil
     }
 }
 
