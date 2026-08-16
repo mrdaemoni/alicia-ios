@@ -252,9 +252,17 @@ struct AliciaPresence: View {
         let points = min(2_800, max(700, Int(
             (Double(configuration.basePoints) * (0.58 + focus * 1.04)).rounded()
         )))
+        // Base point count is a rendering-budget choice, not personality.
+        // Compensate here so a sparse family such as Beatrice does not become
+        // faint beside Musubi. Attention still changes density and opacity;
+        // only the accidental family-to-family weight difference is removed.
+        let familyDensityCompensation = 1_450 / Double(configuration.basePoints)
+        let opacity = min(0.56, max(0.22,
+            (0.28 + focus * 0.16) * familyDensityCompensation
+        ))
         return Mapping(tempo: tempo, points: points,
                        contraction: 1.08 - focus * 0.13,
-                       opacity: 0.28 + focus * 0.16)
+                       opacity: opacity)
     }
 
     private static func draw(in context: inout GraphicsContext, size: CGSize,
