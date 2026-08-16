@@ -140,12 +140,16 @@ payload builders are pure + defensive; harness callables arrive via
 
 ## Ship loop (memorize)
 
-1. Bump `AppVersion.tag` in `DesignSystem/ContourWaves.swift` — Hector reads
-   it on the Alicia tab to know he's on the latest build. EVERY shipped change.
+Shipping and branch testing follow `docs/SHIPPING.md`. `ship.sh` allocates the
+build number from shared App Store Connect state and injects branch identity at
+archive time; it never edits, commits, or pushes source.
+
+1. Bump `AppVersion.baseTag` in `DesignSystem/ContourWaves.swift` when an app
+   change is promoted. Branch archives add their branch automatically.
 2. Simulator build green → verify visually (`simctl launch` + screenshot;
    pixel-diff two frames when claiming something animates).
 3. Backend: smoke green (unmasked exit) → commit → push → `alicia-restart`.
-4. App: commit → push → `xcodebuild -destination 'generic/platform=iOS'
+4. App promotion: commit → push → `xcodebuild -destination 'generic/platform=iOS'
    -allowProvisioningUpdates build` → `xcrun devicectl device install app
    --device FE4F87D0-38E4-54AC-B5EA-AD68FF4EEE76 …/Debug-iphoneos/Alicia.app`
    (needs `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, phone on

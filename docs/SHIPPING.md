@@ -21,25 +21,29 @@ into a racing surface.
 
 ## 1. Status — what is actually available today
 
-The principle above is settled. Most of the mechanism is **not built yet**.
-This section is the honest inventory; treat anything marked BLOCKED as
-something to sequence around, not to attempt.
+The principle above is settled. The iOS branch-shipping mechanism is
+implemented by `ship.sh`; backend branching remains future infrastructure.
+Treat anything marked BLOCKED as something to sequence around, not to attempt.
 
 | Capability | Status |
 |---|---|
-| Ship `main` to TestFlight from the canonical checkout | **Fragile** — works only while the committed counter matches reality (§1.1) |
+| Ship `main` to TestFlight from the canonical checkout | **Works** — allocator-owned; no source bump |
 | Cable install to Pandaiux from any checkout | **Works**, given a provisioned worktree (§2.1) |
-| Ship a **branch** to TestFlight | **BLOCKED** — needs §2.1, §2.2, §2.3 |
-| Two agents shipping concurrently | **BLOCKED** — needs §2.3; until then, sequence and say so in chat |
+| Ship a **branch** to TestFlight | **Works** — provision once, then `./ship.sh` |
+| Two agents shipping concurrently | **Collision-safe**; still sequence notifications for clarity |
 | Point the **phone** at a branch backend | **BLOCKED** — no in-app switcher; `opus/backend-switcher` |
 | Run a **branch backend** at all | **BLOCKED** — port hardcoded *and* no state isolation (§4) |
 
-**Until the BLOCKED rows clear, branch testing means the cable path**, one
-agent at a time, and `main` still does not move to test anything.
+The backend rows remain blocked and are intentionally outside the iOS shipping
+implementation. `main` still does not move to test anything.
 
-### 1.1 Why `main` shipping is fragile, not broken
+Before the first real upload from a changed shipping pipeline, run
+`./ship.sh --verify-only`. It creates and inspects the distribution-signed IPA
+but neither reserves a build number nor uploads anything.
 
-`ship.sh` allocates the next build number by incrementing
+### 1.1 Why the old `main` shipping path was fragile
+
+The old `ship.sh` allocated the next build number by incrementing
 `CURRENT_PROJECT_VERSION` in `project.pbxproj`. That counter is **local and
 non-authoritative**: nothing checks it against what App Store Connect already
 holds.
@@ -50,19 +54,19 @@ out-of-band, forgets to commit a bump, or ships from a second branch — and the
 rejection arrives from Apple minutes later, server-side, long after the shipper
 has moved on.
 
-So `main` shipping is not blocked; it is **one unlucky sequence away from
-breaking**, and the allocator in §2.3 is what makes it robust rather than
-lucky. Treat a `main` ship as safe only when the working tree's counter is
-known to match the highest build in App Store Connect.
+The allocator in §2.3 replaces that local increment. It reconciles against
+App Store Connect before reserving a number and injects the result only into
+the archive, so neither `main` nor a feature branch accumulates a generated
+version change.
 
 > Note on reading this document: build numbers written here are illustrative.
 > Query App Store Connect for real ones; do not infer live state from an
 > example in a protocol doc.
 
-## 2. What has to be built before branch shipping is safe
+## 2. Implementation that makes branch shipping safe
 
-Three gaps, each of which currently fails *silently* — which is why none of
-them is "just be careful".
+These three former gaps failed *silently*, which is why the implementation
+turns each into a checked invariant rather than a reminder to be careful.
 
 ### 2.1 Worktree configuration provisioning
 
@@ -72,15 +76,15 @@ so a fresh worktree does not have it. `AliciaConfig` then falls back to
 installs a build showing **sample data** that looks alive and ignores the
 backend entirely. Nothing in the pipeline complains.
 
-Required:
+Implemented workflow:
 
 - A provisioning step that links the canonical secret into a new worktree —
   the path `Alicia/Secrets.plist` is already gitignored, so a symlink there
   cannot be committed:
 
   ```bash
-  ln -s /Users/alicia/AliciaApp/Alicia/Secrets.plist \
-        /Users/alicia/AliciaApp-worktrees/<name>/Alicia/Secrets.plist
+  cd /Users/alicia/AliciaApp-worktrees/presence-implementation
+  ./scripts/provision-worktree.sh
   ```
 
 - **`ship.sh` hard-fails twice**, because the two failures are different and
@@ -98,7 +102,7 @@ Required:
 - **Never print credentials.** Check existence and bundling only — never echo
   the file, its token, or a diff of it. Report `missing` / `present`, nothing
   more.
-- Never copy the token into a file the repo can see.
+- Never put the token in a tracked file.
 
 ### 2.2 Builds must say what they are
 
@@ -125,8 +129,8 @@ minutes later, server-side, long after the shipper has moved on.
 A clock-derived number is *not* sufficient: two ships in the same minute still
 collide, and it silently depends on clocks agreeing.
 
-Required: **a serialized allocator** — one caller at a time, authoritative
-answer, no negotiation between agents.
+Implemented in `ship.sh`: **a serialized allocator** — one caller at a time,
+authoritative answer, no negotiation between agents.
 
 - State lives outside both repos (e.g. under `~/.appstoreconnect/`), shared by
   every worktree, mutated under a lock so concurrent shippers cannot receive

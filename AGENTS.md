@@ -41,6 +41,14 @@ git worktree add /Users/alicia/AliciaApp-worktrees/presence-review \
   -b opus/presence-review origin/main
 ```
 
+After creating an iOS worktree, provision its ignored runtime configuration
+without copying credentials:
+
+```bash
+cd /Users/alicia/AliciaApp-worktrees/presence-implementation
+./scripts/provision-worktree.sh
+```
+
 Before editing, every agent reports:
 
 - Branch and worktree
@@ -124,6 +132,8 @@ and the hard prohibition on SF Symbols and emoji in the app UI.
   `motion lab: distinguish archetypes through six geometric families`.
 - Push the feature branch and open a PR. The PR description uses
   `docs/AI_HANDOFF_TEMPLATE.md`.
+- Shipping, branch builds, and backend sidecars follow `docs/SHIPPING.md`.
+  `main` moves on promotion only; testing never requires it.
 - One designated integrator—normally Hector or the agent Hector names—merges
   PRs serially. Two agents do not race merges into `main`.
 - A private branch may rebase onto `origin/main` before review. Never rebase a
