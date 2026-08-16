@@ -27,15 +27,37 @@ something to sequence around, not to attempt.
 
 | Capability | Status |
 |---|---|
-| Ship `main` to TestFlight from the canonical checkout | **Works** (`ship.sh`, used for 1.0 build 1) |
+| Ship `main` to TestFlight from the canonical checkout | **Fragile** — works only while the committed counter matches reality (§1.1) |
 | Cable install to Pandaiux from any checkout | **Works**, given a provisioned worktree (§2.1) |
 | Ship a **branch** to TestFlight | **BLOCKED** — needs §2.1, §2.2, §2.3 |
 | Two agents shipping concurrently | **BLOCKED** — needs §2.3; until then, sequence and say so in chat |
 | Point the **phone** at a branch backend | **BLOCKED** — no in-app switcher; `opus/backend-switcher` |
-| Run a **branch backend** at all | **BLOCKED** — the port is hardcoded (§4) |
+| Run a **branch backend** at all | **BLOCKED** — port hardcoded *and* no state isolation (§4) |
 
 **Until the BLOCKED rows clear, branch testing means the cable path**, one
 agent at a time, and `main` still does not move to test anything.
+
+### 1.1 Why `main` shipping is fragile, not broken
+
+`ship.sh` allocates the next build number by incrementing
+`CURRENT_PROJECT_VERSION` in `project.pbxproj`. That counter is **local and
+non-authoritative**: nothing checks it against what App Store Connect already
+holds.
+
+It is correct today only because exactly one ship has happened (1.0 build 1)
+and its value was committed. It desynchronises the moment anyone ships
+out-of-band, forgets to commit a bump, or ships from a second branch — and the
+rejection arrives from Apple minutes later, server-side, long after the shipper
+has moved on.
+
+So `main` shipping is not blocked; it is **one unlucky sequence away from
+breaking**, and the allocator in §2.3 is what makes it robust rather than
+lucky. Treat a `main` ship as safe only when the working tree's counter is
+known to match the highest build in App Store Connect.
+
+> Note on reading this document: build numbers written here are illustrative.
+> Query App Store Connect for real ones; do not infer live state from an
+> example in a protocol doc.
 
 ## 2. What has to be built before branch shipping is safe
 
@@ -61,11 +83,22 @@ Required:
         /Users/alicia/AliciaApp-worktrees/<name>/Alicia/Secrets.plist
   ```
 
-- **`ship.sh` must refuse to upload** a build whose `.app` lacks
-  `Secrets.plist`, exactly as it already refuses one that isn't
-  distribution-signed. A silent mock build reaching Hector's phone is worse
-  than a failed ship.
-- Never copy the token into a file the repo can see, and never echo it.
+- **`ship.sh` hard-fails twice**, because the two failures are different and
+  either alone would let a mock build through:
+  1. **Before archiving** — the source `Alicia/Secrets.plist` is missing or
+     unreadable. Fails fast, before minutes are spent.
+  2. **After exporting, before uploading** — `Payload/Alicia.app/Secrets.plist`
+     is absent from the built product. Catches the case where the file existed
+     but was never bundled, which the first check cannot see.
+
+  Both are hard failures, not warnings, on the same reasoning as the existing
+  distribution-signature guard: a silent mock build reaching Hector's phone is
+  worse than a failed ship, and he has no way to tell one from a backend
+  outage.
+- **Never print credentials.** Check existence and bundling only — never echo
+  the file, its token, or a diff of it. Report `missing` / `present`, nothing
+  more.
+- Never copy the token into a file the repo can see.
 
 ### 2.2 Builds must say what they are
 
@@ -77,7 +110,7 @@ them, often hours later, from a phone.
 Alicia tab and must carry the branch on any non-`main` build:
 
 ```
-v36 · opus/presence
+v36 · opus/presence      # illustrative
 ```
 
 Derive it at build time from the current branch rather than hand-editing, so
@@ -144,24 +177,52 @@ custom fonts. Device results come from Pandaiux. Say which you did.
 
 ## 4. Backend branches — future infrastructure
 
-**This does not exist yet.** `skills/ios_api.py` hardcodes `start_ios_api(port=8766)`,
-called once from `alicia.py`. There is no port override and no second-instance
-runner. `alicia_labs.py` / `com.alicia.labs.plist` is an *evaluation bot* with
-its own token — a useful precedent for a second process, not a branch-backend
-mechanism.
+**This does not exist yet, and the missing pieces are larger than a port.**
+`skills/ios_api.py` hardcodes `start_ios_api(port=8766)`, called once from
+`alicia.py`. `alicia_labs.py` / `com.alicia.labs.plist` is an *evaluation bot*
+with its own token — a useful precedent for a second process, not a
+branch-backend mechanism.
 
-Running a branch backend therefore requires, as its own piece of work:
+The danger is not that a sidecar fails to start. It is that it starts and
+quietly behaves like the real Alicia: writing her memory, firing her
+schedulers, messaging Hector, and feeding her learning loops with output from
+unreviewed code. A branch backend must be **inert toward production state** by
+construction, not by remembering to be careful.
 
-- A port override on `start_ios_api` (env var or argument), so a sidecar does
-  not fight production for `:8766`.
-- A second bot token, and a clear label so Hector always knows which Alicia
-  answered.
-- Its own launchd plist, running from a **worktree**, never the production
-  checkout (R2), using the production venv — the ignored `venv/` exists only
-  there: `/Users/alicia/alicia/venv/bin/python3.11`.
+Requirements, all of which are build work:
+
+1. **Port override.** An env var or argument on `start_ios_api`, so a sidecar
+   does not fight production for `:8766`.
+2. **Isolated mutable state — the big one.** Measured 2026-08-16: **42 skill
+   modules hardcode `os.path.expanduser("~/alicia/memory")`**; only a handful
+   of dashboards honour `ALICIA_MEMORY_DIR`, and nothing in `skills/` reads it
+   via `getenv`. The redirect is a *test-harness convention*, not a working
+   production switch — a sidecar started today would write straight into
+   Hector's real `memory/`. Making `MEMORY_DIR` resolve through one shared
+   helper is a prerequisite, not a flag.
+3. **Isolated logs.** Separate `logs/` so a sidecar's stderr cannot be mistaken
+   for production's, and so log-derived health checks are not polluted.
+4. **Schedulers off.** No `schedule` registration, so the ~62 JobSpecs do not
+   double-fire — two morning messages, two overnight passes, two syntheses
+   written to the vault.
+5. **Proactive sends off.** No circulation composer sends, no Telegram
+   proactive slots. Hector must never receive a message he cannot attribute.
+6. **Separate credentials.** Its own Telegram bot token and its own iOS API
+   token — never the production pair — and a clear label so he always knows
+   which Alicia answered.
+7. **Read-only vault.** `~/Documents/mrhector-alicia` is sacred. A sidecar
+   reads; it does not write notes, does not run finalizers, does not circulate.
+8. **No production learning writes.** `hector_learnings`, reaction/archetype
+   logs, `card_feedback`, `prompt_effectiveness`, playlists — nothing from a
+   branch may enter the loops that shape the real relationship. Unreviewed code
+   teaching her about Hector is the worst failure mode available here, and the
+   hardest to notice or undo.
+9. **Its own launchd plist**, running from a **worktree**, never the production
+   checkout (R2), using the production venv — the ignored `venv/` exists only
+   there: `/Users/alicia/alicia/venv/bin/python3.11`.
 
 Build this when a branch actually changes backend behavior. Until then, iOS
-branches test against production Alicia, which is read-mostly for them.
+branches test against production Alicia, which they only read from.
 
 ## 5. Pointing the phone at another backend
 
