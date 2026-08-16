@@ -1,5 +1,9 @@
 # CLAUDE.md — Alicia iOS
 
+**Read `AGENTS.md` before doing anything.** It is the repository-wide contract
+for Codex–Opus coordination, worktrees, file ownership, review handoffs, Git,
+and the Motion Lab promotion gate.
+
 Context handoff for continuing this project in Claude Code.
 **Read `SESSION_HANDOFF.md` first** — the live continuation doc (current
 version, ship loop, design rules, known gaps). This file carries stable
