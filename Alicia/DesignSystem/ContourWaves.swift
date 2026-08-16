@@ -504,8 +504,8 @@ extension AppStore {
 /// at a glance whether his phone runs the latest build. Bump `baseTag` when a
 /// promoted app version ships; branch archives add their identity at build time.
 enum AppVersion {
-    static let baseTag = "v35"
-    static let date = "Aug 15"
+    static let baseTag = "v36"
+    static let date = "Aug 16"
 
     /// TestFlight archives inject the source branch into Info.plist. Normal
     /// Xcode builds have no override and therefore keep the stable bare tag.
