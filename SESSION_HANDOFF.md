@@ -1,5 +1,9 @@
 # Session Handoff — Alicia iOS + Backend (as of v33, 2026-08-08)
 
+**Collaboration rule:** read `AGENTS.md` first. Codex, Opus, and any other agent
+work in separate branches and worktrees and exchange committed PR handoffs using
+`docs/AI_HANDOFF_TEMPLATE.md`; they never share a dirty checkout.
+
 Continuation doc for iterating on the iPhone app (`~/AliciaApp`) and its
 backend surface (`~/alicia`, `skills/ios_api.py`). Written at the close of the
 July 3–5 build marathon (v1 → v19); v20 (2026-07-07) added the
