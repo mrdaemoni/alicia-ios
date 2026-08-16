@@ -58,6 +58,7 @@ require_command git
 require_command jq
 require_command plutil
 require_command shlock
+require_command unzip
 require_command xcodebuild
 require_command xcrun
 
