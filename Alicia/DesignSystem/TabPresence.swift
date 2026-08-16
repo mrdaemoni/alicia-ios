@@ -87,28 +87,6 @@ enum TabPresence {
         return min(0.85, value)
     }
 
-    /// Ink weight for the field, normalised so every voice reads at a
-    /// comparable presence.
-    ///
-    /// The six families deliberately carry different point counts (~1,100 to
-    /// ~1,750). At a single flat opacity that is not a stylistic difference,
-    /// it is a legibility bug: side by side, `beatrice` came out nearly
-    /// invisible on her own page while `musubi` sat comfortably. Dividing by
-    /// the count the component itself reports (`metrics`, its public API —
-    /// nothing is duplicated from Codex's table) makes "how much of her is
-    /// here" mean attention, not which body happens to be denser.
-    @MainActor
-    static func fieldOpacity(for section: AppSection, store: AppStore) -> Double {
-        let voice = voice(for: section)
-        let metrics = AliciaPresence.metrics(
-            for: voice,
-            state: state(for: section, store: store),
-            attention: attention(for: section, store: store))
-        let reference = 1_450.0        // ariadne's base — the middle of the range
-        let ratio = metrics.pointCount > 0
-            ? reference / Double(metrics.pointCount) : 1.0
-        return min(0.42, max(0.24, 0.30 * ratio))
-    }
 }
 
 extension View {
@@ -152,7 +130,7 @@ extension View {
                            height: geo.size.height * 1.9)
                     .position(x: geo.size.width * 0.5,
                               y: geo.size.height * 0.46)
-                    .opacity(TabPresence.fieldOpacity(for: section, store: store))
+                    .opacity(0.30)   // family weight is normalised inside AliciaPresence
                 }
                 PaperGrain()
             }
