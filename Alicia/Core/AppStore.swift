@@ -502,6 +502,11 @@ final class AppStore {
     }
     /// Programmatic tab switching (Dialogue chips → Alicia tab).
     var selectedSection: AppSection = .us
+
+    /// True from the moment a reply is asked for until the stream ends.
+    /// Dialogue's presence reads this to show her *thinking* — the one place
+    /// in the app where "she is working right now" is literally true.
+    private(set) var isStreaming = false
     /// Which proactive card the Alicia tab should scroll to on arrival
     /// (set by a Dialogue whisper tap; cleared after the scroll).
     var pendingMindFocusID: String?
@@ -563,7 +568,11 @@ final class AppStore {
         messages.append(Message(sender: .me, text: clean))
         let idx = messages.count
         messages.append(Message(sender: .alicia, text: ""))
+        isStreaming = true
         Task {
+            // `defer` rather than a trailing assignment: a thrown or cancelled
+            // stream must not leave her looking permanently mid-thought.
+            defer { isStreaming = false }
             for await event in service.stream(clean, voice: voiceReplies) {
                 guard messages.indices.contains(idx) else { break }
                 switch event {

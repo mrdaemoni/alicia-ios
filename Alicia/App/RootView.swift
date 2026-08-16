@@ -17,6 +17,21 @@ enum AppSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+#if DEBUG
+    /// Lowercase name accepted by the `--tab` launch argument, so visual QA
+    /// of a per-tab change is repeatable and scriptable.
+    init?(launchName: String) {
+        switch launchName.lowercased() {
+        case "us":        self = .us
+        case "dialogue":  self = .dialogue
+        case "alicia", "mind": self = .mind
+        case "studio":    self = .studio
+        case "knowledge": self = .knowledge
+        default:          return nil
+        }
+    }
+#endif
+
     var symbol: String {
         switch self {
         case .us:      return "sun.horizon"
