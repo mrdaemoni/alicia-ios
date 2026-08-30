@@ -75,7 +75,12 @@ enum SampleData {
         .init(name: "Memory load",    value: 0.41, display: "41%",     symbol: "internaldrive.fill",    hue: 0.55),
         .init(name: "Responsiveness", value: 0.93, display: "120ms",   symbol: "bolt.fill",             hue: 0.38),
         .init(name: "Uptime",        value: 0.99, display: "12d 4h",  symbol: "clock.fill",            hue: 0.45),
-        .init(name: "Creativity",     value: 0.68, display: "Flowing", symbol: "paintpalette.fill",     hue: 0.85)
+        .init(name: "Creativity",     value: 0.68, display: "Flowing", symbol: "paintpalette.fill",     hue: 0.85),
+        // One unmeasured vital, so the preview shows the state that matters:
+        // a signal awaiting evidence draws a dashed empty track, not a stroke
+        // at zero.
+        .init(name: "Self-improvement", value: 0, display: "not yet assessable",
+              symbol: "arrow.up.right.circle.fill", hue: 0.83, assessable: false)
     ]
 
     static func reply(to prompt: String) -> String {

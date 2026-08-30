@@ -250,6 +250,12 @@ struct HealthMetric: Identifiable, Hashable {
     var display: String         // human-readable value
     var symbol: String
     var hue: Double             // 0...1 mapped to a color
+    /// False when the backend has no data yet, as distinct from a measured
+    /// zero. Without it a signal awaiting evidence draws an empty stroke,
+    /// which reads as failure: on 2026-08-30 "Self-improvement" showed 0%
+    /// off a single scored change and looked like a system that had stopped
+    /// learning. Defaults true so older payloads are unaffected.
+    var assessable: Bool = true
 }
 
 extension HealthMetric {

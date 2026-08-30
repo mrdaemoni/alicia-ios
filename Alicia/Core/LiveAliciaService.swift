@@ -713,12 +713,14 @@ struct LiveAliciaService: AliciaService {
     private struct MetricDTO: Decodable {
         var name, display, symbol: String
         var value, hue: Double
+        var assessable: Bool?      // absent on payloads before 2026-08-30
     }
 
     func health() async -> [HealthMetric]? {
         (await fetch("/api/health", as: [MetricDTO].self))?.map {
             HealthMetric(name: $0.name, value: $0.value, display: $0.display,
-                         symbol: $0.symbol, hue: $0.hue)
+                         symbol: $0.symbol, hue: $0.hue,
+                         assessable: $0.assessable ?? true)
         }
     }
 

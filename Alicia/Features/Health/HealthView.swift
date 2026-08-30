@@ -70,11 +70,37 @@ struct InkMetricRow: View {
                 Spacer()
                 Text(metric.display)
                     .font(.system(.callout, design: .serif, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
+                    .foregroundStyle(metric.assessable ? Theme.ink : Theme.inkSoft)
             }
-            InkStroke(fraction: metric.value, seed: metric.name.hashValue)
-                .frame(height: 10)
+            // Not measured is not zero. An unassessable signal shows the bare
+            // track — the field the stroke would live in — with no stroke in
+            // it, so an absence of evidence reads as an absence rather than as
+            // a reading of nothing.
+            if metric.assessable {
+                InkStroke(fraction: metric.value, seed: metric.name.hashValue)
+                    .frame(height: 10)
+            } else {
+                InkTrack()
+                    .frame(height: 10)
+            }
         }
+    }
+}
+
+/// The empty field: the same faint full-length track an `InkStroke` draws
+/// under itself, with nothing written on it. Used when a vital has no data
+/// yet — see `HealthMetric.assessable`.
+struct InkTrack: View {
+    var body: some View {
+        Canvas { context, size in
+            let midY = size.height / 2
+            var track = Path()
+            track.move(to: CGPoint(x: 0, y: midY))
+            track.addLine(to: CGPoint(x: size.width, y: midY))
+            context.stroke(track, with: .color(Theme.ink.opacity(0.12)),
+                           style: StrokeStyle(lineWidth: 0.8, dash: [3, 4]))
+        }
+        .accessibilityHidden(true)
     }
 }
 
