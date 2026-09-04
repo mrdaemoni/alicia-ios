@@ -125,7 +125,9 @@ to Telegram by the backend. Endpoints in use:
 | `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Knowledge tab + her archetype balance |
 | `POST /api/speak` | render arbitrary text in her voice (read-aloud fallback when nothing is cached) |
 | `POST /api/pin` · `/api/card_feedback` | hold a card on the home screen; 👍/👎 on a card |
+| `POST /api/events` | **presence telemetry** — batch `{events:[{kind, ref, ms, meta}]}`. Kinds: `app_open`, `screen_view`, `section_dwell`, `episode_play`, `episode_progress`, `episode_finish`, `card_view`. This is the one endpoint that reports what he *did* rather than what he deliberately tapped; without it a day spent listening reads to her as silence. Fire-and-forget — never block UI on it, and batch on background/foreground transitions. Server also records a play from `GET /api/audio/<name>` on its own, so playback is captured even on builds that predate this. |
 | `GET /api/reflections` | her morning/evening self-reflections, text + a playable reading when rendered |
+| `GET /api/mind` | the weekly mind note — what she is stuck on, what she worked out about him this week, and the receipt behind each claim. Same text as the Sunday 10:30 Telegram send (Rule 14). `has_note: false` on a week with nothing citable — render nothing, not a placeholder. |
 | `GET/POST /api/mode` | walk/drive thinking-mode state + start/end |
 | `GET /api/episode/<label>` | shownotes markdown |
 | `POST /api/speak` · `GET /api/speech/<name>` | read-aloud: her voice rendered in ramped chunks (`skills/reading_voice.py`), returned as an ordered chunk list — `ready` / `streaming` / `rendering`, never blocking |
