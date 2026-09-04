@@ -72,6 +72,10 @@ struct AliciaApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active:
+                        // Presence: he is here. The tracker's dwell clock only
+                        // runs while the app is foreground, so a tab left open
+                        // overnight is not reported as attention.
+                        PresenceTracker.shared.appOpened()
                         // Reconnect: refetch everything when the app comes
                         // back to the foreground (backend may have restarted
                         // or sent proactive messages since), and start the
@@ -82,6 +86,9 @@ struct AliciaApp: App {
                         Task { await store.load() }
                         store.startProactivePolling()
                     case .background:
+                        // Close the open tab's dwell and push the batch before
+                        // iOS suspends us — an unflushed buffer is lost.
+                        PresenceTracker.shared.appBackgrounded()
                         // Re-arm background refresh EVERY time — submitting
                         // once at launch (the old behavior) meant iOS never
                         // had a fresh window and no notification ever fired.

@@ -42,6 +42,9 @@ final class AppStore {
         self.isMock = service is MockAliciaService
         if isMock { messages = SampleData.messages }
         reader.service = service
+        // Presence telemetry rides the same service (and is a no-op on the
+        // mock, so previews and a missing Secrets.plist send nothing).
+        PresenceTracker.shared.configure(service: service)
         // A reading and an episode are both "her, in your ears" — only one
         // of them at a time.
         reader.willStartReading = { [weak self] in self?.pauseForReading() }
@@ -64,6 +67,10 @@ final class AppStore {
     }
 
     // MARK: playlists — the listening queues (Studio)
+
+    /// Her weekly mind note. Empty string means she had nothing citable this
+    /// week — the view renders nothing, never a placeholder.
+    var mindNote: String = ""
 
     var playlists: [Playlist] = []
 
@@ -159,9 +166,13 @@ final class AppStore {
         async let sc = service.sharedContext()
         async let rf = service.reflections()
         async let pls = service.playlists()
+        async let mn = service.mindNote()
         // Keep-last-known: nil means the fetch FAILED (network/auth/decode)
         // — never wipe a populated tab over one bad refresh. A non-nil
         // empty array is a real "backend has nothing" and does overwrite.
+        // Empty is a real answer here (nothing citable this week), so it
+        // overwrites — unlike the keep-last-known arrays below.
+        mindNote = await mn
         if let fresh = await t { thoughts = fresh }
         if let fresh = await tr { tracks = fresh }
         if let fresh = await g { gallery = fresh }

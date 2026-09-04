@@ -33,6 +33,14 @@ struct MindView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.top, 14)
 
+                        // What's on her mind — the weekly note, with the
+                        // receipt behind each claim. Absent entirely on a week
+                        // with nothing citable: a quiet week is a fact about
+                        // the week, not a slot to fill.
+                        if !store.mindNote.isEmpty {
+                            MindNoteCard(text: store.mindNote)
+                        }
+
                         ArchetypeGallery()
 
                         if !store.proactiveFeed.isEmpty {
@@ -283,5 +291,49 @@ struct EditorialThought: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.trailing, 40)
+    }
+}
+
+
+/// Her weekly mind note, rendered as she wrote it.
+///
+/// The text arrives as Telegram markdown (*bold*, _italic_) because one
+/// generator feeds both surfaces — see skills/mind_note.py. Converting to
+/// AttributedString here keeps that single source rather than adding a second
+/// renderer that would drift from the Telegram one.
+private struct MindNoteCard: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("ON HER MIND")
+                .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                .tracking(2.0)
+                .foregroundStyle(Theme.inkSoft)
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                Text(block)
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.top, 6)
+    }
+
+    /// Paragraphs, each parsed as inline markdown. Falls back to the raw
+    /// string when a block will not parse — never drop her words over syntax.
+    private var blocks: [AttributedString] {
+        text.components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { block in
+                (try? AttributedString(
+                    markdown: block,
+                    options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                    ?? AttributedString(block)
+            }
     }
 }

@@ -11,6 +11,8 @@ import Foundation
 ///   GET  /api/gallery     → [{title, note, symbol, author, imageURL}]
 ///   GET  /api/health      → [{name, value, display, symbol, hue}]
 ///   POST /api/complement  {"title": …} → one gallery item
+///   POST /api/events      {"events": [{kind, ref, ms}]} → presence telemetry
+///   GET  /api/mind        → {text, has_note} — her weekly mind note
 ///
 /// Auth is a bearer token; media URLs (audio, drawings) carry it as a
 /// `?token=` query instead, because AVPlayer/AsyncImage can't set headers.
@@ -154,6 +156,24 @@ struct LiveAliciaService: AliciaService {
             withJSONObject: ["message_id": messageID, "emoji": emoji]) else { return }
         _ = try? await URLSession.shared.data(
             for: request("/api/react", method: "POST", body: body))
+    }
+
+    func recordEvents(_ events: [[String: Any]]) async {
+        guard !events.isEmpty,
+              let body = try? JSONSerialization.data(
+                withJSONObject: ["events": events]) else { return }
+        _ = try? await URLSession.shared.data(
+            for: request("/api/events", method: "POST", body: body))
+    }
+
+    private struct MindNoteDTO: Decodable {
+        var text: String
+        var has_note: Bool
+    }
+
+    func mindNote() async -> String {
+        guard let dto: MindNoteDTO = await fetchOne("/api/mind") else { return "" }
+        return dto.has_note ? dto.text : ""
     }
 
     func react(proactiveID: String, emoji: String) async {

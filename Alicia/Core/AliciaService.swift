@@ -127,6 +127,17 @@ protocol AliciaService {
     /// reorder. Returns the whole refreshed shelf, so the app never has to
     /// reconcile a local copy against the server's. Nil on failure.
     func playlistAction(_ action: String, body: [String: Any]) async -> [Playlist]?
+
+    /// Fire-and-forget presence telemetry — what he DID, not what he tapped.
+    /// See PresenceTracker. Returns nothing: a dropped batch must never be
+    /// visible to him.
+    func recordEvents(_ events: [[String: Any]]) async
+
+    /// Her weekly mind note — what she is stuck on, what she worked out about
+    /// him, and the receipt behind each claim. Empty on a week with nothing
+    /// citable, and then the view renders nothing rather than a placeholder:
+    /// a quiet week is a fact about the week.
+    func mindNote() async -> String
 }
 
 struct TimelineDay: Decodable, Hashable, Identifiable {
@@ -217,6 +228,8 @@ struct MockAliciaService: AliciaService {
     func health() async -> [HealthMetric]? { SampleData.health }
     func proactive(limit: Int) async -> [ProactiveMessage] { [] }
     func react(messageID: Int, emoji: String) async {}
+    func recordEvents(_ events: [[String: Any]]) async {}
+    func mindNote() async -> String { "" }
     func react(proactiveID: String, emoji: String) async {}
 
     func complement(_ title: String, imageData: Data?) async -> Artwork {

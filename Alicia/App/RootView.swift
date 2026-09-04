@@ -72,6 +72,11 @@ struct RootView: View {
             EditorialTabBar()
         }
         .ignoresSafeArea(edges: .bottom)
+        // Presence: which tab, for how long. Fires on every change including
+        // the first, so the section he lands on is timed from the start.
+        .task(id: store.selectedSection) {
+            PresenceTracker.shared.section(store.selectedSection.rawValue)
+        }
         // The dark band grows upward to take the player in, rather than a
         // card appearing on top of the page.
         .animation(.easeInOut(duration: 0.25), value: store.reader.isActive)
