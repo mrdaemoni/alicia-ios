@@ -82,3 +82,9 @@ inert UI/network/storage dependencies. It verifies successful save, immutable
 retry/relaunch, definite rejection becoming editable, the size bound, and newer
 words surviving a delayed save. It failed on the rejected-pending bug before
 the correction and passes afterward. This does not exercise the microphone.
+
+Final checks: iPhone 17/iOS 26.5 build passed; six Swift save-lifecycle scenarios
+passed. Screenshots cover Us, Alicia, Dialogue, paused walk, no episode, unavailable
+frame, and Reduce Motion enabled (restored afterward). All review findings were
+resolved and rechecked. Paired backend: 1257/1257 smoke, 259/259 contracts, 24/24
+isolated acceptance checks. No Pandaiux/real microphone or production model test.
