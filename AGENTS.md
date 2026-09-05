@@ -101,7 +101,7 @@ Current seams:
 - `Alicia/DesignSystem/AliciaPresence.swift` — reusable presence component
 - `Alicia/Features/MotionLab/MotionLabView.swift` — DEBUG comparison surface
 - `docs/MOTION_LAB.md` — lab controls and promotion workflow
-- `Alicia/Features/Mind/MindView.swift` — hidden DEBUG entry point
+- `Alicia/Features/Mind/MindView.swift` — long-press DEBUG entry around the current episode reading
 
 A visualization may enter a product surface only after:
 

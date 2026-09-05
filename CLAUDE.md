@@ -4,23 +4,19 @@
 for Codex–Opus coordination, worktrees, file ownership, review handoffs, Git,
 and the Motion Lab promotion gate.
 
-Context handoff for continuing this project in Claude Code.
-**Read `SESSION_HANDOFF.md` first** — the live continuation doc (current
-version, ship loop, design rules, known gaps). This file carries stable
-architecture. **v38** is the episode/day release (2026-09-05);
-see `docs/EPISODE_DAY.md` for behavior and validation. Tabs: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
-into Studio), widget target, hard-VStack bottom bar (safeAreaInset banned),
-her real voice on any page (v31/v32), the **live context orbit** on Us
-(v33) — what we actually talk about, replacing the authored podcast season —
-and **listening queues** (v34): Studio now hosts named playlists of syntheses
-alongside the podcast, played continuously for a drive or a walk.
+Read `SESSION_HANDOFF.md` for the current release and known limits. This file
+carries stable architecture. Current product: **v38 (2026-09-05)**, the
+Alicia 2.0 episode/day experience. Full cross-repository context is in
+`/Users/alicia/alicia/docs/ALICIA_2_0.md`; feature detail is in `docs/EPISODE_DAY.md`.
+Us and Alicia use the actually played episode and explicit human responses.
+The older orbit/cards and archetype gallery are unmounted.
 
 ## What this is
 
 A native **pure-SwiftUI** iOS app for "Alicia," Hector's personal AI agent.
 The backend is the separate Python service in the `alicia` repo
 (github.com/mrdaemoni/alicia — also reachable via Telegram and Cowork; one
-relationship, three touchpoints). Target **iOS 17.0**, Swift 5.9+, Xcode 16, **zero third-party
+relationship, three touchpoints). Target **iOS 17.0**, Swift 5.9+, the installed Xcode, **zero third-party
 dependencies**. Runs live against the backend on a real iPhone; falls back to
 mock data so the repo stays runnable for anyone who clones it.
 
@@ -49,7 +45,9 @@ Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`
 `WalkReflectionView` is a dedicated full-screen dictation surface. It pauses
 playback, shows the words as they arrive, persists a local draft, and saves with
 an idempotent receipt before clearing. On-device dictation pauses when the app
-leaves the foreground. There is no claim of lock-screen or background recording.
+leaves the foreground. Automatic screen sleep is disabled while this view is visible and active,
+including paused editing, and the prior idle setting is restored on exit.
+There is no claim of lock-screen or background recording.
 
 ## Architecture
 
@@ -92,18 +90,18 @@ Everything flows through one protocol, `Core/AliciaService.swift`.
 port **8766** (Mac Mini; home Wi-Fi or Tailscale). Auth is
 `Authorization: Bearer <token>`; media URLs carry `?token=` instead
 (AVPlayer/AsyncImage can't set headers). L4-classified messages are redirected
-to Telegram by the backend. Endpoints in use:
+to Telegram by the backend. Endpoint inventory (current and retained compatibility surfaces):
 
 | Endpoint | For |
 |---|---|
 | `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds a voice-note URL |
 | `GET /api/thoughts` · `/api/tracks` · `/api/gallery` · `/api/health` | tab data |
-| `GET /api/proactive?limit=` | her proactive messages (feed + notifications + timeline seed) |
+| `GET /api/proactive?limit=` | retained proactive feed and best-effort local notifications; never seeds Dialogue history |
 | `POST /api/react` | emoji reactions, by `message_id` or `proactive_id` |
 | `POST /api/reply` | reply to a proactive message (lands in capture/history/memory) |
-| `GET /api/greeting` | Us-page greeting |
-| `GET /api/context` · `/api/context/<id>` | the Us orbit: salience-scored subjects + one node's receipts |
-| `GET /api/home` | the authored season arc: season → episode trail → today (The Arc segment) |
+| `GET /api/greeting` | legacy greeting endpoint; not loaded by the current Us screen |
+| `GET /api/context` · `/api/context/<id>` | retained orbit/receipt API; old Us orbit is unmounted |
+| `GET /api/home` | retained home/library context; no longer the Us framing source |
 | `GET /api/timeline` | every lived day since she began (Timeline sheet) |
 | `GET /api/featured` · `/api/syntheses` · `/api/quote` | the day's synthesis, the shelf, the rotating quote |
 | `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Knowledge tab + her archetype balance |
@@ -111,7 +109,7 @@ to Telegram by the backend. Endpoints in use:
 | `POST /api/pin` · `/api/card_feedback` | hold a card on the home screen; 👍/👎 on a card |
 | `POST /api/events` | **presence telemetry** — batch `{events:[{kind, ref, ms, meta}]}`. Kinds: `app_open`, `screen_view`, `section_dwell`, `episode_play`, `episode_progress`, `episode_finish`, `card_view`. This is the one endpoint that reports what he *did* rather than what he deliberately tapped; without it a day spent listening reads to her as silence. Fire-and-forget — never block UI on it, and batch on background/foreground transitions. Episode playback now comes from the player via `/api/episode_day`; an audio GET is not listening evidence. |
 | `GET /api/reflections` | her morning/evening self-reflections, text + a playable reading when rendered |
-| `GET /api/mind` | the weekly mind note — what she is stuck on, what she worked out about him this week, and the receipt behind each claim. Same text as the Sunday 10:30 Telegram send (Rule 14). `has_note: false` on a week with nothing citable — render nothing, not a placeholder. |
+| `GET /api/mind` | on-demand reading of the current episode, corrections and explicit keeps; Sunday push paused. Current Us/Alicia use `/api/episode_day`. Missing evidence can correctly return `has_note: false`. |
 | `GET/POST /api/mode` | walk/drive state; finish accepts `text`, `episode_id`, `request_id` and acknowledges durable save |
 | `GET /api/episode_day?day=YYYY-MM-DD` | current or historical frame, probes, reactions, corrections, explicit keeps |
 | `POST /api/episode_day` | playing/progress/finished observations; reaction, feedback, correction, learning, refresh actions |
@@ -122,7 +120,7 @@ to Telegram by the backend. Endpoints in use:
 | `POST /api/cocreate` (base64 PNG + size + anchor, 120 s timeout) | canvas co-creation: she draws from where the pencil stopped, returns an overlay layer + caption |
 | `POST /api/complement` (base64 PNG, 120 s timeout) | drawing reply w/ vision — superseded by cocreate in the UI; `requestComplement` is currently unused |
 
-All fetches degrade gracefully — errors return empty/nil, never throw to views.
+Fetches return typed optional/error results through the service seam. AppStore preserves last-known data on failed reads where supported; a real empty payload is different from an unavailable backend. Mutation failures retain explicit error/receipt state for retry.
 
 ## Config / secrets
 
@@ -184,7 +182,7 @@ ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
 `AppVersion.tag` (DesignSystem/ContourWaves.swift) shows on the Alicia tab so
 Hector can tell which build his phone runs. Bump `AppVersion.baseTag` and its
 date when an app change is promoted. TestFlight branch archives append their
-branch automatically through `ship.sh`. Current base: **v35 (2026-08-08)**.
+branch automatically through `ship.sh`. Current base: **v38 (2026-09-05)**. TestFlight build numbers are allocated separately; do not bump the tag for documentation or backend-only edits.
 
 ## Actually pending
 
