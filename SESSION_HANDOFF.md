@@ -1,250 +1,115 @@
-# Session Handoff — Alicia iOS + Backend (as of v33, 2026-08-08)
+# Session handoff — Alicia 2.0, iOS v38
 
-**Collaboration rule:** read `AGENTS.md` first. Codex, Opus, and any other agent
-work in separate branches and worktrees and exchange committed PR handoffs using
-`docs/AI_HANDOFF_TEMPLATE.md`; they never share a dirty checkout.
+Current product baseline: September 5, 2026. Read `AGENTS.md` first, then this
+file and `CLAUDE.md`. The complete cross-repository handoff is
+`/Users/alicia/alicia/docs/ALICIA_2_0.md`.
 
-Continuation doc for iterating on the iPhone app (`~/AliciaApp`) and its
-backend surface (`~/alicia`, `skills/ios_api.py`). Written at the close of the
-July 3–5 build marathon (v1 → v19); v20 (2026-07-07) added the
-loop-architecture home; v21 (same day) the hand-drawn chrome. Read this,
-then `CLAUDE.md`, then go.
+## What is released
 
-**v33 (2026-08-08) — the Us tab stopped telling a story and started showing one.**
-`ContextOrbit` replaces the podcast `ContextOnion` at the top of the Today sheet:
-three rings from `/api/context`, ink density = salience, a doubled pen-stroke =
-the subject keeps returning, tap to drill into the real dated lines. Two axes on
-purpose — the ring is *when it last moved*, the mark is *whether it recurs*; the
-first cut collapsed them and emptied the inner ring on a day Hector had been
-talking. `ReflectionsSection` gives her journal an iOS surface for the first time
-(it was Telegram-only), readable and listenable via `ListenLine`.
+- iOS PR #6, merge `9b353f5`, implements episode/day focus and the foreground
+  walk/reflection screen's keep-awake behavior.
+- Backend PR #12 (`7ba1897`) implements observed playback, source-grounded frames,
+  shared conversation routing/history, and durable reactions/corrections/keeps.
+- Backend PR #13 (`44c8385`) pauses 18 standalone Telegram routines and aligns
+  messaging and self-description to the same episode-day evidence.
+- TestFlight v38 / 1.0 (5) was reported VALID and IN_BETA_TESTING on September 5.
+  Later documentation-only commits are not new app builds. Check current Git
+  and App Store Connect before asserting a newer release.
 
-Two traps worth remembering from that build:
-- `"speech": {}` from the backend threw on decode because `SpeakDTO.status` is
-  non-optional — and because it threw *inside an array element*, one unrendered
-  reading would have emptied the whole reflections list. Backend omits the key
-  now; `ReflectionSpeechDTO` is all-optional as a second line of defence.
-- A new module lands in web_dashboard's "Other" bucket and fails a backend test
-  until it is categorised in `_SKILL_BUCKETS`. Cheap to fix, easy to miss.
+The iOS source is `/Users/alicia/AliciaApp`; the production backend is
+`/Users/alicia/alicia`. Keep both canonical checkouts clean on main. Work in
+separate task branches/worktrees, exchange committed diffs, and follow each
+repository's AGENTS rules. No competing open PRs existed at the start of this
+documentation reconciliation; verify again before future work.
 
-## Current branch: episode day (2026-09-05)
+## The current app
 
-Hector approved replacing the Us/Dialogue/Alicia layout with a focused loop:
-actual episode playback → thinking aloud → specific probes → a correctable
-reading → explicit learning. The older v33 account above is history. This
-branch's live surface definitions are in `CLAUDE.md`; see `docs/EPISODE_DAY.md`
-for contracts, simulator evidence, and promotion limits. Both repositories use
-`codex/episode-day` in separate worktrees. Backend must land before a phone build
-that uses these endpoints. No production promotion is implied by this handoff.
+`RootView` has five tabs: **Us · Dialogue · Alicia · Studio · Knowledge**.
+`HomeView` mounts `EpisodeHomeView`; `MindView` mounts `EpisodeMindView`. Both
+current episode views are implemented in `Features/Home/EpisodeDayView.swift`.
+Older orbit, card and voice-gallery implementations remain unmounted.
 
-## The two repos, one feature loop
+- **Us:** the exact played episode, two or three probes with source passages,
+  This helps / Go deeper / Missed me on the exact question, and Walk with this.
+- **Dialogue:** actual persisted conversation from `/api/history`, a small
+  episode header, dictation, optional voice replies, and Think aloud. A proactive
+  feed does not seed the transcript.
+- **Alicia:** tentative understanding, Hector's words, corrections and explicit
+  keeps. His correction is evidence; a generated interpretation is not his belief.
+- **Studio / Knowledge:** the podcast, playlist, synthesis and thinker libraries
+  remain available. Studio retains its canvas tools.
 
-| | App | Backend |
-|---|---|---|
-| Path | `~/AliciaApp` | `~/alicia` |
-| Repo | github.com/mrdaemoni/alicia-ios | github.com/mrdaemoni/alicia |
-| Rules | this file + CLAUDE.md | **alicia-dev skill is MANDATORY** (smoke_test gate, wiring rules, push protocol, touchpoint parity Rule 14) |
-| Test gate | `xcodebuild -scheme Alicia -destination 'platform=iOS Simulator,name=iPhone 17' build` | `python3 tests/smoke_test.py` — capture exit code directly, NEVER through a pipe (a red test once shipped hidden behind `\| tail`) |
+`Core/AppStore.swift` owns state, playback outbox and walk save lifecycle.
+`Core/AliciaService.swift` is the protocol; `LiveAliciaService` and the mock are
+its implementations. Views do not issue HTTP requests directly.
 
-**Every new feature is usually both sides:** a payload builder + route in
-`skills/ios_api.py` (+ smoke test, + restart via `alicia-restart`), then a
-method in `Core/AliciaService.swift` protocol (+ Mock + Live impls), state in
-`Core/AppStore.swift`, and a view. Media URLs carry `?token=` (AVPlayer/
-AsyncImage can't set headers); everything else uses `Authorization: Bearer`.
+## Walk and playback semantics
 
-## Current app shape (v20)
+Actual continuous player progress identifies listening, including episode
+playlists. Seeks, downloads and selection alone do not. Queued observations
+retain their original timestamps and stable IDs when retried.
 
-Five tabs — `AppSection` in `App/RootView.swift`: **Us · Dialogue · Alicia ·
-Studio · Knowledge** (Canvas lives INSIDE Studio as a segmented mode;
-Health is pushed from Us's status strip).
+`Features/Talk/WalkReflectionView.swift` pauses playback and shows dictation as
+it arrives. It keeps automatic screen sleep disabled while visible and active,
+including paused dictation/editing. It restores the prior setting when leaving
+or becoming inactive. Manual lock/backgrounding pauses recognition. There is no
+background microphone or new outbound call capability in this release.
 
-- **Us (v20 — the loop architecture)**: her live greeting, proactive reply
-  card, then three concentric loops from `/api/home` (`skills/home_context.py`):
-  **SeasonArcCard** (season theme + episode-node spine + current movement) →
-  **TrailCard** (previous days' episodes) → **TodayEpisodeCard** (today's
-  pick, focus claim, one-tap LISTEN into Studio) → **knowledge cards** mined
-  from today's shownotes (quote / thinkers / ideas), each with a feedback row
-  (RELEVANT · GREAT · NOT TODAY + a why-note follow-up → POST
-  /api/card_feedback → evidence-shrunk card-ordering weights + daily signal;
-  loop 10 in the backend map). Tap the "Us" title → **UsSheet**: TODAY (the
-  context line — what she thinks you two are talking about today — episode,
-  season, trail, what she's surfacing) with THE ARC timeline one segment
-  away. Below the loops: featured synthesis, quote, drawing, voice of the
-  moment, knowing card, thinkers-in-your-ears strip, status strip.
-  (EpisodeAskCard renders only when /api/home has no active episode.)
-- **Dialogue**: SSE chat + dictation mic + walk mode + voice-note replies +
-  emoji reactions; her impulses render as editorial interludes (hairlines +
-  emblem + serif italic) that deep-link to the exact card on the Alicia tab.
-  v23: sends the backend flags `is_ask` (kind tokens — Rule-11 word-boundary,
-  💭 rider glyph, tail "?") arrive as FULL bubbles with ANSWER HER → —
-  answering-mode composer routes the reply through /api/reply (Tier-3
-  capture + circulation attribution, same as answering on Telegram).
-- **Alicia**: THE VOICES gallery ranked by the real loop (`/api/archetypes`),
-  custom ink emblems per voice (`ArchetypeEmblem`), manifesto sheets, recent
-  thinking cards, version tag.
-- **Studio**: podcast library by season wearing Hector's art tiles, editorial
-  episode plates with shownotes, persistent player (scrub/±15s/rate,
-  Dynamic Island artwork), co-creation canvas mode (she draws from where the
-  pencil stopped — `/api/cocreate`).
-- **Knowledge (v21: two rooms)**: `InkTabs` KNOWLEDGE | THINKERS — the
-  syntheses shelf in one, the full 313-thinker network inline in the other
-  (ThinkersPage subpage folded in; deep-links set `store.knowledgeSegment`).
-  `ThinkerSheet` ends in **MINDS LIKE THIS ONE**, now a hand-stitched
-  **ThinkerConstellation** — staggered faces joined by bowed ink threads +
-  knot rings; why-they-connect lines from vault co-citation + theme overlap
-  (`skills/data/thinker_links.json` ← `scripts/build_thinker_links.py`);
-  tapping hops the sheet (breadcrumb + back), so the graph walks end to end.
-- **Hand-drawn chrome (v21–v22)** — `DesignSystem/InkDrawn.swift`, all
-  deterministic-seeded Canvas (no @State — nothing shimmers on scroll):
-  `HandDrawnBorder` on every `.card()` (subtle since v22),
-  `InkUnderline` under the selected tab-bar word, `InkTabs` replacing every
-  segmented picker, `InkSubmitArrow` for every send affordance,
-  `PortraitTrace` (her pen circling every thinker photograph). v22 finished
-  the de-widgeting: `InkPlayPause`/`InkSkip`/`InkWaveBars`/`InkChevron`/
-  `InkSpark`/`InkBackButton` replaced every stock play/pause/±15/waveform/
-  chevron/back glyph across Home, Studio (incl. the DRAW|LISTEN word
-  toggle), Knowledge, and Health; the Alicia tab strips message emojis in
-  favor of ink sparks. Home knowledge-card feedback is hidden until the
-  card is tapped (three resting dots mark the spot).
-- **THE ARC is legible (v22)** — `/api/timeline` rows now carry `learned`
-  (hector_learnings bucketed by local day), `thread` (the day's circulated
-  idea, hash-ids filtered), and `goal`; the sheet renders them per day.
-- **Badge (v22)** — local notifications set `content.badge` from an own
-  counter (`ProactiveNotifier`), cleared on scenePhase.active.
-- **No emoji, anywhere (v24–v25, HARD RULE)** — Hector enforced this twice:
-  her displayed text passes through `String.strippedEmojis` on every
-  surface (bubbles, whispers, SaidCards, Us proactive card, greeting,
-  thoughts, knowing claims, timeline lines, synthesis reader, quote card,
-  shownotes, notifications, widget cache). Reactions are WORDS
-  (LOVE/FIRE/MIND/YES/HMM/NO via `InkReactions`) + `InkReactionTag` badge;
-  the emoji strings still travel to the backend unchanged (loops key on
-  them). Dialogue's last stock glyphs went too: WALK/VOICE/MIC words,
-  THE REST → fold, ink ring on voice notes.
-- **Pins (v26)** — `InkPinMark` (dot → her asterisk) top-right of every
-  knowledge card + on thinker sheets. Pinned items persist server-side
-  (`memory/pinned_items.json`, POST `/api/pin`, in the `/api/home` payload)
-  and render in a HELD · STILL TALKING ABOUT section atop Us until
-  released. A pin is ALSO an interest signal: `home_context.pin_item`
-  appends a hector_learnings row (source=ios_pin) — loop-4 fuel. Unpin is
-  quiet (no negative signal).
-- **v26 aesthetics** — `ContextOnion` (TODAY sheet: the day as three
-  hand-pulled concentric rings, in→out); THE ARC wears archetype emblems
-  per day (`timeline` rows carry `archetype`), a trembling/curling spine
-  (`InkSpineSegment`), milestone underlines; `InkTitleLine`/`InkTitle`
-  hand-set display type (per-glyph lean + baseline drift) on the greeting,
-  all SectionHeaders, episode plates/rows/nav; Studio's background is the
-  `.soundwave` ContourWaves pattern — stacked waveforms, not sonar.
-- **Widget** (`AliciaWidgets/` target): greeting + today's synthesis from the
-  app-group cache (`group.com.myalicia.app`) — no network of its own.
+A local draft remains until a durable server receipt. An uncertain submission
+retains its exact payload for Retry save and cannot be edited into a different
+request under the same ID. The presented probe is separate from human words.
+No claim of real microphone correctness comes from mocked save tests.
 
-## Backend surface (skills/ios_api.py, :8766)
+## Messaging and learning
 
-chat (SSE+voice) · react (message/proactive) · reply · proactive · greeting ·
-featured · quote · archetypes · timeline · knowing · thinkers (now with
-per-thinker `related` edges) · syntheses · tracks/audio/episode · mode (walk) ·
-cocreate · complement · gallery/drawing · health · **home** (the loop payload;
-capability in `skills/home_context.py`) · **card_feedback** (POST; writes the
-contracted `card_feedback.jsonl` + `home_card_weights.json`) · healthz. All
-payload builders are pure + defensive; harness callables arrive via
-`start_ios_api(deps=...)` — skills never import alicia.py.
+Telegram offers at most one optional 12:30 episode question before Hector has
+responded, with no new generation at send time. Morning/evening broadcasts,
+random discoveries/drawings, scorecards, surveys and portrait pushes are paused.
+Background work remains. Requested conversation, email digest, committed
+practices, unpack probes and service notices are separate.
 
-## Ship loop (memorize)
+One Alicia voice distinguishes observation, tentative interpretation and explicit
+learning keeps. Playback, clicks, silence and likes are not agreement or learning.
+The journal projects into vault `Alicia/Hector/Learnings/YYYY-MM-DD.md`; a keep
+is not a promoted synthesis or proven lived practice. Labs and Qwen training
+remain separate from ordinary app feedback.
 
-Shipping and branch testing follow `docs/SHIPPING.md`. `ship.sh` allocates the
-build number from shared App Store Connect state and injects branch identity at
-archive time; it never edits, commits, or pushes source.
+## Design decisions to preserve
 
-1. Bump `AppVersion.baseTag` in `DesignSystem/ContourWaves.swift` when an app
-   change is promoted. Branch archives add their branch automatically.
-2. Simulator build green → verify visually (`simctl launch` + screenshot;
-   pixel-diff two frames when claiming something animates).
-3. Backend: smoke green (unmasked exit) → commit → push → `alicia-restart`.
-4. App promotion: commit → push → `xcodebuild -destination 'generic/platform=iOS'
-   -allowProvisioningUpdates build` → `xcrun devicectl device install app
-   --device FE4F87D0-38E4-54AC-B5EA-AD68FF4EEE76 …/Debug-iphoneos/Alicia.app`
-   (needs `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, phone on
-   USB — check `ioreg -p IOUSB | grep -i iphone`; empty `system_profiler
-   SPUSBDataType` means the Mac's USB stack is wedged → reboot the Mac mini).
+Ink-on-bone, `Theme.paper`/`Theme.ink`, no warm-gray redesign, no SF Symbols or
+emoji in product UI. Custom deterministic ink glyphs and stripped display text
+remain; reaction wire values stay compatible with the backend. Preserve Zapfino
+word-level handwriting and the existing serif/mono hierarchy. Judge custom-font
+rendering on device, not just the iOS 26 simulator.
 
-## Design language (he will reject deviations)
+The bottom word bar remains a hard VStack sibling; do not return it to
+`.safeAreaInset`. The podcast player is Studio-only; the active reading bar is
+global. Existing presence fields and Reduce Motion behavior remain. New motion
+experiments start in the DEBUG Motion Lab; long-press the Alicia screen to open
+it, or use the `--motion-lab` DEBUG launch argument.
 
-Ink-on-bone from his drawings: `Theme.paper`/`Theme.ink`; **no warm gray
-anywhere** (inkSoft is ink at 78%); **no SF Symbols and no emojis anywhere**
-(InkDrawn glyphs + strippedEmojis — see the v24–v25 bullet above);
-serif display + mono-caps tracked kickers
-(Co-Star register); alternating alignments; everything decorative is
-procedural Canvas — `ContourWaves` (per-tab sister fields, time-of-day tint +
-ink weight, seasonal reseed, her-mood seed), `StippleIllustration` (breathing
-engraved forms, heartbeat pulse), `ArchetypeEmblem` (six hand-drawn glyphs),
-`InkStroke` (trembling bars). The bottom bar is a HARD VStack sibling
-(`RootView`) — **`.safeAreaInset` is banned** (failed 3× on device). The
-composer lives inside the ink frame.
+## Verification and next checks
 
-## Known gaps / natural next steps
+The v38 build passed iPhone 17/iOS 26.5 simulator compilation, labelled fixture
+screens (Us, Alicia, Dialogue, walk, missing episode, unavailable frame, Reduce
+Motion), and six Swift save-lifecycle scenarios. Focused backend messaging passed
+1,244 smoke checks and 258 contract checks; its 23 acceptance cases used fake
+transports/models and temporary state. Live health and authenticated endpoints
+were checked after release. No test messages were sent to Hector.
 
-- Vault-only thinkers (282 of 318) mostly lack `#theme/` tags → invisible to
-  theme filters until a vault tagging pass; regeneration script documented in
-  backend commit 60af452.
-- No in-app settings for baseURL/token (Secrets.plist only).
-- Canvas drawings don't persist between launches (`PKDrawing` in `@State`).
-- THE ARC milestones come from diary growth lines only; "moments we built
-  together" (git/HANDOFF events) could join as a second node kind.
-- Deep link from the widget into the app (tap → Us) not wired.
-- Proactive polling is 60s foreground + best-effort BGAppRefresh; true push
-  would need APNs (paid dev account).
+Remaining: real morning listening, speech accuracy, headset/permission/interruption
+behavior, lock/unlock, physical typography and touch targets on Pandaiux, and
+whether the probes help. Do not declare these proven from simulator screenshots.
+No need for a new TestFlight binary when only backend messaging or docs change.
 
-## Context pointers
+## Integration
 
-- Memory: `aliciaapp-ios-lessons` (ship loop + gotchas), `alicia-drawing-aesthetic`.
-- Her side of the story: `~/alicia/ARCHITECTURE_MAP.md` (canonical),
-  vault `Alicia/Bridge/HANDOFF.md` 2026-07-05 entry ("you have a third body").
-- Device: iPhone Air "Pandaiux", iOS 26.5, Tailscale IP backend
-  (`http://100.81.90.92:8766` in gitignored `Alicia/Secrets.plist`).
+Follow `docs/SHIPPING.md`: reviewed PRs and fast-forward-only canonical updates;
+backend first when contracts change; `ship.sh` allocates build numbers without
+editing/pushing source. Do not run a branch backend against live state. No version
+bump or device build is needed for a documentation-only change. If Python-loaded
+help/catalog text changes, its backend PR owns the targeted restart.
 
-## v27 addenda (2026-07-07, late)
-
-- **Her hand is TRUE CURSIVE now** — `InkTitleLine`/`InkTitle` use Snell
-  Roundhand (system script) with per-WORD lean/baseline drift. NEVER go
-  back to per-glyph jitter: it breaks script ligatures and Hector called
-  it "sloppy type". Scale script sizes ~1.22× (small x-height).
-- **Widget**: systemSmall/Medium/Large; paper tint follows the hour
-  (night = bone on ink); cache keys now include widget.todayLabel/
-  todayTitle/context/carry (written by AppStore.publishWidgetCache).
-- **Knowledge background** = `.particles` pattern (idea-nodes + faint
-  threads); Studio = `.soundwave`; Us/Dialogue contour; Alicia ripples.
-- **PlayerBar is global** (RootView hard sibling above the word-bar,
-  hidden while the Dialogue composer is up). Do not mount it per-tab.
-- **Thinkers open in place** via `store.showThinker(named:)` /
-  `presentThinker` (falls back to Knowledge deep-link pre-load).
-  ThinkerSheet: cursive name, `InkAnnotatedText` (underlined key words +
-  dashed connecting thread), `InkDividerCurl` between sections.
-
-## v28 addenda (2026-07-07, night)
-
-- **Her hand = Zapfino** (0.82× in `InkTitleLine`; widget 12–16pt). The
-  brief: "a smart notepad that is alive"; squiggle over polish. **The
-  iOS 26 SIM substitutes ALL Font.custom with New York serif — judge
-  scripts on device or a macOS PIL proof, never the sim.**
-- Global player reverted — PlayerBar is Studio-only again (inset on the
-  NavigationStack). Tab bar spaces by equal gaps, not equal columns.
-- Alicia tab field = sparse contour (calm); Knowledge = particles.
-- `InkSquiggle` + `InkHighlightedText` (FlexWrap now takes `trailing:`)
-  underline the recurring shelf words (computed client-side from
-  syntheses titles+excerpts, ≥5 letters, ≥3 occurrences, top 8).
-
-## v29 addenda (2026-07-08)
-
-- **Portrait audit**: all 313 names probed against Wikipedia REST. 15
-  disambiguation hits + ~20 vault typos fixed via a verified `wiki` slug
-  per entry in `skills/data/thinkers.json` (survives sync_thinker_themes;
-  Sonke/Sönke deduped + aliased; junk 'Podcast Thinkers Index' removed).
-  40 no-photo names keep the stipple fallback by design. WikiPortrait /
-  ThinkerSheet / share resolve through `thinker.wiki`.
-- **No dead thinker links**: `showThinker` = exact → folded → synthesized
-  sheet (episode thinkers outside the master map still open with portrait
-  + extract + share + pin). Thinker↔thinker edges audited clean.
-- **Search** atop THE THINKERS (folded match on name+tagline).
-- **Share**: `InkShareGlyph` + ShareLink on cards / thinker sheets /
-  synthesis reader.
-- **Dialogue feed 6→30** — the backend sends ~9/day; 6 was the whole
-  "why is Dialogue empty" bug.
+Earlier app and handoff history remains in `docs/history/SESSION_HANDOFF-before-alicia-2.md`.
+Do not restore the old orbit, voice gallery, daily broadcast arc or weekly survey
+as a fix for missing UI or a retired assertion.

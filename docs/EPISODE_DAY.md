@@ -1,8 +1,9 @@
 # Episode day — iOS implementation handoff
 
-Branch `codex/episode-day`, base `790f093`; paired backend branch with base
-`98f65c3`. Owner: Codex. No competing open PRs touched these files at the start.
-No version bump, TestFlight upload, device install, or production promotion.
+Released September 5, 2026: iOS PR #6, merge `9b353f5`; backend PR #12,
+merge `7ba1897`, followed by focused messaging in backend PR #13 (`44c8385`).
+TestFlight v38 / 1.0 (5) was reported VALID and IN_BETA_TESTING that day.
+See `SESSION_HANDOFF.md` for the current baseline and remaining physical checks.
 
 Hector approved an iOS-first loop around the morning episode and his reaction.
 Us, Dialogue, and Alicia are focused on that moment; Studio and Knowledge keep
@@ -29,9 +30,9 @@ a large Walk with this action, a correctable reading, and explicit learning keep
 - `EpisodeDay` DTOs, `AliciaService`, `LiveAliciaService`, and `AppStore` own the
   network seam; views never call the network directly. New routes are listed in
   `CLAUDE.md`. The backend contract is in its `docs/EPISODE_DAY.md`.
-- Ink on bone, existing presence backgrounds, pure SwiftUI, no dependencies,
-  SF Symbols, emoji, new motion, or generated version values. Existing DEBUG
-  Motion Lab entry remains accessible through the Alicia title long press.
+- Ink on bone, existing presence backgrounds, pure SwiftUI, no added dependencies,
+  SF Symbols, emoji, or new motion. Build numbers remain allocator-owned. Existing DEBUG
+  Motion Lab entry remains accessible through a long press on the Alicia screen.
 
 ## Validation
 
@@ -56,12 +57,12 @@ fonts, touch targets, and real morning playback/feedback need device verificatio
 On-device dictation intentionally pauses in the background. There is no claim
 of background/lock-screen recording, outbound calling, or a new full voice agent.
 
-## Integration and next action
+## Integration and continued validation
 
-Review the committed paired branches. Backend must be promoted and deployed before
-an iOS build that depends on the new routes can be field-tested. A branch backend
+The paired branches were reviewed and promoted backend first. Future paired
+changes must preserve that contract order before a dependent phone build is tested. A branch backend
 against live state remains prohibited by `docs/SHIPPING.md`; no such sidecar ran.
-Promote only after the product/device choice. Rollback is the prior build; the
+Keep remaining physical-device checks explicit; the TestFlight release is not proof they passed. Rollback is the prior build; the
 server's additive journal and daily vault notes remain available. Authentication
 and higher-tier confirmation still use the established backend boundaries.
 
@@ -96,4 +97,4 @@ walk/work mode. `WalkReflectionView` now disables automatic idle sleep while
 visible and active, including paused reflection/editing. It restores the prior
 idle-timer setting on disappearance/inactivity and reacquires it on return.
 Manual locking or changing apps still pauses dictation. The TestFlight upload
-uses the reviewed release commit; remaining on-device checks happen in this beta.
+completed as v38 / 1.0 (5); remaining on-device checks happen in this beta.

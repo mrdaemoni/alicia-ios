@@ -8,7 +8,7 @@ tabs until they are deliberately promoted.
 
 1. Run the Alicia scheme with the Debug configuration.
 2. Open the Alicia tab.
-3. Tap `HER INNER WEATHER · v35` beneath her name.
+3. Long-press the Alicia screen (`MindView` wraps `EpisodeMindView`).
 
 The entry point and the lab controls are removed from Release builds.
 

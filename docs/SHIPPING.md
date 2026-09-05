@@ -48,8 +48,9 @@ The old `ship.sh` allocated the next build number by incrementing
 non-authoritative**: nothing checks it against what App Store Connect already
 holds.
 
-It is correct today only because exactly one ship has happened (1.0 build 1)
-and its value was committed. It desynchronises the moment anyone ships
+At the time of the original allocator design, only one ship had happened
+(1.0 build 1) and its value had been committed. That is historical context, not
+the current TestFlight release. It desynchronises the moment anyone ships
 out-of-band, forgets to commit a bump, or ships from a second branch — and the
 rejection arrives from Apple minutes later, server-side, long after the shipper
 has moved on.
@@ -169,8 +170,7 @@ stops.
 
 ### R4 — One shipper at a time, announced
 
-Until §2.3 lands this is a correctness requirement, not etiquette. After it
-lands it remains courtesy: two TestFlight uploads in flight give Hector two
+The allocator in §2.3 is implemented. Sequencing remains useful: two TestFlight uploads in flight give Hector two
 notifications and no way to tell them apart until each finishes processing.
 Say in chat that you are shipping, and from what branch.
 
@@ -206,9 +206,9 @@ Requirements, all of which are build work:
    helper is a prerequisite, not a flag.
 3. **Isolated logs.** Separate `logs/` so a sidecar's stderr cannot be mistaken
    for production's, and so log-derived health checks are not polluted.
-4. **Schedulers off.** No `schedule` registration, so the ~62 JobSpecs do not
-   double-fire — two morning messages, two overnight passes, two syntheses
-   written to the vault.
+4. **Schedulers off.** No `schedule` registration, so enabled JobSpecs do not
+   double-fire — duplicate episode invitations, overnight passes, or vault writes.
+   Paused routines must remain paused in any future sidecar.
 5. **Proactive sends off.** No circulation composer sends, no Telegram
    proactive slots. Hector must never receive a message he cannot attribute.
 6. **Separate credentials.** Its own Telegram bot token and its own iOS API
@@ -226,7 +226,9 @@ Requirements, all of which are build work:
    there: `/Users/alicia/alicia/venv/bin/python3.11`.
 
 Build this when a branch actually changes backend behavior. Until then, iOS
-branches test against production Alicia, which they only read from.
+branches may use isolated mocks or explicitly authorized testing against the
+production backend. Chat, feedback, playback and saves can WRITE production
+state; do not describe a live app test as read-only.
 
 ## 5. Pointing the phone at another backend
 
@@ -283,10 +285,10 @@ starts asking.
 
 ---
 
-## Amendment proposed for `AGENTS.md` §5
+## Documentation changes
 
-`AGENTS.md` is Codex-owned; this pointer is proposed rather than applied:
-
-> - Shipping, branch builds, and backend sidecars follow `docs/SHIPPING.md`.
->   `main` moves on promotion only; testing never requires it. Branch
->   TestFlight shipping is unavailable until that document's §2 lands.
+A docs-only iOS PR needs content/link review, not another TestFlight upload,
+version bump or device install. Implementation and visual promotion gates above
+still apply when product source changes. `AGENTS.md` already points here; the
+former proposed amendment and its “branch shipping unavailable” statement are
+superseded by the implemented allocator/provisioning workflow.
