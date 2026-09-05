@@ -11,6 +11,9 @@ final class SpeechTranscriber {
     var isRecording = false
     var transcript = ""
     var authorized = false
+    var lastError: String?
+    private var hasTap = false
+    private var generation = 0
 
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -29,15 +32,18 @@ final class SpeechTranscriber {
     func start() throws {
         stop()
         transcript = ""
+        lastError = nil
+        guard let recognizer, recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
+            throw NSError(domain: "AliciaSpeech", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "On-device speech is unavailable."])
+        }
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .measurement, options: .duckOthers)
         try session.setActive(true, options: .notifyOthersOnDeactivation)
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
-        if recognizer?.supportsOnDeviceRecognition == true {
-            request.requiresOnDeviceRecognition = true
-        }
+        request.requiresOnDeviceRecognition = true
         self.request = request
 
         let input = engine.inputNode
@@ -45,16 +51,20 @@ final class SpeechTranscriber {
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             request.append(buffer)
         }
+        hasTap = true
         engine.prepare()
-        try engine.start()
+        do { try engine.start() }
+        catch { stopEngineOnly(); throw error }
         isRecording = true
 
-        task = recognizer?.recognitionTask(with: request) { [weak self] result, error in
+        let currentGeneration = generation
+        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.generation == currentGeneration else { return }
                 if let result {
                     self.transcript = result.bestTranscription.formattedString
                 }
+                self.lastError = error?.localizedDescription
                 if error != nil || (result?.isFinal ?? false) {
                     self.stopEngineOnly()
                 }
@@ -63,15 +73,16 @@ final class SpeechTranscriber {
     }
 
     func stop() {
+        generation += 1
         stopEngineOnly()
         task?.cancel()
         task = nil
     }
 
     private func stopEngineOnly() {
-        guard isRecording || engine.isRunning else { return }
+        guard hasTap || isRecording || engine.isRunning else { return }
         engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
+        if hasTap { engine.inputNode.removeTap(onBus: 0); hasTap = false }
         request?.endAudio()
         request = nil
         isRecording = false

@@ -17,6 +17,7 @@ struct Readable: Equatable {
     /// Only ever complete readings — the backend won't advertise a partial.
     var speechChunks: [SpeechChunk] = []
     var speechDuration: TimeInterval = 0
+    var episodeID: String? = nil
     /// Stable identity so re-tapping the same piece resumes instead of
     /// restarting, and so the reader can tell "this card" from "that card".
     var id: String { "\(kind)|\(title)|\(body.count)" }
@@ -128,6 +129,8 @@ final class SpeechReader: NSObject {
     var service: AliciaService?
     /// Called just before a reading starts, so the podcast can step aside.
     var willStartReading: (() -> Void)?
+    var episodeProgress: ((String, Double, Double) -> Void)?
+    var episodeStopped: ((Bool) -> Void)?
 
     // MARK: engine state
 
@@ -201,6 +204,7 @@ final class SpeechReader: NSObject {
 
     /// Move to another piece in the queue, keeping the queue intact.
     func advance(by offset: Int) {
+        if current?.episodeID != nil { episodeStopped?(false) }
         let next = queuePosition + offset
         guard queueItems.indices.contains(next) else {
             if next >= queueItems.count { finishQueue() }
@@ -260,6 +264,7 @@ final class SpeechReader: NSObject {
     func toggle() {
         guard isActive else { return }
         if isSpeaking {
+            if current?.episodeID != nil { episodeStopped?(false) }
             isSpeaking = false
             if voice == .her {
                 queue.pause()
@@ -280,6 +285,7 @@ final class SpeechReader: NSObject {
     }
 
     func stop() {
+        if current?.episodeID != nil { episodeStopped?(false) }
         pollTask?.cancel()
         pollTask = nil
         prefetchTask?.cancel()
@@ -354,6 +360,7 @@ final class SpeechReader: NSObject {
     }
 
     private func seek(to fraction: Double) {
+        if current?.episodeID != nil { episodeStopped?(false) }
         progress = min(1, max(0, fraction))
         guard voice == .her else {
             if isSpeaking { speakOnDevice(from: deviceCharIndex(for: progress)) }
@@ -422,6 +429,9 @@ final class SpeechReader: NSObject {
                 let played = self.offsetOfChunk(self.currentIndex) + time.seconds
                 self.progress = min(1, max(0, played / self.duration))
                 self.updateNowPlayingElapsed(played)
+                if self.queue.timeControlStatus == .playing, let id = self.current?.episodeID {
+                    self.episodeProgress?(id, played, Double(self.rate))
+                }
             }
         }
         endObserver = NotificationCenter.default.addObserver(
@@ -438,6 +448,7 @@ final class SpeechReader: NSObject {
                     if self.isStreaming {
                         self.isPreparing = true      // waiting on more audio
                     } else {
+                        if self.current?.episodeID != nil { self.episodeStopped?(true) }
                         self.finishReading()
                     }
                 }

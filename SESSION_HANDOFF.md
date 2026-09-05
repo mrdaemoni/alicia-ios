@@ -27,6 +27,16 @@ Two traps worth remembering from that build:
 - A new module lands in web_dashboard's "Other" bucket and fails a backend test
   until it is categorised in `_SKILL_BUCKETS`. Cheap to fix, easy to miss.
 
+## Current branch: episode day (2026-09-05)
+
+Hector approved replacing the Us/Dialogue/Alicia layout with a focused loop:
+actual episode playback → thinking aloud → specific probes → a correctable
+reading → explicit learning. The older v33 account above is history. This
+branch's live surface definitions are in `CLAUDE.md`; see `docs/EPISODE_DAY.md`
+for contracts, simulator evidence, and promotion limits. Both repositories use
+`codex/episode-day` in separate worktrees. Backend must land before a phone build
+that uses these endpoints. No production promotion is implied by this handoff.
+
 ## The two repos, one feature loop
 
 | | App | Backend |

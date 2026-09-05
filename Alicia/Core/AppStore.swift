@@ -30,7 +30,7 @@ final class AppStore {
     /// / no override — see `AliciaConfig.makeService`). Sample data is a
     /// mock-mode-only affordance: it must never masquerade as her live
     /// words, and it must never reach the real home-screen widget.
-    private let isMock: Bool
+    let isMock: Bool
 
     /// Reads any page aloud (device voice instantly, her voice when the
     /// backend has rendered it). Shares the audio session with the podcast
@@ -41,6 +41,9 @@ final class AppStore {
         self.service = service
         self.isMock = service is MockAliciaService
         if isMock { messages = SampleData.messages }
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { messages = [] }
+#endif
         reader.service = service
         // Presence telemetry rides the same service (and is a no-op on the
         // mock, so previews and a missing Secrets.plist send nothing).
@@ -48,6 +51,10 @@ final class AppStore {
         // A reading and an episode are both "her, in your ears" — only one
         // of them at a time.
         reader.willStartReading = { [weak self] in self?.pauseForReading() }
+        reader.episodeProgress = { [weak self] label, position, rate in
+            self?.observeEpisodePlayback(label: label, position: position, rate: rate)
+        }
+        reader.episodeStopped = { [weak self] ended in self?.flushEpisodePlayback(ended: ended) }
         Task { await load() }
     }
 
@@ -64,6 +71,231 @@ final class AppStore {
         // — the podcast player used to be the only thing that armed them.
         configureRemoteCommandsOnce()
         reader.read(item)
+    }
+
+    // MARK: the episode and the day
+    var episodeDay: EpisodeDay?
+    var episodeError = ""
+    var showWalk = false
+    var walkPrompt = UserDefaults.standard.string(forKey: "alicia.walkPrompt") ?? "" {
+        didSet { UserDefaults.standard.set(walkPrompt, forKey: "alicia.walkPrompt") }
+    }
+    var walkEpisodeID = ""
+    var walkDraft = UserDefaults.standard.string(forKey: "alicia.walkDraft") ?? "" {
+        didSet { UserDefaults.standard.set(walkDraft, forKey: "alicia.walkDraft") }
+    }
+    var walkRequestID = UserDefaults.standard.string(forKey: "alicia.walkRequestID") ?? UUID().uuidString
+    var pendingWalkSave: [String: String]? = UserDefaults.standard.dictionary(forKey: "alicia.pendingWalkSave") as? [String: String] {
+        didSet {
+            if let pendingWalkSave { UserDefaults.standard.set(pendingWalkSave, forKey: "alicia.pendingWalkSave") }
+            else { UserDefaults.standard.removeObject(forKey: "alicia.pendingWalkSave") }
+        }
+    }
+    var isSavingWalk = false
+    private var framePoll: Task<Void, Never>?
+    private var playbackLabel = ""
+    private var playbackPosition: Double = 0
+    private var playbackClock: TimeInterval = 0
+    private var playbackAccumulated: Double = 0
+    private var playbackFlushing = false
+    private var playbackOutbox: [[String: Any]] =
+        UserDefaults.standard.array(forKey: "alicia.playbackOutbox") as? [[String: Any]] ?? []
+
+    func refreshEpisodeDay() async {
+        if let fresh = await service.episodeDay(day: "") {
+            episodeDay = fresh
+        }
+    }
+
+    func loadEpisodeDay(_ date: String) async -> EpisodeDay? {
+        await service.episodeDay(day: date)
+    }
+
+    func awaitEpisodeFrame() {
+        framePoll?.cancel()
+        framePoll = Task { [weak self] in
+            for _ in 0..<20 {
+                guard !Task.isCancelled, let self else { return }
+                await self.refreshEpisodeDay()
+                if self.episodeDay?.frame_status == "ready" { return }
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+
+    @discardableResult
+    func episodeAction(_ action: String, text: String = "", target: String = "",
+                       verdict: String = "", episodeID: String? = nil,
+                       eventID: String = UUID().uuidString) async -> Bool {
+        guard let label = episodeID ?? episodeDay?.episode?.id else { return false }
+        let result = await service.episodeAction([
+            "action": action, "episode_id": label, "event_id": eventID,
+            "text": text, "target_id": target, "verdict": verdict])
+        guard let result, result.ok else {
+            episodeError = result?.error ?? "Your change hasn't reached Alicia. Your words are still here; try again."
+            return false
+        }
+        episodeError = ""
+        if let day = result.day { episodeDay = day }
+        awaitEpisodeFrame()
+        return true
+    }
+
+    func openWalk(probe: String = "") {
+        guard let episode = episodeDay?.episode else {
+            episodeError = "Play an episode in Studio to begin."
+            return
+        }
+        if walkDraft.isEmpty {
+            walkEpisodeID = episode.id
+            walkPrompt = probe
+            walkRequestID = UUID().uuidString
+            UserDefaults.standard.set(walkEpisodeID, forKey: "alicia.walkEpisodeID")
+            UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+        } else {
+            walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? episode.id
+        }
+        showWalk = true
+    }
+
+    func beginWalkRecording() async -> Bool {
+        guard pendingWalkSave == nil else {
+            episodeError = "Your previous save needs to finish first. Tap Retry save; the submitted words are kept here."
+            return false
+        }
+        guard showWalk else { return false }
+        prepareForRecording()
+        (thinkingMode, walkWords) = await service.modeState()
+        guard showWalk, !Task.isCancelled else { return false }
+        if !isWalking {
+            guard await service.modeAction("start_walk", topic: "Reaction to \(walkEpisodeID)") != nil else {
+                episodeError = "The walk couldn't connect. You can keep writing here and try again."
+                return false
+            }
+            thinkingMode = "walk"
+        }
+        guard showWalk, !Task.isCancelled else { pauseEpisodeWalk(); return false }
+        return true
+    }
+
+    func pauseEpisodeWalk() {
+        Task {
+            if isWalking {
+                _ = await service.modeAction("end_walk", topic: "")
+                thinkingMode = "idle"
+            }
+        }
+    }
+
+    func prepareForRecording() {
+        if isPlaying { togglePlay() }
+        reader.stop()
+        voicePlayer?.pause()
+    }
+
+    func finishEpisodeWalk() async -> Bool {
+        let pending = pendingWalkSave ?? ["text": walkDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+                                          "episode_id": walkEpisodeID, "request_id": walkRequestID, "prompt": walkPrompt]
+        let text = pending["text"] ?? ""
+        guard !text.isEmpty, !isSavingWalk else { return false }
+        guard text.unicodeScalars.count <= 60000 else {
+            pendingWalkSave = nil
+            episodeError = "Please save this reflection in smaller parts. Your words are still here to edit."
+            return false
+        }
+        pendingWalkSave = pending
+        isSavingWalk = true
+        defer { isSavingWalk = false }
+        guard let receipt = await service.finishWalk(text: text, episodeID: pending["episode_id"] ?? walkEpisodeID,
+                                                      requestID: pending["request_id"] ?? walkRequestID, prompt: pending["prompt"] ?? "") else {
+            episodeError = "I couldn't confirm the save. The submitted words are kept here; tap Retry save."
+            return false
+        }
+        guard receipt.ok else {
+            // Definite rejections remain editable. Only an uncertain result
+            // keeps the exact pending submission locked for retry.
+            pendingWalkSave = nil
+            walkRequestID = UUID().uuidString
+            UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+            episodeError = receipt.message ?? "The reflection wasn't accepted. Your words are still here to edit."
+            return false
+        }
+        pendingWalkSave = nil
+        messages.append(Message(sender: .me, text: text))
+        // Never erase words that arrived after the submitted snapshot.
+        if walkDraft.trimmingCharacters(in: .whitespacesAndNewlines) == text { walkDraft = "" }
+        walkRequestID = UUID().uuidString
+        UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+        thinkingMode = "idle"
+        episodeError = ""
+        showWalk = false
+        selectedSection = .mind
+        await refreshEpisodeDay()
+        awaitEpisodeFrame()
+        return true
+    }
+
+    /// Positive, continuous AVPlayer progress; seeks/stalls/paused time do not count.
+    func observeEpisodePlayback(label: String, position: Double, rate: Double = 1) {
+        guard !label.isEmpty, position.isFinite else { return }
+        let clock = ProcessInfo.processInfo.systemUptime
+        if playbackLabel != label || playbackClock == 0 {
+            playbackLabel = label
+            playbackPosition = position
+            playbackClock = clock
+            playbackAccumulated = 0
+            enqueuePlayback("playing", label: label, position: position)
+            return
+        }
+        let elapsed = clock - playbackClock
+        let advanced = position - playbackPosition
+        playbackClock = clock
+        playbackPosition = position
+        if elapsed > 0, elapsed < 3, advanced > 0, advanced <= elapsed * max(1, rate) + 1 {
+            playbackAccumulated += elapsed
+        }
+        if playbackAccumulated >= 15 {
+            enqueuePlayback("progress", label: label, position: position,
+                            played: playbackAccumulated)
+            playbackAccumulated = 0
+        }
+    }
+
+    func flushEpisodePlayback(ended: Bool = false) {
+        guard !playbackLabel.isEmpty else { return }
+        if playbackAccumulated > 0 || ended {
+            enqueuePlayback(ended ? "finished" : "progress", label: playbackLabel,
+                            position: playbackPosition, played: playbackAccumulated)
+        }
+        playbackAccumulated = 0
+        playbackClock = 0
+    }
+
+    private func enqueuePlayback(_ action: String, label: String, position: Double, played: Double = 0) {
+        playbackOutbox.append(["action": action, "episode_id": label,
+                               "position_ms": Int(position * 1000), "played_ms": Int(played * 1000),
+                               "event_id": UUID().uuidString, "observed_at": ISO8601DateFormatter().string(from: .now)])
+        UserDefaults.standard.set(playbackOutbox, forKey: "alicia.playbackOutbox")
+        Task { await flushPlaybackOutbox() }
+    }
+
+    private func flushPlaybackOutbox() async {
+        guard !playbackFlushing else { return }
+        playbackFlushing = true
+        defer { playbackFlushing = false }
+        while let first = playbackOutbox.first {
+            guard let receipt = await service.episodeAction(first), receipt.ok else {
+                episodeError = "Listening hasn't synced to Alicia yet. I'll retry when connected."
+                return
+            }
+            playbackOutbox.removeFirst()
+            UserDefaults.standard.set(playbackOutbox, forKey: "alicia.playbackOutbox")
+            if first["action"] as? String == "playing" {
+                if let day = receipt.day { episodeDay = day }
+                episodeError = ""
+                awaitEpisodeFrame()
+            }
+        }
     }
 
     // MARK: playlists — the listening queues (Studio)
@@ -148,6 +380,9 @@ final class AppStore {
     private var liveTimelineSeeded = false
 
     func load() async {
+        let messagesAtStart = messages.map(\.id)
+        async let day = service.episodeDay(day: "")
+        async let history = service.conversationHistory()
         async let t = service.thoughts()
         async let tr = service.tracks()
         async let g = service.gallery()
@@ -156,23 +391,22 @@ final class AppStore {
         // feed is capped at 100 server-side; 30 gives real history.
         async let p = service.proactive(limit: 30)
         async let m = service.modeState()
-        async let gr = service.greeting()
-        async let fs = service.featured()
-        async let qt = service.quote()
-        async let ar = service.archetypes()
-        async let kn = service.knowing()
         async let sy = service.syntheses()
         async let hc = service.homeContext()
-        async let sc = service.sharedContext()
-        async let rf = service.reflections()
         async let pls = service.playlists()
-        async let mn = service.mindNote()
+        if let fresh = await day { episodeDay = fresh }
+        if let transcript = await history, !isStreaming, messages.map(\.id) == messagesAtStart {
+            messages = transcript.messages.map { row in
+                Message(sender: row.role == "user" ? .me : .alicia, text: row.content,
+                        date: Self.historyDate(row.ts))
+            }
+        }
+        Task { await flushPlaybackOutbox() }
         // Keep-last-known: nil means the fetch FAILED (network/auth/decode)
         // — never wipe a populated tab over one bad refresh. A non-nil
         // empty array is a real "backend has nothing" and does overwrite.
         // Empty is a real answer here (nothing citable this week), so it
         // overwrites — unlike the keep-last-known arrays below.
-        mindNote = await mn
         if let fresh = await t { thoughts = fresh }
         if let fresh = await tr { tracks = fresh }
         if let fresh = await g { gallery = fresh }
@@ -181,18 +415,7 @@ final class AppStore {
         if let freshHome { homeContext = freshHome }
         // Keep-last-known, same rule: a failed orbit fetch must not empty
         // the Us tab (v30).
-        if let fresh = await sc { sharedContext = fresh }
-        if let fresh = await rf { reflections = fresh }
         (thinkingMode, walkWords) = await m
-        let freshGreeting = await gr
-        if let freshGreeting { greeting = freshGreeting }
-        let freshFeatured = await fs
-        if let freshFeatured { featured = freshFeatured }
-        let freshQuote = await qt
-        if let freshQuote { quote = freshQuote }
-        let stats = await ar
-        if !stats.isEmpty { archetypeStats = stats }
-        knowing = await kn ?? knowing
         let shelf = await sy
         if !shelf.isEmpty { syntheses = shelf }
         // Same keep-last-known rule: a failed fetch must not empty Studio's
@@ -202,27 +425,20 @@ final class AppStore {
         if thinkerNetwork == nil {
             thinkerNetwork = await service.thinkers()
         }
-        publishWidgetCache(hasFreshData: freshHome != nil || freshGreeting != nil
-                           || freshFeatured != nil || freshQuote != nil)
+        publishWidgetCache(hasFreshData: episodeDay != nil)
         Task { await refreshEpisodeThinkers() }
         let pro = await p
         if !pro.isEmpty {
             proactiveFeed = pro
             ProactiveNotifier.markSeen(pro)
-            if !liveTimelineSeeded {
-                // Open on what she's actually been saying, oldest first.
-                liveTimelineSeeded = true
-                messages = pro.reversed().map { m in
-                    Message(sender: .alicia, text: m.text, date: m.date,
-                            proactiveLabel: [m.kind.replacingOccurrences(of: "_", with: " "),
-                                             m.archetype]
-                                .filter { !$0.isEmpty }
-                                .joined(separator: " · "),
-                            proactiveID: m.id,
-                            isAsk: m.isAsk)
-                }
-            }
+
         }
+    }
+
+    private static func historyDate(_ text: String) -> Date {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: text) ?? ISO8601DateFormatter().date(from: text) ?? .distantPast
     }
 
     // MARK: home-screen widget
@@ -236,33 +452,19 @@ final class AppStore {
         // home-screen widget of a live install.
         guard !isMock else { return }
         guard let shared = UserDefaults(suiteName: "group.com.myalicia.app") else { return }
-        // The widget shows her words without the Telegram emoji markers —
-        // strip at write time so the widget target needs no logic (v25).
-        if let greeting, !greeting.isEmpty {
-            shared.set(greeting.strippedEmojis, forKey: "widget.greeting")
-        }
-        if let featured {
-            shared.set(featured.title.strippedEmojis, forKey: "widget.featuredTitle")
-        }
-        if let latest = proactiveFeed.first {
-            shared.set(String(latest.text.strippedEmojis.prefix(200)),
-                       forKey: "widget.note")
-        }
-        if let quote {
-            shared.set("“" + quote.text.strippedEmojis + "”", forKey: "widget.quote")
-        }
-        // v27: the richer layers — today's episode, the context line, and
-        // the first thing she's asking him to carry.
-        if let today = homeContext?.today {
-            shared.set(today.label, forKey: "widget.todayLabel")
-            shared.set(today.title.strippedEmojis, forKey: "widget.todayTitle")
-        }
-        if let context = homeContext?.contextLine, !context.isEmpty {
-            shared.set(context.strippedEmojis, forKey: "widget.context")
-        }
-        if let carry = homeContext?.cards.first {
-            let line = carry.kind == "quote" ? carry.body : carry.title
-            shared.set(line.strippedEmojis, forKey: "widget.carry")
+        if let day = episodeDay, let episode = day.episode {
+            shared.set("With you today", forKey: "widget.greeting")
+            shared.set(episode.title.strippedEmojis, forKey: "widget.featuredTitle")
+            shared.set(day.focus.strippedEmojis, forKey: "widget.note")
+            shared.set("", forKey: "widget.quote")
+            shared.set(episode.id, forKey: "widget.todayLabel")
+            shared.set(episode.title.strippedEmojis, forKey: "widget.todayTitle")
+            shared.set(day.focus.strippedEmojis, forKey: "widget.context")
+            shared.set(day.probes.first?.question.strippedEmojis ?? "What stayed with you?", forKey: "widget.carry")
+        } else {
+            for key in ["greeting", "featuredTitle", "note", "quote", "todayLabel", "todayTitle", "context", "carry"] {
+                shared.removeObject(forKey: "widget." + key)
+            }
         }
         if hasFreshData {
             shared.set(Date().timeIntervalSince1970, forKey: "widget.cachedAt")
@@ -293,23 +495,14 @@ final class AppStore {
     }
 
     private func pollProactive() async {
+        await refreshEpisodeDay()
+        await flushPlaybackOutbox()
         let fresh = await service.proactive(limit: 30)
         guard !fresh.isEmpty else { return }
         let known = Set(proactiveFeed.map(\.id))
         let new = fresh.filter { !known.contains($0.id) }
         proactiveFeed = fresh
         guard !new.isEmpty else { return }
-        for m in new.reversed() {
-            messages.append(Message(
-                sender: .alicia, text: m.text, date: m.date,
-                proactiveLabel: [m.kind.replacingOccurrences(of: "_", with: " "),
-                                 m.archetype]
-                    .filter { !$0.isEmpty }
-                    .joined(separator: " · "),
-                proactiveID: m.id,
-                isAsk: m.isAsk))
-            await ProactiveNotifier.notify(m)
-        }
         ProactiveNotifier.markSeen(fresh)
     }
 
@@ -560,7 +753,7 @@ final class AppStore {
 
     func send(_ text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { return }
+        guard !clean.isEmpty, !isStreaming else { return }
         if let askID = answeringAskID {
             cancelAnswering()
             messages.append(Message(sender: .me, text: clean))
@@ -667,6 +860,7 @@ final class AppStore {
             if !isPlaying { isPlaying = true; player?.play() }
             return
         }
+        flushEpisodePlayback()
         progress = 0
         nowPlaying = track
         isPlaying = true
@@ -680,6 +874,7 @@ final class AppStore {
 
     func togglePlay() {
         guard nowPlaying != nil else { return }
+        if isPlaying { flushEpisodePlayback() }
         isPlaying.toggle()
         if let player {
             if isPlaying {
@@ -709,6 +904,7 @@ final class AppStore {
     }
 
     func commitScrub() {
+        flushEpisodePlayback()
         defer { isScrubbing = false }
         guard let player, let d = nowPlaying?.duration, d > 0 else { return }
         let target = progress * d
@@ -718,6 +914,7 @@ final class AppStore {
 
     /// Jump ±15s (player bar's back/forward).
     func skip(_ delta: Double) {
+        flushEpisodePlayback()
         guard let player, let d = nowPlaying?.duration, d > 0 else { return }
         let target = min(d, max(0, player.currentTime().seconds + delta))
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600))
@@ -758,13 +955,19 @@ final class AppStore {
                 guard !self.isScrubbing else { return }   // finger owns the bar
                 self.progress = min(1, time.seconds / d)
                 self.updateNowPlayingElapsed(time.seconds)
+                if p.timeControlStatus == .playing, let label = self.nowPlaying?.label {
+                    self.observeEpisodePlayback(label: label, position: time.seconds, rate: Double(self.playbackRate))
+                }
             }
         }
         endObserver = NotificationCenter.default.addObserver(
             forName: AVPlayerItem.didPlayToEndTimeNotification,
             object: item, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.next() }
+            MainActor.assumeIsolated {
+                self?.flushEpisodePlayback(ended: true)
+                self?.next()
+            }
         }
         p.play()
         p.rate = playbackRate

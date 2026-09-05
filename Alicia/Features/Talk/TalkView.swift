@@ -10,57 +10,17 @@ struct TalkView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ZStack {
-                    SectionHeader(
-                        title: "Dialogue",
-                        kicker: store.isWalking
-                            ? "walking · \(store.walkWords) words kept"
-                            : "one conversation · two doors")
-                    HStack {
-                        // Walk mode — same session as Telegram's /walk. While
-                        // active, everything typed is kept, not answered.
-                        Button {
-                            store.toggleWalk()
-                        } label: {
-                            // Words with her underline, not widget glyphs
-                            // (v24 — same treatment as Studio's DRAW).
-                            VStack(spacing: 2) {
-                                Text("WALK")
-                                    .font(.system(size: 9, design: .monospaced)
-                                        .weight(store.isWalking ? .bold : .semibold))
-                                    .tracking(1.6)
-                                    .foregroundStyle(store.isWalking
-                                                     ? Theme.accent : Theme.inkSoft)
-                                InkUnderline(color: Theme.accent, seed: 19,
-                                             lineWidth: 1.1)
-                                    .frame(width: 26, height: 4)
-                                    .opacity(store.isWalking ? 1 : 0)
-                            }
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(title: "Dialogue", kicker: "STAY WITH THE QUESTION")
+                    if let episode = store.episodeDay?.episode {
+                        HStack(alignment: .top) {
+                            Text(episode.title.strippedEmojis).font(.subheadline).italic()
+                            Spacer()
+                            Button("THINK ALOUD") { store.openWalk() }
+                                .font(.system(size: 10, design: .monospaced)).tracking(1)
                         }
-                        .accessibilityLabel(store.isWalking ? "End walk" : "Start walk")
-                        Spacer()
-                        Button {
-                            store.voiceReplies.toggle()
-                        } label: {
-                            VStack(spacing: 2) {
-                                Text("VOICE")
-                                    .font(.system(size: 9, design: .monospaced)
-                                        .weight(store.voiceReplies ? .bold : .semibold))
-                                    .tracking(1.6)
-                                    .foregroundStyle(store.voiceReplies
-                                                     ? Theme.accent : Theme.inkSoft)
-                                InkUnderline(color: Theme.accent, seed: 21,
-                                             lineWidth: 1.1)
-                                    .frame(width: 26, height: 4)
-                                    .opacity(store.voiceReplies ? 1 : 0)
-                            }
-                        }
-                        .accessibilityLabel(store.voiceReplies
-                                            ? "Voice replies on" : "Voice replies off")
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 14)
-                }
+                }.padding(.horizontal, 18).padding(.bottom, 12)
                 messageList
                 composer
             }
@@ -77,19 +37,7 @@ struct TalkView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(store.messages) { message in
-                        // Her proactive life stays a whisper here — one
-                        // tappable line that opens the Alicia tab. The
-                        // Dialogue page belongs to the dialogue. EXCEPT
-                        // her explicit asks (v23): those are conversation
-                        // by construction, so they arrive as full bubbles
-                        // he can answer in place.
-                        if message.proactiveLabel != nil, !message.isAsk {
-                            ProactiveWhisper(message: message)
-                                .id(message.id)
-                        } else {
-                            MessageBubble(message: message)
-                                .id(message.id)
-                        }
+                        MessageBubble(message: message).id(message.id)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -189,13 +137,14 @@ struct TalkView: View {
             .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
 
             Button {
+                speech.stop()
                 store.send(draft)
                 draft = ""
             } label: {
                 // Hand-drawn send — paper ink on the dark band (v21).
                 InkSubmitArrow(size: 34, color: Theme.paper, seed: 23)
             }
-            .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(store.isStreaming || draft.trimmingCharacters(in: .whitespaces).isEmpty)
             .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
         }
     }
@@ -206,6 +155,7 @@ struct TalkView: View {
             return
         }
         focused = false
+        store.prepareForRecording()
         dictationBase = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             guard await speech.requestAuthorization() else { return }

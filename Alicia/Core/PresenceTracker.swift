@@ -10,10 +10,9 @@ import Foundation
 /// as silence. On 2026-09-01 her evening message opened "Quiet day — no
 /// messages, signals stayed low and still" about a day he had been present for.
 ///
-/// The backend already records playback on its own, from the GET that streams
-/// the audio (`ios_api._record_play`), so that half works on builds older than
-/// this file. What only the app can know is where he *was*: which tab, for how
-/// long, and which cards he actually read.
+/// AppStore reports actual continuous episode playback separately. Audio
+/// downloads do not establish listening. This tracker reports where he was:
+/// which tab, for how long, and which cards he actually read.
 ///
 /// Design rules, in order of how badly breaking them would hurt:
 ///

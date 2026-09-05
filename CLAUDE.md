@@ -7,8 +7,8 @@ and the Motion Lab promotion gate.
 Context handoff for continuing this project in Claude Code.
 **Read `SESSION_HANDOFF.md` first** — the live continuation doc (current
 version, ship loop, design rules, known gaps). This file carries stable
-architecture; details below were last fully refreshed at v11 — the app is now
-at **v36**: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
+architecture. **v38** is the episode/day release (2026-09-05);
+see `docs/EPISODE_DAY.md` for behavior and validation. Tabs: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
 into Studio), widget target, hard-VStack bottom bar (safeAreaInset banned),
 her real voice on any page (v31/v32), the **live context orbit** on Us
 (v33) — what we actually talk about, replacing the authored podcast season —
@@ -29,43 +29,27 @@ mock data so the repo stays runnable for anyone who clones it.
 Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`
 (kept at five so iOS never folds tabs into "More"):
 
-1. **Us** (`Features/Home/HomeView.swift`) — landing page: her live greeting
-   (`/api/greeting`), latest proactive message with an inline reply field
-   (`ProactiveReplyCard`), a day-thought card, now-playing chip, and a status
-   strip that pushes **Health** (`Features/Health/HealthView.swift` — vitals
-   gauges; deliberately no NavigationStack of its own).
-   Tapping the **Us** title opens `UsSheet` → **Today** / **The Arc**.
-   Today leads with `ContextOrbit` (v33, `/api/context`): three rings — now /
-   the weeks behind / the long arc — of the subjects Hector actually raises.
-   Ink density is salience; a doubled pen-stroke means the subject keeps
-   returning across months (a separate axis from the ring, deliberately).
-   Tapping a node draws it to centre and opens `OrbitDetail` — the real dated
-   lines he wrote, marked when they came from the phone. Nothing there is
-   generated; a node that cannot show its lines should not be drawn.
-   Below it, `ReflectionsSection` (`/api/reflections`) — her morning and
-   evening self-reflections, each readable and listenable through
-   `ListenLine`. The backend prerenders her voice at write time, so LISTEN
-   usually starts rather than warming up. These were Telegram-only until v33.
-2. **Dialogue** (`Features/Talk/TalkView.swift`) — chat. SSE token streaming,
-   emoji reactions, optional voice-note replies, mic dictation in the
-   composer, and a **Walk** toolbar button (same session as Telegram's
-   `/walk`: while walking, input is accumulated, not answered). Her proactive
-   messages appear as left-aligned "whisper" chips that deep-link to the
-   exact card on the Alicia tab (`pendingMindFocusID` + ScrollViewReader).
-3. **Alicia** (`Features/Mind/MindView.swift`) — her space: mode/state header
-   with her rabbit mark, the version tag, her recent proactive messages
-   ("What she's been saying"), and thought cards. Timeline opens seeded from
-   the proactive feed. Tab icon is `TabRabbit` (Hector's rabbit silhouette,
-   template-tinted), not an SF Symbol.
-4. **Studio** (`Features/Studio/StudioView.swift`) — podcast library grouped
-   by season, episode detail pages with shownotes (`/api/episode/<label>`),
-   player bar with scrubbing, ±15s skip, and 1×/1.5×/2× rate — mounted as a
-   `safeAreaInset` on the NavigationStack so it survives detail pushes.
-5. **Canvas** (`Features/Canvas/CanvasView.swift` + `PencilCanvas.swift`) —
-   segmented **My Canvas** / **Alicia's Gallery**. **Co-creation**: "Alicia
-   continues" sends the flattened canvas + where the pencil stopped
-   (`/api/cocreate`); her returned stroke layers render *under* the live
-   PencilKit layer, so you draw on top of her and she on top of you.
+1. **Us** (`EpisodeHomeView`) — the episode actually played today, two or three
+   precise questions with inspectable passages, and a large **Walk with this**
+   action. Questions carry This helps / Go deeper / Missed me. Connection and
+   dated history remain available. The old orbit/cards are unmounted.
+2. **Dialogue** (`TalkView`) — the real shared conversation restored from
+   `/api/history`, a small current-episode header, dictation, optional voice
+   replies, and Think aloud. The backend uses the same retrieval/model/tool
+   routing boundary as Telegram. Proactive feed items do not seed the transcript.
+3. **Alicia** (`EpisodeMindView`) — her tentative reading, Hector's words,
+   corrections, and explicit learnings. He can correct her and keep something
+   in his own words. A prior rejected reading remains labelled while updating.
+4. **Studio** (`StudioView`) — the podcast and playlist library, shownotes,
+   playback, scrubbing, skips, and rate controls. AppStore reports actual
+   continuous playback; file downloads establish no listening evidence.
+5. **Knowledge** (`KnowledgeView`) — the passive synthesis/notes library and
+   existing pins. Studio and Knowledge retain their library roles.
+
+`WalkReflectionView` is a dedicated full-screen dictation surface. It pauses
+playback, shows the words as they arrive, persists a local draft, and saves with
+an idempotent receipt before clearing. On-device dictation pauses when the app
+leaves the foreground. There is no claim of lock-screen or background recording.
 
 ## Architecture
 
@@ -125,10 +109,13 @@ to Telegram by the backend. Endpoints in use:
 | `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Knowledge tab + her archetype balance |
 | `POST /api/speak` | render arbitrary text in her voice (read-aloud fallback when nothing is cached) |
 | `POST /api/pin` · `/api/card_feedback` | hold a card on the home screen; 👍/👎 on a card |
-| `POST /api/events` | **presence telemetry** — batch `{events:[{kind, ref, ms, meta}]}`. Kinds: `app_open`, `screen_view`, `section_dwell`, `episode_play`, `episode_progress`, `episode_finish`, `card_view`. This is the one endpoint that reports what he *did* rather than what he deliberately tapped; without it a day spent listening reads to her as silence. Fire-and-forget — never block UI on it, and batch on background/foreground transitions. Server also records a play from `GET /api/audio/<name>` on its own, so playback is captured even on builds that predate this. |
+| `POST /api/events` | **presence telemetry** — batch `{events:[{kind, ref, ms, meta}]}`. Kinds: `app_open`, `screen_view`, `section_dwell`, `episode_play`, `episode_progress`, `episode_finish`, `card_view`. This is the one endpoint that reports what he *did* rather than what he deliberately tapped; without it a day spent listening reads to her as silence. Fire-and-forget — never block UI on it, and batch on background/foreground transitions. Episode playback now comes from the player via `/api/episode_day`; an audio GET is not listening evidence. |
 | `GET /api/reflections` | her morning/evening self-reflections, text + a playable reading when rendered |
 | `GET /api/mind` | the weekly mind note — what she is stuck on, what she worked out about him this week, and the receipt behind each claim. Same text as the Sunday 10:30 Telegram send (Rule 14). `has_note: false` on a week with nothing citable — render nothing, not a placeholder. |
-| `GET/POST /api/mode` | walk/drive thinking-mode state + start/end |
+| `GET/POST /api/mode` | walk/drive state; finish accepts `text`, `episode_id`, `request_id` and acknowledges durable save |
+| `GET /api/episode_day?day=YYYY-MM-DD` | current or historical frame, probes, reactions, corrections, explicit keeps |
+| `POST /api/episode_day` | playing/progress/finished observations; reaction, feedback, correction, learning, refresh actions |
+| `GET /api/history` | last 120 actual shared conversation turns with stable receipts; no proactive feed |
 | `GET /api/episode/<label>` | shownotes markdown |
 | `POST /api/speak` · `GET /api/speech/<name>` | read-aloud: her voice rendered in ramped chunks (`skills/reading_voice.py`), returned as an ordered chunk list — `ready` / `streaming` / `rendering`, never blocking |
 | `GET /api/playlists` · `POST /api/playlist` | Studio's listening queues (create/rename/delete/add/remove/reorder); adding also renders that piece's audio so a queue is warm before he drives |
