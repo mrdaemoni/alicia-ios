@@ -61,6 +61,7 @@ struct AliciaApp: App {
                     let args = ProcessInfo.processInfo.arguments
                     if args.contains("--episode-day-preview") && args.contains("--episode-walk-preview") {
                         store.episodeDay = EpisodeDay.preview
+                        store.walkPrompt = "Where would choosing less give you room to go deeper?"
                         store.walkDraft = "Preview reflection: I keep returning to the difference between commitment and control. I want to give this idea a real test today."
                         store.openWalk(probe: "Where would choosing less give you room to go deeper?")
                     }

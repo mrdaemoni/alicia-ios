@@ -64,3 +64,15 @@ against live state remains prohibited by `docs/SHIPPING.md`; no such sidecar ran
 Promote only after the product/device choice. Rollback is the prior build; the
 server's additive journal and daily vault notes remain available. Authentication
 and higher-tier confirmation still use the established backend boundaries.
+
+## Cross-review revisions
+
+An immutable pending walk payload is persisted before the request; uncertain
+saves offer Retry save and prevent editing that submission. Controls are locked
+during an active save, and a successful receipt cannot erase newer text. Changed
+feedback is a distinct action/receipt; identical retries retain their receipt.
+Microphone starts check a view generation after backend/permission waits; old
+recognition callbacks cannot touch a newer segment. Segment final text is kept
+before restarting. The presented question survives alongside the draft and is
+stored separately from Hector's own words. Backend retry repairs the daily note
+and conversation history idempotently.

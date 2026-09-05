@@ -13,6 +13,7 @@ final class SpeechTranscriber {
     var authorized = false
     var lastError: String?
     private var hasTap = false
+    private var generation = 0
 
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -56,9 +57,10 @@ final class SpeechTranscriber {
         catch { stopEngineOnly(); throw error }
         isRecording = true
 
+        let currentGeneration = generation
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.generation == currentGeneration else { return }
                 if let result {
                     self.transcript = result.bestTranscription.formattedString
                 }
@@ -71,6 +73,7 @@ final class SpeechTranscriber {
     }
 
     func stop() {
+        generation += 1
         stopEngineOnly()
         task?.cancel()
         task = nil

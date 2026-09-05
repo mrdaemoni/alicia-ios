@@ -21,7 +21,7 @@ struct EpisodeHomeView: View {
                             FrameStatus()
                         }
                         if !day.probes.isEmpty {
-                            Text("STAY WITH THIS")
+                            Text(day.frame_status == "ready" ? "STAY WITH THIS" : "EARLIER QUESTIONS")
                                 .font(.system(size: 10, design: .monospaced)).tracking(2)
                                 .foregroundStyle(Theme.inkSoft)
                             ForEach(day.probes) { probe in
@@ -149,7 +149,7 @@ struct FrameStatus: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(store.episodeDay?.frame_status == "unavailable"
-                 ? "I couldn't prepare the questions. Your words are saved; you can try again."
+                 ? "I couldn't prepare the questions. You can still think aloud, or try again."
                  : "The episode is in our frame. The questions are being updated from it and your words.")
                 .font(.subheadline).italic().foregroundStyle(Theme.inkSoft)
             Button(retrying ? "PREPARING…" : "REFRESH QUESTIONS") {
@@ -184,6 +184,7 @@ struct EpisodeFeedback: View {
     @State private var showCorrection = false
     @State private var correction = ""
     @State private var receiptID = UUID().uuidString
+    @State private var receiptIdentity = ""
     @State private var saving = false
     @State private var confirmed = ""
 
@@ -207,9 +208,11 @@ struct EpisodeFeedback: View {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("What should I understand differently?").font(.title2)
                     TextEditor(text: $correction).frame(minHeight: 150)
-                        .scrollContentBackground(.hidden)
+                        .scrollContentBackground(.hidden).disabled(saving)
                     EpisodeErrorLine()
                     Button(saving ? "SAVING…" : "SAVE MY CORRECTION") {
+                        let identity = "correction|" + target + "|" + correction
+                        if receiptIdentity != identity { receiptID = UUID().uuidString; receiptIdentity = identity }
                         saving = true
                         Task {
                             if await store.episodeAction("correction", text: correction, target: target,
@@ -233,6 +236,8 @@ struct EpisodeFeedback: View {
 
     private func feedback(_ label: String, value: String) -> some View {
         Button(label) {
+            let identity = "feedback|" + target + "|" + value
+            if receiptIdentity != identity { receiptID = UUID().uuidString; receiptIdentity = identity }
             saving = true
             Task {
                 if await store.episodeAction("feedback", target: target, verdict: value,
@@ -253,6 +258,7 @@ struct EpisodeMindView: View {
     @Environment(AppStore.self) private var store
     @AppStorage("alicia.learningDraft") private var learning = ""
     @State private var receiptID = UUID().uuidString
+    @State private var receiptIdentity = ""
     @State private var saving = false
     @State private var showHistory = false
 
@@ -295,8 +301,10 @@ struct EpisodeMindView: View {
                         Text("A learning becomes yours here when you choose it.")
                             .font(.subheadline).italic().foregroundStyle(Theme.inkSoft)
                         TextField("In your own words…", text: $learning, axis: .vertical)
-                            .lineLimit(3...8).padding(14).background(Theme.paper.opacity(0.85))
+                            .lineLimit(3...8).disabled(saving).padding(14).background(Theme.paper.opacity(0.85))
                         Button(saving ? "SAVING…" : "KEEP THIS LEARNING") {
+                            let identity = episode.id + "|" + learning
+                            if receiptIdentity != identity { receiptID = UUID().uuidString; receiptIdentity = identity }
                             saving = true
                             Task {
                                 if await store.episodeAction("learning", text: learning, eventID: receiptID) {

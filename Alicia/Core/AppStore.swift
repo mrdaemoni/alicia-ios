@@ -77,12 +77,20 @@ final class AppStore {
     var episodeDay: EpisodeDay?
     var episodeError = ""
     var showWalk = false
-    var walkPrompt = ""
+    var walkPrompt = UserDefaults.standard.string(forKey: "alicia.walkPrompt") ?? "" {
+        didSet { UserDefaults.standard.set(walkPrompt, forKey: "alicia.walkPrompt") }
+    }
     var walkEpisodeID = ""
     var walkDraft = UserDefaults.standard.string(forKey: "alicia.walkDraft") ?? "" {
         didSet { UserDefaults.standard.set(walkDraft, forKey: "alicia.walkDraft") }
     }
     var walkRequestID = UserDefaults.standard.string(forKey: "alicia.walkRequestID") ?? UUID().uuidString
+    var pendingWalkSave: [String: String]? = UserDefaults.standard.dictionary(forKey: "alicia.pendingWalkSave") as? [String: String] {
+        didSet {
+            if let pendingWalkSave { UserDefaults.standard.set(pendingWalkSave, forKey: "alicia.pendingWalkSave") }
+            else { UserDefaults.standard.removeObject(forKey: "alicia.pendingWalkSave") }
+        }
+    }
     var isSavingWalk = false
     private var framePoll: Task<Void, Never>?
     private var playbackLabel = ""
@@ -140,19 +148,25 @@ final class AppStore {
         }
         if walkDraft.isEmpty {
             walkEpisodeID = episode.id
+            walkPrompt = probe
             walkRequestID = UUID().uuidString
             UserDefaults.standard.set(walkEpisodeID, forKey: "alicia.walkEpisodeID")
             UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
         } else {
             walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? episode.id
         }
-        walkPrompt = probe
         showWalk = true
     }
 
     func beginWalkRecording() async -> Bool {
+        guard pendingWalkSave == nil else {
+            episodeError = "Your previous save needs to finish first. Tap Retry save; the submitted words are kept here."
+            return false
+        }
+        guard showWalk else { return false }
         prepareForRecording()
         (thinkingMode, walkWords) = await service.modeState()
+        guard showWalk, !Task.isCancelled else { return false }
         if !isWalking {
             guard await service.modeAction("start_walk", topic: "Reaction to \(walkEpisodeID)") != nil else {
                 episodeError = "The walk couldn't connect. You can keep writing here and try again."
@@ -160,6 +174,7 @@ final class AppStore {
             }
             thinkingMode = "walk"
         }
+        guard showWalk, !Task.isCancelled else { pauseEpisodeWalk(); return false }
         return true
     }
 
@@ -179,17 +194,22 @@ final class AppStore {
     }
 
     func finishEpisodeWalk() async -> Bool {
-        let text = walkDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pending = pendingWalkSave ?? ["text": walkDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+                                          "episode_id": walkEpisodeID, "request_id": walkRequestID, "prompt": walkPrompt]
+        let text = pending["text"] ?? ""
         guard !text.isEmpty, !isSavingWalk else { return false }
+        pendingWalkSave = pending
         isSavingWalk = true
         defer { isSavingWalk = false }
-        guard let receipt = await service.finishWalk(text: text, episodeID: walkEpisodeID,
-                                                      requestID: walkRequestID), receipt.ok else {
+        guard let receipt = await service.finishWalk(text: text, episodeID: pending["episode_id"] ?? walkEpisodeID,
+                                                      requestID: pending["request_id"] ?? walkRequestID, prompt: pending["prompt"] ?? ""), receipt.ok else {
             episodeError = "Your reflection is still on this phone. It hasn't been saved to Alicia yet; try again."
             return false
         }
+        pendingWalkSave = nil
         messages.append(Message(sender: .me, text: text))
-        walkDraft = ""
+        // Never erase words that arrived after the submitted snapshot.
+        if walkDraft.trimmingCharacters(in: .whitespacesAndNewlines) == text { walkDraft = "" }
         walkRequestID = UUID().uuidString
         UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
         thinkingMode = "idle"

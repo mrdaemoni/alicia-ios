@@ -52,7 +52,7 @@ enum SpeechStatus: Equatable {
 protocol AliciaService {
     func episodeDay(day: String) async -> EpisodeDay?
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse?
-    func finishWalk(text: String, episodeID: String, requestID: String) async -> WalkReceipt?
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt?
     func conversationHistory() async -> ConversationHistory?
     /// Streams a reply as events: tokens, an optional voice-note URL, and a
     /// final `.done` carrying the backend message id (for reactions).
@@ -217,7 +217,7 @@ struct MockAliciaService: AliciaService {
         return nil
     }
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? { nil }
-    func finishWalk(text: String, episodeID: String, requestID: String) async -> WalkReceipt? { nil }
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? { nil }
     func conversationHistory() async -> ConversationHistory? { nil }
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
         let reply = SampleData.reply(to: prompt)

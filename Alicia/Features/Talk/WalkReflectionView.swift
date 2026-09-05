@@ -10,6 +10,8 @@ struct WalkReflectionView: View {
     @State private var status = ""
     @State private var restarting = false
     @State private var automaticRestarts = 0
+    @State private var startGeneration = 0
+    @State private var starting = false
 
     var body: some View {
         @Bindable var store = store
@@ -28,7 +30,7 @@ struct WalkReflectionView: View {
                 .font(.subheadline).italic().foregroundStyle(Theme.inkSoft)
             TextEditor(text: $store.walkDraft)
                 .font(.system(size: 20, design: .serif))
-                .disabled(listening)
+                .disabled(listening || store.pendingWalkSave != nil)
                 .scrollContentBackground(.hidden)
                 .accessibilityLabel("Your walk reflection")
             Text(status.isEmpty ? "Your words stay on this phone until you finish." : status)
@@ -39,7 +41,8 @@ struct WalkReflectionView: View {
             }
             .font(.system(size: 11, design: .monospaced)).tracking(1.3)
             .frame(maxWidth: .infinity, minHeight: 44)
-            Button(store.isSavingWalk ? "SAVING YOUR REFLECTION…" : "FINISH & REFLECT") {
+            .disabled(starting || store.pendingWalkSave != nil)
+            Button(store.isSavingWalk ? "SAVING YOUR REFLECTION…" : store.pendingWalkSave != nil ? "RETRY SAVE" : "FINISH & REFLECT") {
                 pause()
                 Task { _ = await store.finishEpisodeWalk() }
             }
@@ -47,6 +50,7 @@ struct WalkReflectionView: View {
             .disabled(store.isSavingWalk || store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityIdentifier("episode.finishWalk")
         }
+        .disabled(store.isSavingWalk)
         .padding(24)
         .background(Theme.paper)
         .task {
@@ -70,12 +74,17 @@ struct WalkReflectionView: View {
         }
         .onChange(of: speech.isRecording) { was, now in
             guard was, !now, listening, !restarting else { return }
+            if !speech.transcript.isEmpty {
+                store.walkDraft = base + (base.isEmpty ? "" : "\n\n") + speech.transcript
+            }
             base = store.walkDraft
+            speech.transcript = ""
             restarting = true
             if speech.lastError != nil { automaticRestarts += 1 } else { automaticRestarts = 0 }
+            let generation = startGeneration
             Task {
                 try? await Task.sleep(for: .milliseconds(400))
-                if listening && automaticRestarts <= 3 {
+                if listening && automaticRestarts <= 3 && generation == startGeneration && scenePhase == .active && store.showWalk {
                     do { try speech.start() }
                     catch { listening = false; status = "Listening paused. Your words are kept. Tap Keep talking." }
                 } else {
@@ -88,9 +97,16 @@ struct WalkReflectionView: View {
     }
 
     private func begin() async {
-        guard !listening else { return }
+        guard !listening, !starting, scenePhase == .active, store.showWalk else { return }
+        startGeneration += 1
+        let generation = startGeneration
+        starting = true
+        defer { if generation == startGeneration { starting = false } }
         guard await store.beginWalkRecording() else { return }
-        guard await speech.requestAuthorization() else {
+        guard canStart(generation) else { store.pauseEpisodeWalk(); return }
+        let allowed = await speech.requestAuthorization()
+        guard canStart(generation) else { store.pauseEpisodeWalk(); return }
+        guard allowed else {
             status = "Microphone or speech permission is off. You can write here, or enable it in Settings."
             return
         }
@@ -105,7 +121,16 @@ struct WalkReflectionView: View {
         }
     }
 
+    private func canStart(_ generation: Int) -> Bool {
+        generation == startGeneration && !Task.isCancelled && scenePhase == .active && store.showWalk
+    }
+
     private func pause() {
+        startGeneration += 1
+        starting = false
+        if listening, !speech.transcript.isEmpty {
+            store.walkDraft = base + (base.isEmpty ? "" : "\n\n") + speech.transcript
+        }
         listening = false
         speech.stop()
         base = store.walkDraft
