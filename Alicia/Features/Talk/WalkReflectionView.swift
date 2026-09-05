@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// A dedicated, recoverable thinking-aloud surface. No model interrupts the walk.
 struct WalkReflectionView: View {
@@ -12,6 +13,7 @@ struct WalkReflectionView: View {
     @State private var automaticRestarts = 0
     @State private var startGeneration = 0
     @State private var starting = false
+    @State private var previousIdleTimerDisabled: Bool?
 
     var body: some View {
         @Bindable var store = store
@@ -34,6 +36,8 @@ struct WalkReflectionView: View {
                 .scrollContentBackground(.hidden)
                 .accessibilityLabel("Your walk reflection")
             Text(status.isEmpty ? "Your words stay on this phone until you finish." : status)
+                .font(.caption).foregroundStyle(Theme.inkSoft)
+            Text("The screen stays awake while this reflection is open.")
                 .font(.caption).foregroundStyle(Theme.inkSoft)
             EpisodeErrorLine()
             Button(listening ? "PAUSE LISTENING" : "KEEP TALKING") {
@@ -62,9 +66,13 @@ struct WalkReflectionView: View {
 #endif
             await begin()
         }
-        .onDisappear { pause() }
+        .onAppear { keepScreenAwake() }
+        .onDisappear { pause(); restoreScreenSleep() }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active {
+            if phase == .active {
+                keepScreenAwake()
+            } else {
+                restoreScreenSleep()
                 pause()
                 status = "Listening paused. Your words are kept here; tap Keep talking to continue."
             }
@@ -94,6 +102,20 @@ struct WalkReflectionView: View {
                 restarting = false
             }
         }
+    }
+
+    private func keepScreenAwake() {
+        guard scenePhase == .active, store.showWalk else { return }
+        if previousIdleTimerDisabled == nil {
+            previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
+        }
+        UIApplication.shared.isIdleTimerDisabled = true
+    }
+
+    private func restoreScreenSleep() {
+        guard let previous = previousIdleTimerDisabled else { return }
+        UIApplication.shared.isIdleTimerDisabled = previous
+        previousIdleTimerDisabled = nil
     }
 
     private func begin() async {

@@ -88,3 +88,12 @@ passed. Screenshots cover Us, Alicia, Dialogue, paused walk, no episode, unavail
 frame, and Reduce Motion enabled (restored afterward). All review findings were
 resolved and rechecked. Paired backend: 1257/1257 smoke, 259/259 contracts, 24/24
 isolated acceptance checks. No Pandaiux/real microphone or production model test.
+
+## TestFlight request, 2026-09-05
+
+Hector requested the TestFlight build and asked that the phone stay awake during
+walk/work mode. `WalkReflectionView` now disables automatic idle sleep while
+visible and active, including paused reflection/editing. It restores the prior
+idle-timer setting on disappearance/inactivity and reacquires it on return.
+Manual locking or changing apps still pauses dictation. The TestFlight upload
+uses the reviewed release commit; remaining on-device checks happen in this beta.

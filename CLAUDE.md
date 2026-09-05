@@ -7,8 +7,8 @@ and the Motion Lab promotion gate.
 Context handoff for continuing this project in Claude Code.
 **Read `SESSION_HANDOFF.md` first** — the live continuation doc (current
 version, ship loop, design rules, known gaps). This file carries stable
-architecture. This `codex/episode-day` branch is an unshipped simplification;
-see `docs/EPISODE_DAY.md`. The shipped base is **v36**: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
+architecture. **v38** is the episode/day release (2026-09-05);
+see `docs/EPISODE_DAY.md` for behavior and validation. Tabs: tabs Us · Dialogue · Alicia · Studio · Knowledge (Canvas merged
 into Studio), widget target, hard-VStack bottom bar (safeAreaInset banned),
 her real voice on any page (v31/v32), the **live context orbit** on Us
 (v33) — what we actually talk about, replacing the authored podcast season —
