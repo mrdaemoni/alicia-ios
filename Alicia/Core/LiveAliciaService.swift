@@ -97,6 +97,34 @@ struct LiveAliciaService: AliciaService {
 
     // MARK: chat (SSE)
 
+    func episodeDay(day: String = "") async -> EpisodeDay? {
+        let suffix = day.isEmpty ? "" : "?day=" + day
+        return await fetchOne("/api/episode_day" + suffix)
+    }
+
+    private func post<D: Decodable>(_ path: String, body: [String: Any]) async -> D? {
+        do {
+            let bytes = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await URLSession.shared.data(
+                for: request(path, method: "POST", body: bytes))
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return try JSONDecoder().decode(D.self, from: data)
+        } catch { return nil }
+    }
+
+    func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? {
+        await post("/api/episode_day", body: body)
+    }
+
+    func finishWalk(text: String, episodeID: String, requestID: String) async -> WalkReceipt? {
+        await post("/api/mode", body: ["action": "end_walk", "text": text,
+                                     "episode_id": episodeID, "request_id": requestID])
+    }
+
+    func conversationHistory() async -> ConversationHistory? {
+        await fetchOne("/api/history")
+    }
+
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in
             let task = Task {
@@ -269,7 +297,8 @@ struct LiveAliciaService: AliciaService {
             let (data, resp) = try await URLSession.shared.data(
                 for: request("/api/mode", method: "POST", body: body))
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            return try JSONDecoder().decode(ModeActionDTO.self, from: data).message
+            let receipt = try JSONDecoder().decode(ModeActionDTO.self, from: data)
+            return receipt.ok ? receipt.message : nil
         } catch { return nil }
     }
 

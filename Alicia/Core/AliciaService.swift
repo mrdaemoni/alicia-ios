@@ -50,6 +50,10 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
+    func episodeDay(day: String) async -> EpisodeDay?
+    func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse?
+    func finishWalk(text: String, episodeID: String, requestID: String) async -> WalkReceipt?
+    func conversationHistory() async -> ConversationHistory?
     /// Streams a reply as events: tokens, an optional voice-note URL, and a
     /// final `.done` carrying the backend message id (for reactions).
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent>
@@ -206,6 +210,15 @@ struct ArchetypeStat: Decodable, Hashable {
 
 /// In-memory stand-in so the app runs with zero backend.
 struct MockAliciaService: AliciaService {
+    func episodeDay(day: String) async -> EpisodeDay? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { return EpisodeDay.preview }
+#endif
+        return nil
+    }
+    func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? { nil }
+    func finishWalk(text: String, episodeID: String, requestID: String) async -> WalkReceipt? { nil }
+    func conversationHistory() async -> ConversationHistory? { nil }
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
         let reply = SampleData.reply(to: prompt)
         return AsyncStream { continuation in

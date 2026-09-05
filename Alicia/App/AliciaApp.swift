@@ -4,7 +4,12 @@ import SwiftUI
 struct AliciaApp: App {
     /// Live when Secrets.plist (or UserDefaults) provides a base URL + token,
     /// mock otherwise — see AliciaConfig.
-    @State private var store = AppStore(service: AliciaConfig.makeService())
+    @State private var store = AppStore(service: {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { return MockAliciaService() }
+#endif
+        return AliciaConfig.makeService()
+    }())
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -54,6 +59,11 @@ struct AliciaApp: App {
                 // Same shape as --motion-lab, and gone from Release.
                 .task {
                     let args = ProcessInfo.processInfo.arguments
+                    if args.contains("--episode-day-preview") && args.contains("--episode-walk-preview") {
+                        store.episodeDay = EpisodeDay.preview
+                        store.walkDraft = "Preview reflection: I keep returning to the difference between commitment and control. I want to give this idea a real test today."
+                        store.openWalk(probe: "Where would choosing less give you room to go deeper?")
+                    }
                     guard let flag = args.firstIndex(of: "--tab"),
                           args.index(after: flag) < args.endIndex,
                           let section = AppSection(launchName: args[args.index(after: flag)])
@@ -66,8 +76,10 @@ struct AliciaApp: App {
                 // whole app is now that sketchbook.
                 .preferredColorScheme(.light)
                 .task {
-                    ProactiveNotifier.requestPermission()
-                    ProactiveNotifier.schedule()
+                    if !store.isMock {
+                        ProactiveNotifier.requestPermission()
+                        ProactiveNotifier.schedule()
+                    }
                 }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
@@ -93,7 +105,7 @@ struct AliciaApp: App {
                         // once at launch (the old behavior) meant iOS never
                         // had a fresh window and no notification ever fired.
                         store.stopProactivePolling()
-                        ProactiveNotifier.schedule()
+                        if !store.isMock { ProactiveNotifier.schedule() }
                     default:
                         break
                     }

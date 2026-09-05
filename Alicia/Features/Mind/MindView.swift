@@ -8,80 +8,10 @@ struct MindView: View {
 #endif
 
     var body: some View {
-        NavigationStack {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        // Her name with her mark beside it — no state card.
-                        VStack(spacing: 5) {
-                            HStack(spacing: 10) {
-                                Image("RabbitMark")
-                                    .resizable().scaledToFit()
-                                    .frame(width: 26, height: 26)
-                                    .foregroundStyle(Theme.ink)
-                                InkTitleLine(text: "Alicia", size: 30)
-                            }
-                            Text("HER INNER WEATHER · \(AppVersion.tag)")
-                                .font(.system(size: 10, design: .monospaced))
-                                .tracking(2.0)
-                                .foregroundStyle(Theme.inkSoft)
+        EpisodeMindView()
 #if DEBUG
-                                .onTapGesture { showsMotionLab = true }
-                                .accessibilityHint("Opens the Motion Lab")
-#endif
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 14)
-
-                        // What's on her mind — the weekly note, with the
-                        // receipt behind each claim. Absent entirely on a week
-                        // with nothing citable: a quiet week is a fact about
-                        // the week, not a slot to fill.
-                        if !store.mindNote.isEmpty {
-                            MindNoteCard(text: store.mindNote)
-                        }
-
-                        ArchetypeGallery()
-
-                        if !store.proactiveFeed.isEmpty {
-                            Text("What she's been saying")
-                                .font(.headline)
-                                .padding(.top, 4)
-                            ForEach(store.proactiveFeed) { item in
-                                SaidCard(item: item).id(item.id)
-                            }
-                        }
-                        Text("RECENT THINKING")
-                            .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                            .tracking(2.0)
-                            .foregroundStyle(Theme.inkSoft)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 10)
-                        ForEach(Array(store.thoughts.enumerated()), id: \.element.id) { i, th in
-                            EditorialThought(thought: th, rank: i)
-                        }
-                    }
-                    .padding(16)
-                }
-                // A Dialogue whisper landed us here — go straight to that
-                // exact card (arrival and later taps alike).
-                .onAppear { scrollToPending(proxy) }
-                .onChange(of: store.pendingMindFocusID) { _, _ in
-                    scrollToPending(proxy)
-                }
-            }
-            .refreshable { await store.load() }
-            // The face emerging from the grain — her page.
-            // Sister field to Us: slow and dense — her inner weather. Seeded
-            // by her current archetype, so her page reshapes with her mood.
-            .presenceBackground(.mind, store: store)
-            .toolbar(.hidden, for: .navigationBar)
-        }
-#if DEBUG
-        .sheet(isPresented: $showsMotionLab) {
-            MotionLabView()
-                .preferredColorScheme(.light)
-        }
+            .onLongPressGesture { showsMotionLab = true }
+            .sheet(isPresented: $showsMotionLab) { MotionLabView() }
 #endif
     }
 

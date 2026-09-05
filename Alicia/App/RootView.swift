@@ -89,6 +89,7 @@ struct RootView: View {
         }
         // Serif body type everywhere — the sketchbook voice.
         .fontDesign(.serif)
+        .fullScreenCover(isPresented: $store.showWalk) { WalkReflectionView() }
     }
 
     @ViewBuilder
