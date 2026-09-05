@@ -76,3 +76,9 @@ recognition callbacks cannot touch a newer segment. Segment final text is kept
 before restarting. The presented question survives alongside the draft and is
 stored separately from Hector's own words. Backend retry repairs the daily note
 and conversation history idempotently.
+
+`python3 scripts/test_walk_save.py` compiles AppStore's actual save method with
+inert UI/network/storage dependencies. It verifies successful save, immutable
+retry/relaunch, definite rejection becoming editable, the size bound, and newer
+words surviving a delayed save. It failed on the rejected-pending bug before
+the correction and passes afterward. This does not exercise the microphone.

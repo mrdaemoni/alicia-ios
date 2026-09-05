@@ -198,12 +198,26 @@ final class AppStore {
                                           "episode_id": walkEpisodeID, "request_id": walkRequestID, "prompt": walkPrompt]
         let text = pending["text"] ?? ""
         guard !text.isEmpty, !isSavingWalk else { return false }
+        guard text.unicodeScalars.count <= 60000 else {
+            pendingWalkSave = nil
+            episodeError = "Please save this reflection in smaller parts. Your words are still here to edit."
+            return false
+        }
         pendingWalkSave = pending
         isSavingWalk = true
         defer { isSavingWalk = false }
         guard let receipt = await service.finishWalk(text: text, episodeID: pending["episode_id"] ?? walkEpisodeID,
-                                                      requestID: pending["request_id"] ?? walkRequestID, prompt: pending["prompt"] ?? ""), receipt.ok else {
-            episodeError = "Your reflection is still on this phone. It hasn't been saved to Alicia yet; try again."
+                                                      requestID: pending["request_id"] ?? walkRequestID, prompt: pending["prompt"] ?? "") else {
+            episodeError = "I couldn't confirm the save. The submitted words are kept here; tap Retry save."
+            return false
+        }
+        guard receipt.ok else {
+            // Definite rejections remain editable. Only an uncertain result
+            // keeps the exact pending submission locked for retry.
+            pendingWalkSave = nil
+            walkRequestID = UUID().uuidString
+            UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+            episodeError = receipt.message ?? "The reflection wasn't accepted. Your words are still here to edit."
             return false
         }
         pendingWalkSave = nil
