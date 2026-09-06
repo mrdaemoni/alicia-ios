@@ -50,12 +50,18 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
+    func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult?
+    func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload?
+    func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult?
+    func downloadVoice(recordingID: String, segmentID: String) async -> Data?
+    func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent>
     func contextEnrichment(replyID: String) async -> ContextEnrichment?
     func changeContext(_ change: ContextChange) async -> ContextChangeResult?
     func contextSource(replyID: String, itemID: String) async -> ContextSource?
     func episodeDay(day: String) async -> EpisodeDay?
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse?
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt?
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt?
     func conversationHistory() async -> ConversationHistory?
     func dialogueReview(replyID: String) async -> DialogueReview?
     func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult?
@@ -91,6 +97,7 @@ protocol AliciaService {
     /// Reply to one of her proactive messages. Lands as Tier-3 capture +
     /// shared history + memory on the backend; returns her answer.
     func reply(proactiveID: String, text: String) async -> String?
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String?
     /// Co-creation: send the current canvas composite and where the pencil
     /// stopped (normalized 0…1, nil if unknown); she draws from that point.
     func cocreate(image: Data, width: Int, height: Int,
@@ -147,6 +154,23 @@ protocol AliciaService {
     /// citable, and then the view renders nothing rather than a placeholder:
     /// a quiet week is a fact about the week.
     func mindNote() async -> String
+}
+
+extension AliciaService {
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String? {
+        await reply(proactiveID: proactiveID, text: text)
+    }
+
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
+        await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt)
+    }
+    func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult? { nil }
+    func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload? { nil }
+    func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult? { nil }
+    func downloadVoice(recordingID: String, segmentID: String) async -> Data? { nil }
+    func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice)
+    }
 }
 
 struct TimelineDay: Decodable, Hashable, Identifiable {

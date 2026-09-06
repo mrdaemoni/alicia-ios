@@ -2,11 +2,19 @@ import SwiftUI
 
 struct TalkView: View {
     @Environment(AppStore.self) private var store
-    @State private var draft = ""
+    @AppStorage("alicia.dialogueDraft") private var draft = ""
+    @AppStorage("alicia.dialogueRecordingID") private var recordingID = ""
     @State private var inspectedMessage: Message?
     @State private var speech = SpeechTranscriber()
     @State private var dictationBase = ""
     @FocusState private var focused: Bool
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var showRecordings = false
+    @State private var selectedRecordingID: String?
+    @State private var microphoneError = ""
+    @State private var microphoneGeneration = 0
+    @State private var microphoneStarting = false
+    @State private var visible = false
 
     var body: some View {
         NavigationStack {
@@ -30,6 +38,9 @@ struct TalkView: View {
                             .font(.caption).foregroundStyle(Theme.inkSoft)
                     }
                     EpisodeErrorLine()
+                    Button("RECORDINGS") { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = nil; showRecordings = true }
+                        .font(.system(size: 10, design: .monospaced)).tracking(1)
+                        .frame(minHeight: 44).accessibilityIdentifier("voice.recordings")
                 }.padding(.horizontal, 18).padding(.bottom, 12)
                 messageList
                 composer
@@ -43,6 +54,10 @@ struct TalkView: View {
                 DialogueReviewView(message: message)
                     .presentationDetents([.large])
             }
+            .sheet(isPresented: $showRecordings) { VoiceRecordingsView(recordingID: selectedRecordingID) }
+            .onAppear { visible = true }
+            .onDisappear { visible = false; cancelMicrophoneStart(); speech.stop() }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { cancelMicrophoneStart(); speech.stop() } }
         }
     }
 
@@ -52,6 +67,10 @@ struct TalkView: View {
                 LazyVStack(spacing: 12) {
                     ForEach(store.messages) { message in
                         MessageBubble(message: message, inspect: { inspectedMessage = $0 }).id(message.id)
+                        if let id = message.recordingID {
+                            Button("REVIEW ORIGINAL RECORDING") { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = id; showRecordings = true }
+                                .font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -96,6 +115,11 @@ struct TalkView: View {
                 .padding(.horizontal, 4)
             }
             composerRow
+            if let error = speech.lastError ?? (microphoneError.isEmpty ? nil : microphoneError) {
+                Text(error).font(.caption).foregroundStyle(Theme.paper)
+            } else if speech.isRecording {
+                Text("Original audio is being saved.").font(.caption).foregroundStyle(Theme.paper)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -152,9 +176,11 @@ struct TalkView: View {
             .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
 
             Button {
+                cancelMicrophoneStart()
                 speech.stop()
-                store.send(draft)
+                store.send(draft, recordingID: recordingID)
                 draft = ""
+                recordingID = ""
             } label: {
                 // Hand-drawn send — paper ink on the dark band (v21).
                 InkSubmitArrow(size: 34, color: Theme.paper, seed: 23)
@@ -165,6 +191,7 @@ struct TalkView: View {
     }
 
     private func toggleDictation() {
+        if microphoneStarting { cancelMicrophoneStart(); return }
         if speech.isRecording {
             speech.stop()
             return
@@ -172,10 +199,22 @@ struct TalkView: View {
         focused = false
         store.prepareForRecording()
         dictationBase = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        microphoneGeneration += 1
+        let generation = microphoneGeneration
+        microphoneStarting = true
         Task {
-            guard await speech.requestAuthorization() else { return }
-            try? speech.start()
+            defer { if generation == microphoneGeneration { microphoneStarting = false } }
+            guard await speech.requestAuthorization() else { microphoneError = "Microphone permission is off."; return }
+            guard generation == microphoneGeneration, visible, scenePhase == .active, !store.showWalk, !showRecordings else { return }
+            if recordingID.isEmpty || store.voiceArchive.recording(recordingID)?.deleted == true { recordingID = UUID().uuidString }
+            do { try store.startVoiceCapture(speech, id: recordingID, walk: false); microphoneError = "" }
+            catch { microphoneError = "The original audio could not start recording. Your draft is kept." }
         }
+    }
+
+    private func cancelMicrophoneStart() {
+        microphoneGeneration += 1
+        microphoneStarting = false
     }
 }
 

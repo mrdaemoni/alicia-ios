@@ -15,6 +15,7 @@ struct WalkReflectionView: View {
     @State private var starting = false
     @State private var reviewingWords = false
     @State private var previousIdleTimerDisabled: Bool?
+    @State private var showRecording = false
 
     private var visibleRecording: Bool {
 #if DEBUG
@@ -44,10 +45,16 @@ struct WalkReflectionView: View {
                 .disabled(listening || store.pendingWalkSave != nil)
                 .scrollContentBackground(.hidden)
                 .accessibilityLabel("Your walk reflection")
-            Text(reviewingWords ? "Check that these words match what you said. Tap the text to correct anything before saving." : status.isEmpty ? "Your words stay on this phone until you finish." : status)
+            Text(reviewingWords ? "Check these words against your recording. Corrections stay separate from the original transcript." : speech.lastError ?? (status.isEmpty ? "Original audio is kept on this phone and synced to your Mac." : status))
                 .font(.caption).foregroundStyle(Theme.inkSoft)
-            Text("The screen stays awake while this reflection is open.")
-                .font(.caption).foregroundStyle(Theme.inkSoft)
+            HStack {
+                Text("Audio stays until you delete it.").font(.caption).foregroundStyle(Theme.inkSoft)
+                Spacer()
+                if store.voiceArchive.hasAudio(store.walkRecordingID) {
+                    Button("REVIEW AUDIO") { pause(); showRecording = true }
+                        .font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
+                }
+            }
             EpisodeErrorLine()
             Button(listening ? "PAUSE LISTENING" : "KEEP TALKING") {
                 if listening { pause() } else { Task { await begin() } }
@@ -62,15 +69,17 @@ struct WalkReflectionView: View {
                 else { Task { _ = await store.finishEpisodeWalk() } }
             }
             .buttonStyle(EpisodeButtonStyle())
-            .disabled(store.isSavingWalk || store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(store.isSavingWalk || (!listening && !store.voiceArchive.hasAudio(store.walkRecordingID)
+                && store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             .accessibilityIdentifier("episode.finishWalk")
         }
         .disabled(store.isSavingWalk)
         .padding(24)
         .background(Theme.paper)
+        .sheet(isPresented: $showRecording) { VoiceRecordingsView(recordingID: store.walkRecordingID) }
         .task {
 #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
+            if ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") || ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
                 status = visibleRecording ? "Preview of microphone-on UI. No audio is recorded or sent." : "Preview — recording is paused. No audio or words are sent."
                 return
             }
@@ -92,26 +101,13 @@ struct WalkReflectionView: View {
             if listening { store.walkDraft = base + (base.isEmpty || text.isEmpty ? "" : "\n\n") + text }
         }
         .onChange(of: speech.isRecording) { was, now in
-            guard was, !now, listening, !restarting else { return }
+            guard was, !now, listening else { return }
             if !speech.transcript.isEmpty {
                 store.walkDraft = base + (base.isEmpty ? "" : "\n\n") + speech.transcript
             }
             base = store.walkDraft
-            speech.transcript = ""
-            restarting = true
-            if speech.lastError != nil { automaticRestarts += 1 } else { automaticRestarts = 0 }
-            let generation = startGeneration
-            Task {
-                try? await Task.sleep(for: .milliseconds(400))
-                if listening && automaticRestarts <= 3 && generation == startGeneration && scenePhase == .active && store.showWalk {
-                    do { try speech.start() }
-                    catch { listening = false; status = "Listening paused. Your words are kept. Tap Keep talking." }
-                } else {
-                    listening = false
-                    status = "Listening paused. Your words are kept. Tap Keep talking."
-                }
-                restarting = false
-            }
+            listening = false
+            status = speech.lastError ?? "Recording paused. Your captured audio is kept."
         }
     }
 
@@ -141,15 +137,16 @@ struct WalkReflectionView: View {
         let allowed = await speech.requestAuthorization()
         guard canStart(generation) else { store.pauseEpisodeWalk(); return }
         guard allowed else {
-            status = "Microphone or speech permission is off. You can write here, or enable it in Settings."
+            status = "Microphone permission is off. You can write here, or enable it in Settings."
             return
         }
         base = store.walkDraft
         do {
-            try speech.start()
+            if store.walkRecordingID.isEmpty || store.voiceArchive.recording(store.walkRecordingID)?.deleted == true { store.walkRecordingID = UUID().uuidString }
+            try store.startVoiceCapture(speech, id: store.walkRecordingID, walk: true)
             listening = true
             automaticRestarts = 0
-            status = "Listening. Take your time."
+            status = "Recording the original audio. Take your time."
         } catch {
             status = "The microphone couldn't start. Your words are kept; you can write or try again."
         }

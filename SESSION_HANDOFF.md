@@ -170,3 +170,21 @@ Finish during live dictation first exposes editable words, then Save & reflect.
 Feature contract: backend docs/EPISODE_DAY.md. Actual audit/release evidence:
 `/Users/alicia/Documents/Alicia-development/tasks/A2-008/`. Tests use inert
 Swift harnesses and mock-only XCUITest; no production inputs are manufactured.
+
+## A2-009 — retain original iOS voice
+
+Walk and Dialogue now retain original CAF microphone segments in a protected,
+file-backed VoiceArchive, independently of live speech recognition. Raw files,
+capture time/timezone/episode/frame/question context, original on-device text,
+submitted words and explicit corrections remain distinguishable. Closed audio
+segments retry to the private Mac by UUID/checksum; empty recognition still keeps
+valid audio. Recordings opens from Dialogue or the paused walk, with original
+playback, text versions, exact message links, nearby messages and Delete audio.
+Deletion keeps a tombstone and text/context; an offline Mac deletion remains
+visibly pending. No raw-audio cloud provider or automatic training was added.
+
+The implementation is stacked on TestFlight 1.0 (9), source 0de4440. Its own
+release status is `/Users/alicia/Documents/Alicia-development/tasks/A2-009/RELEASE.md`.
+Backend behavior: `docs/VOICE_EVIDENCE.md` in the paired backend worktree.
+Physical microphone/headset completeness remains a device check, separate from
+simulator file/buffer/UI evidence. Earlier missing recordings cannot be recovered.
