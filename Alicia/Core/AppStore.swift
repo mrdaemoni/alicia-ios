@@ -161,9 +161,10 @@ final class AppStore {
             episodeError = "This recording isn't available as an episode conversation yet."
             return
         }
-        if episodeDay?.episode?.id == label, episodeDay?.episode_basis == "selected" { return }
+        let chosen = EpisodeDay.choosing(.init(id: label, title: track.title, source_paths: []), previous: episodeDay)
+        if episodeDay?.episode?.id == label, episodeDay?.episode_basis == "selected", episodeDay?.date == chosen.date { return }
         noteContextActivity()
-        episodeDay = .choosing(.init(id: label, title: track.title, source_paths: []), previous: episodeDay)
+        episodeDay = chosen
         playbackOutbox.append(["action": "selected", "episode_id": label,
             "event_id": UUID().uuidString, "observed_at": ISO8601DateFormatter().string(from: .now),
             "title": track.title])
@@ -393,9 +394,25 @@ final class AppStore {
         playbackFlushing = true
         defer { playbackFlushing = false }
         while let first = playbackOutbox.first {
-            guard let receipt = await service.episodeAction(first), receipt.ok else {
+            guard let receipt = await service.episodeAction(first) else {
                 episodeError = "The episode hasn't synced to Alicia yet. Your choice and listening are kept here for retry."
                 return
+            }
+            if !receipt.ok {
+                guard receipt.retryable == false else {
+                    episodeError = receipt.error ?? "The episode hasn't synced. I'll retry when connected."
+                    return
+                }
+                // Keep a rejected receipt locally for inspection, but let a new
+                // valid choice proceed. Uncertain deliveries stay in the outbox.
+                var rejected = UserDefaults.standard.array(forKey: "alicia.rejectedEpisodeReceipts") as? [[String: Any]] ?? []
+                rejected.append(first.merging(["error": receipt.error ?? "Rejected"]) { _, new in new })
+                UserDefaults.standard.set(rejected, forKey: "alicia.rejectedEpisodeReceipts")
+                playbackOutbox.removeFirst()
+                UserDefaults.standard.set(playbackOutbox, forKey: "alicia.playbackOutbox")
+                episodeError = receipt.error ?? "That episode is unavailable. Choose another in Studio."
+                if let fresh = await service.episodeDay(day: "") { acceptEpisodeDay(fresh) }
+                continue
             }
             playbackOutbox.removeFirst()
             UserDefaults.standard.set(playbackOutbox, forKey: "alicia.playbackOutbox")

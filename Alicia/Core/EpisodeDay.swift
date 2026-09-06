@@ -41,6 +41,7 @@ struct EpisodeDayResponse: Decodable {
     var ok: Bool
     var error: String?
     var day: EpisodeDay?
+    var retryable: Bool? = nil
 }
 
 struct WalkReceipt: Decodable {

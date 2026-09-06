@@ -70,7 +70,7 @@ struct WalkReflectionView: View {
         .background(Theme.paper)
         .task {
 #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") {
+            if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
                 status = visibleRecording ? "Preview of microphone-on UI. No audio is recorded or sent." : "Preview — recording is paused. No audio or words are sent."
                 return
             }

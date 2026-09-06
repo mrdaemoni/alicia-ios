@@ -129,9 +129,11 @@ private struct EpisodeConversationBar: View {
                         .contentShape(Rectangle())
                     }
                     .accessibilityIdentifier("episode.talkAnywhere")
-                    Button("WRITE") { store.selectedSection = .dialogue }
-                        .font(.system(size: 10, design: .monospaced)).tracking(1)
-                        .frame(minHeight: 44)
+                    Button { store.selectedSection = .dialogue } label: {
+                        Text("WRITE")
+                            .font(.system(size: 10, design: .monospaced)).tracking(1)
+                            .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                    }
                         .accessibilityLabel("Write about " + episode.id)
                 }.padding(.horizontal, 20).padding(.vertical, 5)
             }

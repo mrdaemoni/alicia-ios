@@ -8,24 +8,37 @@ def section(start,end):
     return source[source.index(start):source.index(end,source.index(start))].replace('private ', '')
 choice = section('    func chooseEpisode(', '    func loadEpisodeDay(')
 walk = section('    func openWalk(', '    func beginWalkRecording(')
+flush = section('    private func flushPlaybackOutbox()', '    // MARK: playlists')
 models = (root/'Alicia/Core/EpisodeDay.swift').read_text().split('#if DEBUG')[0]
 program = r'''
 import Foundation
 struct Track { var label: String?; var title: String }
+@MainActor final class Service {
+ var results:[EpisodeDayResponse?]=[]
+ var sent:[String]=[]
+ func episodeAction(_ body:[String:Any]) async -> EpisodeDayResponse? {
+  sent.append(body["event_id"] as? String ?? "")
+  return results.isEmpty ? nil : results.removeFirst()
+ }
+ func episodeDay(day:String) async -> EpisodeDay? { nil }
+}
 @MainActor final class Harness {
+ let service=Service()
+ var playbackFlushing=false
  var episodeDay: EpisodeDay?
  var playbackOutbox:[[String:Any]]=[]
  var walkEpisodeID="", walkDraft="", walkPrompt="", walkRequestID="initial", episodeError=""
  var pendingWalkSave:[String:String]?
  var showWalk=false
  func noteContextActivity() {}
- func flushPlaybackOutbox() async {}
+ func awaitEpisodeFrame() {}
+__FLUSH__
 __CHOICE__
 __WALK__
 }
 @main struct Checks {
  @MainActor static func main() async {
-  let keys=["alicia.playbackOutbox","alicia.episodeWalkDrafts","alicia.walkEpisodeID","alicia.walkRequestID"]
+  let keys=["alicia.playbackOutbox","alicia.episodeWalkDrafts","alicia.walkEpisodeID","alicia.walkRequestID","alicia.rejectedEpisodeReceipts"]
   for key in keys { UserDefaults.standard.removeObject(forKey:key) }
   defer { for key in keys { UserDefaults.standard.removeObject(forKey:key) } }
   let h=Harness()
@@ -62,10 +75,28 @@ __WALK__
   let before=h.playbackOutbox.count
   h.chooseEpisode(.init(label:nil,title:"A synthesis"))
   precondition(h.playbackOutbox.count==before)
-  print("7 episode checks passed: instant selection, separate drafts, exact restore, pending race, stale fetch, immutable pending save, non-episode ignored")
+  let old=Harness()
+  old.episodeDay=current; old.episodeDay!.date="2020-01-01"
+  old.chooseEpisode(.init(label:"S1E01",title:"First"))
+  precondition(old.playbackOutbox.count==1 && old.episodeDay?.date != "2020-01-01")
+  let outbox=Harness()
+  outbox.playbackOutbox=[["action":"selected","episode_id":"S1E01","event_id":"bad"],
+                        ["action":"selected","episode_id":"S1E02","event_id":"good"]]
+  outbox.service.results=[EpisodeDayResponse(ok:false,error:"Missing script",retryable:false),EpisodeDayResponse(ok:true,day:stale)]
+  await outbox.flushPlaybackOutbox()
+  precondition(outbox.playbackOutbox.isEmpty && outbox.service.sent==["bad","good"] && outbox.episodeDay?.episode?.id=="S1E02")
+  let uncertain=Harness()
+  uncertain.playbackOutbox=[["action":"selected","episode_id":"S1E01","event_id":"uncertain"]]
+  uncertain.service.results=[nil]
+  await uncertain.flushPlaybackOutbox()
+  precondition(uncertain.playbackOutbox.count==1 && uncertain.playbackOutbox[0]["event_id"] as? String == "uncertain")
+  uncertain.service.results=[EpisodeDayResponse(ok:false,error:"Temporary storage failure",retryable:true)]
+  await uncertain.flushPlaybackOutbox()
+  precondition(uncertain.playbackOutbox.count==1)
+  print("11 episode checks passed: instant selection, separate drafts, exact restore, pending race, stale fetch, immutable pending save, non-episode ignored")
  }
 }
-'''.replace('__CHOICE__',choice).replace('__WALK__',walk)
+'''.replace('__CHOICE__',choice).replace('__WALK__',walk).replace('__FLUSH__',flush)
 with tempfile.TemporaryDirectory(prefix='alicia-episode-checks-') as tmp:
     code=Path(tmp)/'Checks.swift';binary=Path(tmp)/'checks'
     code.write_text(models+program)
