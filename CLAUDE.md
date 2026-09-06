@@ -1,5 +1,10 @@
 # CLAUDE.md — Alicia iOS
 
+Current task coordination: `/Users/alicia/alicia/docs/COLLABORATION.md` and
+`/Users/alicia/Documents/Alicia-development/README.md`. Read the assigned brief,
+claim its branch/worktree, and leave committed work plus test evidence in the
+shared task folder for Codex review. Register self-initiated work there too.
+
 **Read `AGENTS.md` before doing anything.** It is the repository-wide contract
 for Codex–Opus coordination, worktrees, file ownership, review handoffs, Git,
 and the Motion Lab promotion gate.
