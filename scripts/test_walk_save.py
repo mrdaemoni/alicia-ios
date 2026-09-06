@@ -22,7 +22,7 @@ import Foundation
     func set(_ value: String, forKey: String) {}
 }
 struct WalkReceipt { var ok: Bool; var message: String? = nil }
-struct Message { enum Sender { case me }; var sender: Sender; var text: String }
+struct Message { enum Sender { case me }; var sender: Sender; var text: String; var recordingID: String? = nil }
 enum Section { case us, mind }
 @MainActor final class FakeService {
     var result: WalkReceipt?
