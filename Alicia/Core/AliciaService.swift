@@ -97,6 +97,7 @@ protocol AliciaService {
     /// Reply to one of her proactive messages. Lands as Tier-3 capture +
     /// shared history + memory on the backend; returns her answer.
     func reply(proactiveID: String, text: String) async -> String?
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String?
     /// Co-creation: send the current canvas composite and where the pencil
     /// stopped (normalized 0…1, nil if unknown); she draws from that point.
     func cocreate(image: Data, width: Int, height: Int,
@@ -156,6 +157,10 @@ protocol AliciaService {
 }
 
 extension AliciaService {
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String? {
+        await reply(proactiveID: proactiveID, text: text)
+    }
+
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
         await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt)
     }

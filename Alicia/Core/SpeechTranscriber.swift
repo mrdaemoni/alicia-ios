@@ -125,6 +125,11 @@ final class SpeechTranscriber {
 
     private func drainAudio() {
         guard let sink else { return }
+        if isRecording && !engine.isRunning {
+            lastError = "Recording paused because the microphone route changed. Captured audio is kept; tap to resume."
+            stop()
+            return
+        }
         let result = sink.drain()
         if !result.segments.isEmpty { deliverSegments?(result.segments) }
         if result.error != nil {

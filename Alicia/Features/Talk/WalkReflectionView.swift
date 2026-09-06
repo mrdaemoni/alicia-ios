@@ -142,7 +142,7 @@ struct WalkReflectionView: View {
         }
         base = store.walkDraft
         do {
-            if store.walkRecordingID.isEmpty { store.walkRecordingID = UUID().uuidString }
+            if store.walkRecordingID.isEmpty || store.voiceArchive.recording(store.walkRecordingID)?.deleted == true { store.walkRecordingID = UUID().uuidString }
             try store.startVoiceCapture(speech, id: store.walkRecordingID, walk: true)
             listening = true
             automaticRestarts = 0

@@ -372,9 +372,13 @@ struct LiveAliciaService: AliciaService {
     private struct ReplyDTO: Decodable { var ok: Bool; var response: String? }
 
     func reply(proactiveID: String, text: String) async -> String? {
+        await reply(proactiveID: proactiveID, text: text, recordingID: "", episodeID: "")
+    }
+
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String? {
         do {
             let body = try JSONSerialization.data(
-                withJSONObject: ["proactive_id": proactiveID, "text": text])
+                withJSONObject: ["proactive_id": proactiveID, "text": text, "recording_id": recordingID, "episode_id": episodeID])
             let (data, resp) = try await URLSession.shared.data(
                 for: request("/api/reply", method: "POST", body: body))
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }

@@ -964,10 +964,11 @@ final class AppStore {
             Task { await syncVoiceArchive() }
         }
         if let askID = answeringAskID {
+            let episodeID = voiceArchive.recording(recordingID)?.context.episode_id ?? ""
             cancelAnswering()
             messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID))
             Task {
-                let reply = await service.reply(proactiveID: askID, text: clean)
+                let reply = await service.reply(proactiveID: askID, text: clean, recordingID: recordingID, episodeID: episodeID)
                 if let reply, !reply.isEmpty {
                     messages.append(Message(sender: .alicia, text: reply))
                 } else {

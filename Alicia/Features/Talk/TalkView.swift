@@ -68,7 +68,7 @@ struct TalkView: View {
                     ForEach(store.messages) { message in
                         MessageBubble(message: message, inspect: { inspectedMessage = $0 }).id(message.id)
                         if let id = message.recordingID {
-                            Button("REVIEW ORIGINAL RECORDING") { selectedRecordingID = id; showRecordings = true }
+                            Button("REVIEW ORIGINAL RECORDING") { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = id; showRecordings = true }
                                 .font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
                         }
                     }
