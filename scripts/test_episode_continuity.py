@@ -24,7 +24,7 @@ struct Track { var label: String?; var title: String }
 }
 @MainActor final class Harness {
  let service=Service()
- var playbackFlushing=false
+ var playbackFlushing=false, episodeChoiceNeedsRefresh=false
  var episodeDay: EpisodeDay?
  var playbackOutbox:[[String:Any]]=[]
  var walkEpisodeID="", walkDraft="", walkPrompt="", walkRequestID="initial", episodeError=""
@@ -32,6 +32,7 @@ struct Track { var label: String?; var title: String }
  var showWalk=false
  func noteContextActivity() {}
  func awaitEpisodeFrame() {}
+ func refreshEpisodeDay() async {}
 __FLUSH__
 __CHOICE__
 __WALK__
@@ -93,7 +94,15 @@ __WALK__
   uncertain.service.results=[EpisodeDayResponse(ok:false,error:"Temporary storage failure",retryable:true)]
   await uncertain.flushPlaybackOutbox()
   precondition(uncertain.playbackOutbox.count==1)
-  print("11 episode checks passed: instant selection, separate drafts, exact restore, pending race, stale fetch, immutable pending save, non-episode ignored")
+  let rejected=Harness()
+  rejected.episodeDay=current
+  rejected.playbackOutbox=[["action":"selected","episode_id":"S1E01","event_id":"rejected"]]
+  rejected.service.results=[EpisodeDayResponse(ok:false,error:"Unavailable",retryable:false)]
+  await rejected.flushPlaybackOutbox()
+  precondition(rejected.episodeDay==nil && rejected.episodeChoiceSyncing)
+  rejected.acceptEpisodeDay(stale)
+  precondition(!rejected.episodeChoiceSyncing && rejected.episodeDay?.episode?.id=="S1E02")
+  print("12 episode checks passed: instant selection, separate drafts, exact restore, pending race, stale fetch, immutable pending save, non-episode ignored")
  }
 }
 '''.replace('__CHOICE__',choice).replace('__WALK__',walk).replace('__FLUSH__',flush)

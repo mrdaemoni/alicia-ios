@@ -103,6 +103,7 @@ final class AppStore {
     private var playbackClock: TimeInterval = 0
     private var playbackAccumulated: Double = 0
     private var playbackFlushing = false
+    private var episodeChoiceNeedsRefresh = false
     private var playbackOutbox: [[String: Any]] =
         UserDefaults.standard.array(forKey: "alicia.playbackOutbox") as? [[String: Any]] ?? []
 
@@ -181,7 +182,7 @@ final class AppStore {
         }
     }
 
-    var episodeChoiceSyncing: Bool { pendingEpisodeChoice != nil }
+    var episodeChoiceSyncing: Bool { pendingEpisodeChoice != nil || episodeChoiceNeedsRefresh }
 
     func retryEpisodeSync() { Task { await flushPlaybackOutbox() } }
 
@@ -197,6 +198,7 @@ final class AppStore {
         if let incoming = fresh.snapshot_revision, let current = episodeDay?.snapshot_revision,
            incoming < current { return }
         episodeDay = fresh
+        episodeChoiceNeedsRefresh = false
     }
 
     func loadEpisodeDay(_ date: String) async -> EpisodeDay? {
@@ -411,6 +413,10 @@ final class AppStore {
                 playbackOutbox.removeFirst()
                 UserDefaults.standard.set(playbackOutbox, forKey: "alicia.playbackOutbox")
                 episodeError = receipt.error ?? "That episode is unavailable. Choose another in Studio."
+                if first["action"] as? String == "selected", pendingEpisodeChoice == nil {
+                    episodeDay = nil
+                    episodeChoiceNeedsRefresh = true
+                }
                 if let fresh = await service.episodeDay(day: "") { acceptEpisodeDay(fresh) }
                 continue
             }
@@ -422,6 +428,7 @@ final class AppStore {
                 awaitEpisodeFrame()
             }
         }
+        if episodeChoiceNeedsRefresh { await refreshEpisodeDay() }
     }
 
     // MARK: playlists — the listening queues (Studio)

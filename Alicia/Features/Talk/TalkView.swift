@@ -25,6 +25,7 @@ struct TalkView: View {
                         Button("Syncing your episode choice · tap to retry") { store.retryEpisodeSync() }
                             .font(.caption).foregroundStyle(Theme.inkSoft)
                     }
+                    EpisodeErrorLine()
                 }.padding(.horizontal, 18).padding(.bottom, 12)
                 messageList
                 composer
