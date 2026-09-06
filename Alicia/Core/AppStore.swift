@@ -74,6 +74,7 @@ final class AppStore {
         // A session that only ever reads still deserves lock-screen controls
         // — the podcast player used to be the only thing that armed them.
         configureRemoteCommandsOnce()
+        if let label = item.episodeID, let track = track(forLabel: label) { chooseEpisode(track) }
         reader.read(item)
     }
 
@@ -84,7 +85,7 @@ final class AppStore {
     var walkPrompt = UserDefaults.standard.string(forKey: "alicia.walkPrompt") ?? "" {
         didSet { UserDefaults.standard.set(walkPrompt, forKey: "alicia.walkPrompt") }
     }
-    var walkEpisodeID = ""
+    var walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? ""
     var walkDraft = UserDefaults.standard.string(forKey: "alicia.walkDraft") ?? "" {
         didSet { UserDefaults.standard.set(walkDraft, forKey: "alicia.walkDraft") }
     }
@@ -148,9 +149,53 @@ final class AppStore {
 
     func refreshEpisodeDay() async {
         if let fresh = await service.episodeDay(day: "") {
-            episodeDay = fresh
+            acceptEpisodeDay(fresh)
         }
         await syncThoughtReturn()
+    }
+
+    /// One shared conversation topic, immediately visible while its receipt syncs.
+    func chooseEpisode(_ track: Track) {
+        guard let label = track.label, !label.isEmpty else { return }
+        guard label.range(of: #"^S\d{1,2}E\d{2}$"#, options: .regularExpression) != nil else {
+            episodeError = "This recording isn't available as an episode conversation yet."
+            return
+        }
+        if episodeDay?.episode?.id == label, episodeDay?.episode_basis == "selected" { return }
+        noteContextActivity()
+        episodeDay = .choosing(.init(id: label, title: track.title, source_paths: []), previous: episodeDay)
+        playbackOutbox.append(["action": "selected", "episode_id": label,
+            "event_id": UUID().uuidString, "observed_at": ISO8601DateFormatter().string(from: .now),
+            "title": track.title])
+        UserDefaults.standard.set(playbackOutbox, forKey: "alicia.playbackOutbox")
+        Task { await flushPlaybackOutbox() }
+    }
+
+    private var pendingEpisodeChoice: [String: Any]? {
+        playbackOutbox.last {
+            guard $0["action"] as? String == "selected",
+                  let time = $0["observed_at"] as? String,
+                  let date = ISO8601DateFormatter().date(from: time) else { return false }
+            return Calendar.current.isDateInToday(date)
+        }
+    }
+
+    var episodeChoiceSyncing: Bool { pendingEpisodeChoice != nil }
+
+    func retryEpisodeSync() { Task { await flushPlaybackOutbox() } }
+
+    private func acceptEpisodeDay(_ fresh: EpisodeDay) {
+        if let pending = pendingEpisodeChoice, let label = pending["episode_id"] as? String {
+            // A stale fetch/receipt cannot restore the previous topic during a switch.
+            if fresh.episode?.id != label {
+                episodeDay = .choosing(.init(id: label, title: pending["title"] as? String ?? label,
+                                            source_paths: []), previous: episodeDay)
+                return
+            }
+        }
+        if let incoming = fresh.snapshot_revision, let current = episodeDay?.snapshot_revision,
+           incoming < current { return }
+        episodeDay = fresh
     }
 
     func loadEpisodeDay(_ date: String) async -> EpisodeDay? {
@@ -183,7 +228,7 @@ final class AppStore {
             return false
         }
         episodeError = ""
-        if let day = result.day { episodeDay = day }
+        if let day = result.day { acceptEpisodeDay(day) }
         awaitEpisodeFrame()
         return true
     }
@@ -193,15 +238,31 @@ final class AppStore {
             episodeError = "Play an episode in Studio to begin."
             return
         }
-        if walkDraft.isEmpty {
-            walkEpisodeID = episode.id
+        if let pending = pendingWalkSave, pending["episode_id"] != episode.id {
+            episodeError = "A reflection for \(pending["episode_id"] ?? walkEpisodeID) still needs its save confirmed. Retry it before starting \(episode.id)."
+            walkEpisodeID = pending["episode_id"] ?? walkEpisodeID
+            showWalk = true
+            return
+        }
+        if walkEpisodeID != episode.id {
+            // Keep separate drafts when a new Studio choice opens a different walk.
+            var drafts = UserDefaults.standard.dictionary(forKey: "alicia.episodeWalkDrafts") as? [String: [String: String]] ?? [:]
+            if !walkDraft.isEmpty, !walkEpisodeID.isEmpty {
+                drafts[walkEpisodeID] = ["text": walkDraft, "prompt": walkPrompt, "request_id": walkRequestID]
+            }
+            let restored = drafts.removeValue(forKey: episode.id)
+            UserDefaults.standard.set(drafts, forKey: "alicia.episodeWalkDrafts")
+            walkDraft = restored?["text"] ?? ""
+            walkPrompt = restored?["prompt"] ?? probe
+            walkRequestID = restored?["request_id"] ?? UUID().uuidString
+        } else if walkDraft.isEmpty, pendingWalkSave == nil {
             walkPrompt = probe
             walkRequestID = UUID().uuidString
-            UserDefaults.standard.set(walkEpisodeID, forKey: "alicia.walkEpisodeID")
-            UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
-        } else {
-            walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? episode.id
         }
+        walkEpisodeID = episode.id
+        UserDefaults.standard.set(walkEpisodeID, forKey: "alicia.walkEpisodeID")
+        UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+        episodeError = ""
         noteContextActivity()
         showWalk = true
     }
@@ -333,13 +394,13 @@ final class AppStore {
         defer { playbackFlushing = false }
         while let first = playbackOutbox.first {
             guard let receipt = await service.episodeAction(first), receipt.ok else {
-                episodeError = "Listening hasn't synced to Alicia yet. I'll retry when connected."
+                episodeError = "The episode hasn't synced to Alicia yet. Your choice and listening are kept here for retry."
                 return
             }
             playbackOutbox.removeFirst()
             UserDefaults.standard.set(playbackOutbox, forKey: "alicia.playbackOutbox")
-            if first["action"] as? String == "playing" {
-                if let day = receipt.day { episodeDay = day }
+            if ["selected", "playing"].contains(first["action"] as? String ?? "") {
+                if let day = receipt.day { acceptEpisodeDay(day) }
                 episodeError = ""
                 awaitEpisodeFrame()
             }
@@ -362,6 +423,9 @@ final class AppStore {
     /// press once, then the phone goes in a pocket.
     func playPlaylist(_ playlist: Playlist, from index: Int = 0) {
         configureRemoteCommandsOnce()
+        if playlist.readables.indices.contains(index),
+           let label = playlist.readables[index].episodeID,
+           let track = track(forLabel: label) { chooseEpisode(track) }
         reader.play(queue: playlist.readables, from: index,
                     playlist: playlist.name)
     }
@@ -442,7 +506,7 @@ final class AppStore {
         async let sy = service.syntheses()
         async let hc = service.homeContext()
         async let pls = service.playlists()
-        if let fresh = await day { episodeDay = fresh }
+        if let fresh = await day { acceptEpisodeDay(fresh) }
         if let transcript = await history, !isStreaming, messages.map(\.id) == messagesAtStart {
             messages = transcript.messages.map { row in
                 Message(sender: row.role == "user" ? .me : .alicia, text: row.content,
@@ -801,7 +865,7 @@ final class AppStore {
 
     func send(_ text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, !isStreaming else { return }
+        guard !clean.isEmpty, !isStreaming, !episodeChoiceSyncing else { return }
         noteContextActivity()
         if let askID = answeringAskID {
             cancelAnswering()
@@ -912,7 +976,8 @@ final class AppStore {
     private var endObserver: NSObjectProtocol?
     private var stallObserver: NSObjectProtocol?
 
-    func play(_ track: Track) {
+    func play(_ track: Track, chooseTopic: Bool = true) {
+        if chooseTopic { chooseEpisode(track) }
         // An episode starting ends a reading outright — unlike the reverse,
         // there's no position worth keeping once you've chosen the podcast.
         reader.stop()
@@ -1028,7 +1093,7 @@ final class AppStore {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.flushEpisodePlayback(ended: true)
-                self?.next()
+                self?.next(chooseTopic: false)
             }
         }
         p.play()
@@ -1161,10 +1226,10 @@ final class AppStore {
         player = nil
     }
 
-    func next() {
+    func next(chooseTopic: Bool = true) {
         guard let current = nowPlaying,
               let i = tracks.firstIndex(of: current) else { return }
-        play(tracks[(i + 1) % tracks.count])
+        play(tracks[(i + 1) % tracks.count], chooseTopic: chooseTopic)
     }
 
     func previous() {
@@ -1181,7 +1246,7 @@ final class AppStore {
                 guard let self else { return }
                 guard self.isPlaying, let d = self.nowPlaying?.duration, d > 0 else { continue }
                 self.progress = min(1, self.progress + 0.5 / d)
-                if self.progress >= 1 { self.next() }
+                if self.progress >= 1 { self.next(chooseTopic: false) }
             }
         }
     }

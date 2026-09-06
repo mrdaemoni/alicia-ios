@@ -239,11 +239,21 @@ struct MockAliciaService: AliciaService {
     }
     func episodeDay(day: String) async -> EpisodeDay? {
 #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
+            return await EpisodeChoicePreviewStore.shared.current
+        }
         if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { return EpisodeDay.preview }
 #endif
         return nil
     }
-    func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? { nil }
+    func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
+            return await EpisodeChoicePreviewStore.shared.act(body)
+        }
+#endif
+        return nil
+    }
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? { nil }
     func conversationHistory() async -> ConversationHistory? { nil }
     func dialogueReview(replyID: String) async -> DialogueReview? {
@@ -277,7 +287,15 @@ struct MockAliciaService: AliciaService {
     func sharedContext() async -> SharedContext? { SampleData.sharedContext }
     func reflections() async -> [Reflection]? { SampleData.reflections }
     func thoughts() async -> [Thought]? { SampleData.thoughts }
-    func tracks() async -> [Track]? { SampleData.tracks }
+    func tracks() async -> [Track]? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
+            return [Track(title: "Preview · Endings Chosen", mood: "Fixture", duration: 1300, symbol: "", season: 15, episode: 7, label: "S15E07", collection: "S15", collectionTitle: "Preview episodes"),
+                    Track(title: "Preview · The Discard Log", mood: "Fixture", duration: 1200, symbol: "", season: 15, episode: 6, label: "S15E06", collection: "S15", collectionTitle: "Preview episodes")]
+        }
+#endif
+        return SampleData.tracks
+    }
     func gallery() async -> [Artwork]? { SampleData.gallery }
     func health() async -> [HealthMetric]? { SampleData.health }
     func proactive(limit: Int) async -> [ProactiveMessage] { [] }

@@ -13,6 +13,7 @@ struct WalkReflectionView: View {
     @State private var automaticRestarts = 0
     @State private var startGeneration = 0
     @State private var starting = false
+    @State private var reviewingWords = false
     @State private var previousIdleTimerDisabled: Bool?
 
     private var visibleRecording: Bool {
@@ -43,7 +44,7 @@ struct WalkReflectionView: View {
                 .disabled(listening || store.pendingWalkSave != nil)
                 .scrollContentBackground(.hidden)
                 .accessibilityLabel("Your walk reflection")
-            Text(status.isEmpty ? "Your words stay on this phone until you finish." : status)
+            Text(reviewingWords ? "Check that these words match what you said. Tap the text to correct anything before saving." : status.isEmpty ? "Your words stay on this phone until you finish." : status)
                 .font(.caption).foregroundStyle(Theme.inkSoft)
             Text("The screen stays awake while this reflection is open.")
                 .font(.caption).foregroundStyle(Theme.inkSoft)
@@ -54,9 +55,11 @@ struct WalkReflectionView: View {
             .font(.system(size: 11, design: .monospaced)).tracking(1.3)
             .frame(maxWidth: .infinity, minHeight: 44)
             .disabled(starting || store.pendingWalkSave != nil)
-            Button(store.isSavingWalk ? "SAVING YOUR REFLECTION…" : store.pendingWalkSave != nil ? "RETRY SAVE" : "FINISH & REFLECT") {
+            Button(store.isSavingWalk ? "SAVING YOUR REFLECTION…" : store.pendingWalkSave != nil ? "RETRY SAVE" : reviewingWords ? "SAVE & REFLECT" : "FINISH & REFLECT") {
+                let wasListening = listening
                 pause()
-                Task { _ = await store.finishEpisodeWalk() }
+                if wasListening && store.pendingWalkSave == nil { reviewingWords = true }
+                else { Task { _ = await store.finishEpisodeWalk() } }
             }
             .buttonStyle(EpisodeButtonStyle())
             .disabled(store.isSavingWalk || store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -129,6 +132,7 @@ struct WalkReflectionView: View {
     private func begin() async {
         guard !listening, !starting, scenePhase == .active, store.showWalk else { return }
         startGeneration += 1
+        reviewingWords = false
         let generation = startGeneration
         starting = true
         defer { if generation == startGeneration { starting = false } }

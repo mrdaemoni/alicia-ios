@@ -21,6 +21,10 @@ struct TalkView: View {
                                 .font(.system(size: 10, design: .monospaced)).tracking(1)
                         }
                     }
+                    if store.episodeChoiceSyncing {
+                        Button("Syncing your episode choice · tap to retry") { store.retryEpisodeSync() }
+                            .font(.caption).foregroundStyle(Theme.inkSoft)
+                    }
                 }.padding(.horizontal, 18).padding(.bottom, 12)
                 messageList
                 composer
@@ -149,7 +153,7 @@ struct TalkView: View {
                 // Hand-drawn send — paper ink on the dark band (v21).
                 InkSubmitArrow(size: 34, color: Theme.paper, seed: 23)
             }
-            .disabled(store.isStreaming || draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(store.isStreaming || store.episodeChoiceSyncing || draft.trimmingCharacters(in: .whitespaces).isEmpty)
             .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
         }
     }
