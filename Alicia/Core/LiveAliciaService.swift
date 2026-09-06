@@ -125,6 +125,21 @@ struct LiveAliciaService: AliciaService {
         await fetchOne("/api/history")
     }
 
+    func contextEnrichment(replyID: String) async -> ContextEnrichment? {
+        guard replyID.isEmpty || UUID(uuidString: replyID) != nil else { return nil }
+        return await fetchOne("/api/context_enrichment?reply_id=" + replyID)
+    }
+
+    func changeContext(_ change: ContextChange) async -> ContextChangeResult? {
+        await post("/api/context_enrichment", body: change.body)
+    }
+
+    func contextSource(replyID: String, itemID: String) async -> ContextSource? {
+        guard UUID(uuidString: replyID) != nil,
+              let encoded = itemID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return nil }
+        return await fetchOne("/api/context_enrichment?reply_id=" + replyID + "&item_id=" + encoded)
+    }
+
     func dialogueReview(replyID: String) async -> DialogueReview? {
         guard UUID(uuidString: replyID) != nil else { return nil }
         return await fetchOne("/api/dialogue_review?reply_id=" + replyID)

@@ -50,6 +50,9 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
+    func contextEnrichment(replyID: String) async -> ContextEnrichment?
+    func changeContext(_ change: ContextChange) async -> ContextChangeResult?
+    func contextSource(replyID: String, itemID: String) async -> ContextSource?
     func episodeDay(day: String) async -> EpisodeDay?
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse?
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt?
@@ -212,6 +215,28 @@ struct ArchetypeStat: Decodable, Hashable {
 
 /// In-memory stand-in so the app runs with zero backend.
 struct MockAliciaService: AliciaService {
+    func contextEnrichment(replyID: String) async -> ContextEnrichment? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--dialogue-review-preview") || ProcessInfo.processInfo.arguments.contains("--episode-day-preview") {
+            return await ContextPreviewStore.shared.read(replyID)
+        }
+#endif
+        return nil
+    }
+    func changeContext(_ change: ContextChange) async -> ContextChangeResult? {
+#if DEBUG
+        return await ContextPreviewStore.shared.save(change)
+#else
+        return nil
+#endif
+    }
+    func contextSource(replyID: String, itemID: String) async -> ContextSource? {
+#if DEBUG
+        return ContextSource(title: "Preview source", text: "A source excerpt is evidence, not proof of an implemented feature.", notice: "Fixture source, no live file read.")
+#else
+        return nil
+#endif
+    }
     func episodeDay(day: String) async -> EpisodeDay? {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { return EpisodeDay.preview }

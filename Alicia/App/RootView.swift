@@ -72,6 +72,9 @@ struct RootView: View {
             EditorialTabBar()
         }
         .ignoresSafeArea(edges: .bottom)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("alicia.openThoughtReturn"))) { _ in
+            store.selectedSection = .mind
+        }
         // Presence: which tab, for how long. Fires on every change including
         // the first, so the section he lands on is timed from the start.
         .task(id: store.selectedSection) {

@@ -117,6 +117,11 @@ enum ProactiveNotifier {
 /// Lets banners present while the app is foregrounded.
 final class ForegroundBanner: NSObject, UNUserNotificationCenterDelegate {
     static let shared = ForegroundBanner()
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        if response.notification.request.content.userInfo["thoughtReturn"] != nil {
+            await MainActor.run { NotificationCenter.default.post(name: Notification.Name("alicia.openThoughtReturn"), object: nil) }
+        }
+    }
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification

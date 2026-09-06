@@ -105,10 +105,47 @@ final class AppStore {
     private var playbackOutbox: [[String: Any]] =
         UserDefaults.standard.array(forKey: "alicia.playbackOutbox") as? [[String: Any]] ?? []
 
+    private var contextActivityRevision = 0
+
+    func noteContextActivity() {
+        contextActivityRevision += 1
+        ThoughtReturnNotifier.cancel()
+    }
+
+    func contextEnrichment(_ replyID: String = "") async -> ContextEnrichment? {
+        await service.contextEnrichment(replyID: replyID)
+    }
+
+    func contextSource(_ replyID: String, itemID: String) async -> ContextSource? {
+        await service.contextSource(replyID: replyID, itemID: itemID)
+    }
+
+    func changeContext(_ change: ContextChange) async -> ContextChangeResult? {
+        noteContextActivity()
+        let revision = contextActivityRevision
+        if change.action == "settings", !change.followups_enabled { ThoughtReturnNotifier.setLocalEnabled(false) }
+        let result = await service.changeContext(change)
+        if result?.ok == true, let fresh = result?.context, revision == contextActivityRevision {
+            if change.action == "settings" { ThoughtReturnNotifier.setLocalEnabled(change.followups_enabled) }
+            await syncThoughtReturn(fresh)
+        }
+        return result
+    }
+
+    private func syncThoughtReturn(_ supplied: ContextEnrichment? = nil) async {
+        guard service is LiveAliciaService, !showWalk, !isWalking, !isStreaming else { return }
+        let revision = contextActivityRevision
+        let fresh: ContextEnrichment?
+        if let supplied { fresh = supplied } else { fresh = await service.contextEnrichment(replyID: "") }
+        guard revision == contextActivityRevision, let fresh else { return }
+        await ThoughtReturnNotifier.sync(fresh)
+    }
+
     func refreshEpisodeDay() async {
         if let fresh = await service.episodeDay(day: "") {
             episodeDay = fresh
         }
+        await syncThoughtReturn()
     }
 
     func loadEpisodeDay(_ date: String) async -> EpisodeDay? {
@@ -132,6 +169,7 @@ final class AppStore {
                        verdict: String = "", episodeID: String? = nil,
                        eventID: String = UUID().uuidString) async -> Bool {
         guard let label = episodeID ?? episodeDay?.episode?.id else { return false }
+        noteContextActivity()
         let result = await service.episodeAction([
             "action": action, "episode_id": label, "event_id": eventID,
             "text": text, "target_id": target, "verdict": verdict])
@@ -159,6 +197,7 @@ final class AppStore {
         } else {
             walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? episode.id
         }
+        noteContextActivity()
         showWalk = true
     }
 
@@ -758,6 +797,7 @@ final class AppStore {
     func send(_ text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, !isStreaming else { return }
+        noteContextActivity()
         if let askID = answeringAskID {
             cancelAnswering()
             messages.append(Message(sender: .me, text: clean))
@@ -793,6 +833,8 @@ final class AppStore {
             // During a walk the backend accumulates instead of chatting —
             // keep the word counter fresh.
             if isWalking { (thinkingMode, walkWords) = await service.modeState() }
+            isStreaming = false
+            await syncThoughtReturn()
         }
     }
 

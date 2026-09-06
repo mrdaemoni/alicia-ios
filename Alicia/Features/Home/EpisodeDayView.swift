@@ -115,16 +115,19 @@ struct WalkInvitation: View {
         Button { store.openWalk() } label: {
             VStack(alignment: .leading, spacing: 9) {
                 Text(store.walkDraft.isEmpty ? "Walk with this" : "Return to your reflection")
-                    .font(.system(size: 25, design: .serif))
-                Text("TAP AND THINK ALOUD")
+                    .font(.system(size: 23, design: .serif))
+                Text("THINK ALOUD TOGETHER")
                     .font(.system(size: 10, design: .monospaced)).tracking(1.5)
                 Text("I'll listen. We can reflect when you're ready.")
                     .font(.system(size: 15, design: .serif)).italic()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(22)
-            .foregroundStyle(Theme.paper)
-            .background(Theme.ink)
+            .padding(.vertical, 18)
+            .padding(.horizontal, 16)
+            .foregroundStyle(Theme.ink)
+            .background(Theme.paper.opacity(0.45))
+            .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("episode.walk")
@@ -267,6 +270,8 @@ struct EpisodeMindView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     SectionHeader(title: "Alicia", kicker: "WHAT I'M HOLDING WITH YOU")
+                    NavigationLink("About you · enrich Alicia’s context") { ContextEnrichmentView() }
+                        .font(.callout).frame(minHeight: 44)
                     if let day = store.episodeDay, let episode = day.episode {
                         EpisodeHeading(episode: episode)
                         if !day.understanding.isEmpty {

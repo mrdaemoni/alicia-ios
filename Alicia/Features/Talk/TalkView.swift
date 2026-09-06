@@ -3,6 +3,7 @@ import SwiftUI
 struct TalkView: View {
     @Environment(AppStore.self) private var store
     @State private var draft = ""
+    @State private var inspectedMessage: Message?
     @State private var speech = SpeechTranscriber()
     @State private var dictationBase = ""
     @FocusState private var focused: Bool
@@ -29,6 +30,10 @@ struct TalkView: View {
             .toolbar(.hidden, for: .navigationBar)
             .animation(.easeOut(duration: 0.2), value: focused)
             .onChange(of: focused) { _, now in store.composerFocused = now }
+            .sheet(item: $inspectedMessage) { message in
+                DialogueReviewView(message: message)
+                    .presentationDetents([.large])
+            }
         }
     }
 
@@ -37,7 +42,7 @@ struct TalkView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(store.messages) { message in
-                        MessageBubble(message: message).id(message.id)
+                        MessageBubble(message: message, inspect: { inspectedMessage = $0 }).id(message.id)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -209,7 +214,7 @@ struct ProactiveWhisper: View {
 struct MessageBubble: View {
     @Environment(AppStore.self) private var store
     let message: Message
-    @State private var showDetails = false
+    var inspect: (Message) -> Void = { _ in }
     private var isMe: Bool { message.sender == .me }
 
     // Reactions render as words in her register (InkReactions); the emoji
@@ -274,7 +279,7 @@ struct MessageBubble: View {
                 Text(message.text.isEmpty ? AttributedString("…") : rendered)
                     .foregroundStyle(Theme.ink)
                 if !isMe, !message.text.isEmpty {
-                    Button("BEHIND THIS REPLY") { showDetails = true }
+                    Button("BEHIND THIS REPLY") { inspect(message) }
                         .font(.system(size: 10, design: .monospaced).weight(.semibold))
                         .tracking(1.2)
                         .foregroundStyle(Theme.accentSoft)
@@ -311,10 +316,9 @@ struct MessageBubble: View {
                     .offset(x: isMe ? -8 : 8, y: 11)
             }
         }
-        .sheet(isPresented: $showDetails) { DialogueReviewView(message: message) }
         .contextMenu {
             if !isMe, !message.text.isEmpty {
-                Button("Behind this reply") { showDetails = true }
+                Button("Behind this reply") { inspect(message) }
             }
             // React to her messages — chat replies feed the archetype loop,
             // proactive messages feed their circulation entry. Words in

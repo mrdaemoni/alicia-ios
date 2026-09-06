@@ -35,6 +35,7 @@ struct Message {
 @MainActor final class Harness {
     let store = FakeStore()
     let storageKey = "isolated-test"
+    var editing: String?
     var busy = false
     var pending: DialogueMutation?
     var detail: DialogueReview?
