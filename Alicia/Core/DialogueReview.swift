@@ -6,15 +6,17 @@ struct DialogueReview: Codable, Identifiable {
         var title, url, excerpt: String
         var id: String { url }
     }
-    struct Feedback: Codable { var target, verdict, note: String }
+    struct Feedback: Codable { var target, verdict, note: String; var answer, comparison_id: String? }
     struct Comparison: Codable {
         var status: String
         var request_id, provider, model, reply, detail, error, evaluation_kind: String?
+        var reading, lens, context_note: String?
         var same_input: Bool?
     }
     struct Preference: Codable {
         var choice, reason, comparison_id, evaluation_kind: String
         var training_allowed: Bool
+        var reason_tags: [String]?
     }
     var id, reply, reading, detail, lens, user_text, provider, model: String
     var shortened, comparison_eligible: Bool
@@ -32,6 +34,8 @@ struct DialogueReview: Codable, Identifiable {
 struct DialogueMutation: Codable, Equatable {
     var action, reply_id: String
     var event_id: String = UUID().uuidString
+    var answer: String = "original"
+    var reason_tags: [String] = []
     var target: String = ""
     var verdict: String = ""
     var note: String = ""
@@ -41,8 +45,25 @@ struct DialogueMutation: Codable, Equatable {
 
     var body: [String: Any] {
         ["action": action, "reply_id": reply_id, "event_id": event_id,
-         "target": target, "verdict": verdict, "note": note, "choice": choice,
+         "answer": answer, "reason_tags": reason_tags, "target": target, "verdict": verdict, "note": note, "choice": choice,
          "reason": reason, "training_allowed": training_allowed]
+    }
+}
+
+extension DialogueMutation {
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        action = try values.decode(String.self, forKey: .action)
+        reply_id = try values.decode(String.self, forKey: .reply_id)
+        event_id = try values.decode(String.self, forKey: .event_id)
+        answer = try values.decodeIfPresent(String.self, forKey: .answer) ?? "original"
+        reason_tags = try values.decodeIfPresent([String].self, forKey: .reason_tags) ?? []
+        target = try values.decode(String.self, forKey: .target)
+        verdict = try values.decode(String.self, forKey: .verdict)
+        note = try values.decode(String.self, forKey: .note)
+        choice = try values.decode(String.self, forKey: .choice)
+        reason = try values.decode(String.self, forKey: .reason)
+        training_allowed = try values.decode(Bool.self, forKey: .training_allowed)
     }
 }
 
@@ -85,4 +106,28 @@ extension DialogueReview {
         return value
     }
 }
+/// Isolated, process-local fixture for exercising real controls in Simulator.
+actor DialogueReviewPreviewStore {
+    static let shared = DialogueReviewPreviewStore()
+    private var value = DialogueReview.preview
+    func read() -> DialogueReview { value }
+    func save(_ mutation: DialogueMutation) -> DialogueMutationResult {
+        if mutation.action == "compare" {
+            value.comparison = .init(status: "ready", request_id: "fixture-comparison", provider: "claude",
+                model: "Preview fixture · Claude", reply: "Welcome home. Which idea do you want to take further together?",
+                detail: "We can follow your curiosity from here.", evaluation_kind: "contextual_preference", same_input: true)
+        } else if mutation.action == "preference" {
+            value.preference = .init(choice: mutation.choice, reason: mutation.reason,
+                comparison_id: "fixture-comparison", evaluation_kind: "contextual_preference",
+                training_allowed: mutation.training_allowed, reason_tags: mutation.reason_tags)
+            value.training_status = mutation.training_allowed ? "pending_review" : "not_selected"
+        } else if mutation.action == "feedback" {
+            let key = (mutation.answer == "alternative" ? "alternative:" : "") + mutation.target
+            value.feedback[key] = .init(target: mutation.target, verdict: mutation.verdict, note: mutation.note,
+                answer: mutation.answer, comparison_id: mutation.answer == "alternative" ? "fixture-comparison" : "")
+        }
+        return .init(ok: true, response: value)
+    }
+}
+
 #endif

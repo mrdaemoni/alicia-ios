@@ -90,7 +90,16 @@ __METHODS__
             choice: "neither", reason: "Both overread my mood.")
         let decodedChoice = try JSONDecoder().decode(DialogueMutation.self, from: JSONEncoder().encode(choice))
         precondition(decodedChoice.choice == "neither" && !decodedChoice.training_allowed)
-        print("9 dialogue checks passed: uncertain delivery, immutable retry, rejection, malformed success, reentrancy, wire decode, no implicit consent, legacy preview, neither choice")
+        let vote = DialogueMutation(action: "preference", reply_id: original.reply_id, choice: "alternative")
+        precondition(vote.reason.isEmpty && vote.reason_tags.isEmpty && !vote.training_allowed)
+        let alternative = DialogueMutation(action: "feedback", reply_id: original.reply_id, answer: "alternative", target: "tone", verdict: "warmer")
+        precondition(alternative.body["answer"] as? String == "alternative")
+        var oldWire = try JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as! [String: Any]
+        oldWire.removeValue(forKey: "answer")
+        oldWire.removeValue(forKey: "reason_tags")
+        let oldPending = try JSONDecoder().decode(DialogueMutation.self, from: JSONSerialization.data(withJSONObject: oldWire))
+        precondition(oldPending.event_id == original.event_id && oldPending.answer == "original")
+        print("12 dialogue checks passed: quick vote, alternative attribution, legacy outbox migration, uncertain delivery, immutable retry, rejection, malformed success, reentrancy, wire decode, no implicit consent, legacy preview, neither choice")
     }
 }
 '''.replace('__METHODS__', methods)

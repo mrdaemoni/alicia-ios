@@ -9,12 +9,17 @@ words, a tentative reading, optional public detail, archetype lens, supplied
 context/source excerpts and granular feedback. Provider labels reflect the
 actual route. Qwen runs on the Mac mini. No private thinking transcript is shown.
 
-The second answer is requested explicitly and cached by the backend. Tool-based
-answers and inputs that cannot fit unchanged are ineligible. Preferences are
-original / alternative / both equally / neither plus a reason. Training-review
-permission is off by default for each new reply; the draft can retain Hector's
-choice. A selected pair enters a separate review queue, never automatic training
-or the blind Labs scores.
+The model tabs switch between the original and an explicitly requested alternative,
+cached by the backend. Tapping Prefer Qwen / Prefer Claude / Tie / Neither saves
+immediately. Add why is optional: reason chips plus a text box. Helpful / Okay /
+Missed me and the Depth / Tone / Length menu rate the selected answer separately.
+Original context retains reading, source and lens feedback.
+
+Captured tool replies and long contexts can produce labelled adapted textual
+alternatives without replaying tools. Those pairs never enter training exports.
+Only unchanged-input pairs expose the separate training-review toggle, initially
+off for each reply. Explicit consent selects a pending review candidate; no
+automatic training and no contribution to blind Labs scores.
 
 ## Ownership and recovery
 
@@ -33,7 +38,8 @@ unavailable-context message. No new context is invented for old answers.
 `python3 scripts/test_dialogue_review.py` compiles the actual submit/retry methods
 with fake IO and public wire types. It exercises lost acknowledgments, immutable
 retry, malformed/rejected success, reentrancy, no implicit consent and legacy
-folding. The paired backend has its own isolated acceptance suite, schema/
+folding, quick votes without reasons, alternative attribution and old pending
+mutation decoding. The paired backend has its own isolated acceptance suite, schema/
 contract/loop wiring, and full smoke checks.
 
 Build: iPhone 17 simulator. Fixtures and Reduce Motion captures live under

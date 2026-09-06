@@ -205,7 +205,7 @@ branch automatically through `ship.sh`. Current base: **v38 (2026-09-05)**. Test
 This branch adds `Core/DialogueReview.swift` and `Talk/DialogueReviewView.swift`.
 **Behind this reply** opens from the short message or its long-press menu. It
 shows a saved public reading, lens and supplied context, with granular feedback
-and optional same-input comparison. `ChatEvent.details` and history `reply_id`
+and optional labelled comparison; only unchanged-input pairs qualify for training review. `ChatEvent.details` and history `reply_id`
 keep the inspection bound to the exact reply. View requests go through AppStore
 and AliciaService. Legacy replies keep their original text but have no invented
 context. See `docs/DIALOGUE_REVIEW.md` for draft/retry and training boundaries.

@@ -223,11 +223,18 @@ struct MockAliciaService: AliciaService {
     func conversationHistory() async -> ConversationHistory? { nil }
     func dialogueReview(replyID: String) async -> DialogueReview? {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return DialogueReview.preview }
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return await DialogueReviewPreviewStore.shared.read() }
 #endif
         return nil
     }
-    func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult? { nil }
+    func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) {
+            return await DialogueReviewPreviewStore.shared.save(mutation)
+        }
+#endif
+        return nil
+    }
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
         let reply = SampleData.reply(to: prompt)
         return AsyncStream { continuation in

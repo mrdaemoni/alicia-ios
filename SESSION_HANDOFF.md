@@ -124,10 +124,10 @@ the dependent app; the shipped v38 record above is not changed by this branch.
 
 The sheet reveals saved public response metadata and supplied context, never a
 private reasoning transcript. Feedback belongs to an exact response/reading/
-source set/lens/length. Optional Qwen/Claude comparison uses frozen input and
+source set/lens/length. Optional Qwen/Claude comparison starts from frozen input and
 runs only on a deliberate tap. Qwen is on the Mac mini, not the phone. It is a
 contextual preference with visible providers, separate from blind Labs trials.
-A decisive choice, reason and explicit permission can enter a pending-review
+A decisive choice, optional reason and explicit permission can enter a pending-review
 export; saving feedback does not train or replace any model.
 
 Pending mutations are persisted with immutable payload and UUID until confirmed;
@@ -139,3 +139,12 @@ Fixtures use `--dialogue-review-preview`, `--dialogue-review-sheet-preview`, and
 optionally `--dialogue-review-comparison-preview`; any dialogue-review preview
 flag forces MockAliciaService in DEBUG. All preview text is fixture content;
 no production feedback, presence, model generation or vault writes occur.
+
+### A2-006 feedback refinement
+
+Every captured reply has provider tabs and answer-specific Helpful / Okay /
+Missed me, with optional tone/depth/length and text feedback. Preferences save
+in one tap; reason chips and free text follow optionally. Adapted tool-free
+alternatives are labelled and excluded from training. Only unchanged-input
+pairs expose explicit training review permission. Current evidence and Apple
+release receipt live in `/Users/alicia/Documents/Alicia-development/tasks/A2-006/`.
