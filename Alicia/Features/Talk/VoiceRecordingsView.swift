@@ -182,7 +182,7 @@ private struct VoiceRecordingDetail: View {
                     .font(.system(size: 11, design: .monospaced)).frame(minHeight: 44)
                     .disabled(savingCorrection || correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || correction.count > 60000)
                     if record.orderedTranscripts.contains(where: { $0.kind == "correction" }) {
-                        Text(record.correction_state == "linked_to_episode" ? "Your correction is linked to the episode reflection." : "Correction retained. It will guide the episode reading once its delivered message is linked and synced.")
+                        Text(record.correction_state == "linked_to_episode" ? "Your correction is linked to the episode reflection." : "Correction retained. Awaiting its message link or episode refresh; tap Sync to retry.")
                             .font(.caption).foregroundStyle(Theme.inkSoft)
                     }
                     ForEach(record.orderedTranscripts.filter { $0.kind != "on_device" }) { version in

@@ -315,6 +315,14 @@ final class VoiceArchive {
 
     func refresh(using service: AliciaService) async {
         await sync(using: service)
+        // An offline correction can arrive before its message link. Explicit
+        // refresh retries its idempotent projection after that link exists.
+        for record in recordings {
+            if let version = record.orderedTranscripts.last(where: { $0.kind == "correction" && $0.uploaded == true }) {
+                _ = await service.voiceAction(["action": "transcript", "recording_id": record.id,
+                    "event_id": version.id, "text": version.text, "kind": version.kind, "recorded_at": version.recorded_at])
+            }
+        }
         guard let payload = await service.voiceRecordings(recordingID: "") else { return }
         for remote in payload.recordings {
             var merged = recording(remote.id) ?? remote
