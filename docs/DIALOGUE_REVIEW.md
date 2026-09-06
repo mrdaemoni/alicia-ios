@@ -1,7 +1,8 @@
 # Dialogue response inspection — A2-006
 
-Review candidate on `codex/dialogue-insight`; not a shipped version. The complete
-backend contract is `alicia/docs/DIALOGUE_REVIEW.md` in the paired branch.
+Implementation on `codex/dialogue-insight`. Exact backend deployment and Apple
+processing status live in the shared `Alicia-development/tasks/A2-006/RELEASE.md`
+receipt. The complete backend contract is `alicia/docs/DIALOGUE_REVIEW.md`.
 
 Normal Dialogue is conversational and brief. **Behind this reply** and the
 long-press menu open a sheet for the exact saved answer. It contains Hector's

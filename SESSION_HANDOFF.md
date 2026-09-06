@@ -115,12 +115,13 @@ Do not restore the old orbit, voice gallery, daily broadcast arc or weekly surve
 as a fix for missing UI or a retired assertion.
 
 
-## A2-006 — current review candidate
+## A2-006 — brief Dialogue and quick feedback
 
 `codex/dialogue-insight` adds brief Dialogue and **Behind this reply** (button or
 long press). The paired backend branch uses that same name in `alicia`.
 `docs/DIALOGUE_REVIEW.md` is the feature contract. Backend must deploy before
-the dependent app; the shipped v38 record above is not changed by this branch.
+the dependent app. The v38 record above is historical; see the shared A2-006
+`RELEASE.md` for the exact branch build and Apple processing evidence.
 
 The sheet reveals saved public response metadata and supplied context, never a
 private reasoning transcript. Feedback belongs to an exact response/reading/

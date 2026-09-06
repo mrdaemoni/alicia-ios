@@ -200,7 +200,7 @@ branch automatically through `ship.sh`. Current base: **v38 (2026-09-05)**. Test
   need for a chat/markdown/image library appears.
 
 
-## A2-006 candidate: brief Dialogue with inspection
+## A2-006: brief Dialogue with inspection
 
 This branch adds `Core/DialogueReview.swift` and `Talk/DialogueReviewView.swift`.
 **Behind this reply** opens from the short message or its long-press menu. It
@@ -209,4 +209,5 @@ and optional labelled comparison; only unchanged-input pairs qualify for trainin
 keep the inspection bound to the exact reply. View requests go through AppStore
 and AliciaService. Legacy replies keep their original text but have no invented
 context. See `docs/DIALOGUE_REVIEW.md` for draft/retry and training boundaries.
-The released app remains v38 / 1.0 (5); this branch is not in TestFlight yet.
+The preceding v38 / 1.0 (5) entry is historical. Exact branch build and Apple
+processing status are recorded in the shared A2-006 `RELEASE.md` receipt.
