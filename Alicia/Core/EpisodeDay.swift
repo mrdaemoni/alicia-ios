@@ -19,13 +19,29 @@ struct EpisodeDay: Decodable, Identifiable {
     var played_ms, position_ms: Int
     var days: [String]
     var vault_note: String
+    var episode_basis: String? = nil
+    var has_playback: Bool? = nil
+    var snapshot_revision: Int? = nil
     var id: String { date }
+
+    static func choosing(_ episode: Episode, previous: EpisodeDay?) -> EpisodeDay {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return EpisodeDay(date: formatter.string(from: .now), episode: episode,
+            episodes: [episode.id], focus: "", probes: [], understanding: "",
+            frame_id: "", frame_verdict: "", frame_status: "pending",
+            reactions: [], learnings: [], corrections: [], played_ms: 0, position_ms: 0,
+            days: previous?.days ?? [], vault_note: "", episode_basis: "selected",
+            has_playback: false, snapshot_revision: previous?.snapshot_revision)
+    }
 }
 
 struct EpisodeDayResponse: Decodable {
     var ok: Bool
     var error: String?
     var day: EpisodeDay?
+    var retryable: Bool? = nil
 }
 
 struct WalkReceipt: Decodable {
@@ -42,6 +58,18 @@ struct ConversationHistory: Decodable {
 }
 
 #if DEBUG
+/// Isolated UI fixture; no transport, production journal or model calls.
+actor EpisodeChoicePreviewStore {
+    static let shared = EpisodeChoicePreviewStore()
+    var current = EpisodeDay.preview
+    func act(_ body: [String: Any]) -> EpisodeDayResponse {
+        if body["action"] as? String == "selected", let label = body["episode_id"] as? String {
+            current = .choosing(.init(id: label, title: body["title"] as? String ?? "Preview episode", source_paths: []), previous: current)
+        }
+        return EpisodeDayResponse(ok: true, day: current)
+    }
+}
+
 extension EpisodeDay {
     /// Deliberately labelled fixture; available only through an explicit debug launch argument.
     static var preview: EpisodeDay {

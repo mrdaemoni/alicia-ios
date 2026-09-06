@@ -154,3 +154,19 @@ in one tap; reason chips and free text follow optionally. Adapted tool-free
 alternatives are labelled and excluded from training. Only unchanged-input
 pairs expose explicit training review permission. Current evidence and Apple
 release receipt live in `/Users/alicia/Documents/Alicia-development/tasks/A2-006/`.
+
+## A2-008 — episode continuity
+
+Built on shipped cc05703 (TestFlight 7), not canonical main. AppStore chooses a
+shared topic on explicit episode play; a durable selected receipt shares its
+local-day identity with the backend. RootView's quiet Talk about this episode
+bar is a hard VStack sibling in every tab. Studio playback controls remain in
+Studio. Automatic advancement does not choose a topic. Us/Alicia headings
+separate choice from observed playback. Dialogue waits for choice sync, while
+walks save their explicit episode identity. Snapshot revisions reject old HTTP
+results. Local drafts are kept per episode; an uncertain save stays immutable.
+Finish during live dictation first exposes editable words, then Save & reflect.
+
+Feature contract: backend docs/EPISODE_DAY.md. Actual audit/release evidence:
+`/Users/alicia/Documents/Alicia-development/tasks/A2-008/`. Tests use inert
+Swift harnesses and mock-only XCUITest; no production inputs are manufactured.

@@ -96,10 +96,11 @@ struct EpisodePassage: View {
 }
 
 struct EpisodeHeading: View {
+    @Environment(AppStore.self) private var store
     let episode: EpisodeDay.Episode
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("IN OUR EARS · " + episode.id)
+            Text((store.episodeDay?.has_playback == false ? "CHOSEN IN STUDIO · " : "IN OUR EARS · ") + episode.id)
                 .font(.system(size: 10, design: .monospaced)).tracking(1.7)
                 .foregroundStyle(Theme.accent)
             Text(episode.title.strippedEmojis)
@@ -114,7 +115,7 @@ struct WalkInvitation: View {
     var body: some View {
         Button { store.openWalk() } label: {
             VStack(alignment: .leading, spacing: 9) {
-                Text(store.walkDraft.isEmpty ? "Walk with this" : "Return to your reflection")
+                Text(store.walkDraft.isEmpty || store.walkEpisodeID != store.episodeDay?.episode?.id ? "Walk with this" : "Return to your reflection")
                     .font(.system(size: 23, design: .serif))
                 Text("THINK ALOUD TOGETHER")
                     .font(.system(size: 10, design: .monospaced)).tracking(1.5)

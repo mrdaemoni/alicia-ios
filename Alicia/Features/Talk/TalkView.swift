@@ -17,10 +17,19 @@ struct TalkView: View {
                         HStack(alignment: .top) {
                             Text(episode.title.strippedEmojis).font(.subheadline).italic()
                             Spacer()
-                            Button("THINK ALOUD") { store.openWalk() }
-                                .font(.system(size: 10, design: .monospaced)).tracking(1)
+                            Button { focused = false; store.openWalk() } label: {
+                                Text("THINK ALOUD")
+                                    .font(.system(size: 10, design: .monospaced)).tracking(1)
+                                    .frame(minHeight: 44).contentShape(Rectangle())
+                            }
+                            .accessibilityIdentifier("episode.talkFromDialogue")
                         }
                     }
+                    if store.episodeChoiceSyncing {
+                        Button("Syncing your episode choice · tap to retry") { store.retryEpisodeSync() }
+                            .font(.caption).foregroundStyle(Theme.inkSoft)
+                    }
+                    EpisodeErrorLine()
                 }.padding(.horizontal, 18).padding(.bottom, 12)
                 messageList
                 composer
@@ -115,6 +124,7 @@ struct TalkView: View {
                 .font(.subheadline)
                 .lineLimit(1...5)
                 .focused($focused)
+                .accessibilityIdentifier("dialogue.composer")
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .foregroundStyle(Theme.ink)
@@ -149,7 +159,7 @@ struct TalkView: View {
                 // Hand-drawn send — paper ink on the dark band (v21).
                 InkSubmitArrow(size: 34, color: Theme.paper, seed: 23)
             }
-            .disabled(store.isStreaming || draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(store.isStreaming || store.episodeChoiceSyncing || draft.trimmingCharacters(in: .whitespaces).isEmpty)
             .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
         }
     }

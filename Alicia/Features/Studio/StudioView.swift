@@ -165,6 +165,7 @@ struct EpisodeDetailView: View {
     /// the restyled AttributedString.
     @State private var notesMarkdown = ""
     @State private var loading = true
+    @State private var choseOnArrival = false
 
     /// Inline-markdown rendering keeps `#`/`-`/`>` markers literal — restyle
     /// them line-by-line (headings → bold, bullets → dots, quotes → “).
@@ -215,7 +216,10 @@ struct EpisodeDetailView: View {
                             InkTitle(text: track.title, size: 21)
                         }
                         Spacer()
-                        Button { store.togglePlay() } label: {
+                            Button {
+                                if store.nowPlaying?.id == track.id { store.togglePlay() }
+                                else { store.play(track) }
+                            } label: {
                             InkPlayPause(
                                 playing: store.isPlaying && store.nowPlaying?.id == track.id,
                                 size: 42,
@@ -275,7 +279,10 @@ struct EpisodeDetailView: View {
             }
         }
         .task {
-            store.play(track)   // no-ops if this episode is already playing
+            if !choseOnArrival {
+                choseOnArrival = true
+                store.play(track)
+            }
             let md = await store.episodeNotes(for: track)
             notesMarkdown = md
             notes = md.isEmpty ? nil : Self.render(md)
