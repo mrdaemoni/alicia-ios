@@ -15,6 +15,13 @@ struct WalkReflectionView: View {
     @State private var starting = false
     @State private var previousIdleTimerDisabled: Bool?
 
+    private var visibleRecording: Bool {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") && ProcessInfo.processInfo.arguments.contains("--episode-microphone-on") { return true }
+#endif
+        return speech.isRecording
+    }
+
     var body: some View {
         @Bindable var store = store
         VStack(alignment: .leading, spacing: 20) {
@@ -24,7 +31,8 @@ struct WalkReflectionView: View {
                 Button("CLOSE") { pause(); store.pauseEpisodeWalk(); store.showWalk = false }
                     .font(.system(size: 10, design: .monospaced)).tracking(1.2)
             }
-            InkTitle(text: listening ? "I'm listening" : "Stay with the thought", size: 34)
+            ListeningPresence(isRecording: visibleRecording, isStarting: starting || restarting)
+            InkTitle(text: visibleRecording ? "I'm listening" : "Stay with the thought", size: 30)
             if !store.walkPrompt.isEmpty {
                 Text(store.walkPrompt.strippedEmojis).font(.system(size: 21, design: .serif))
             }
@@ -60,7 +68,7 @@ struct WalkReflectionView: View {
         .task {
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") {
-                status = "Preview — recording is paused. No audio or words are sent."
+                status = visibleRecording ? "Preview of microphone-on UI. No audio is recorded or sent." : "Preview — recording is paused. No audio or words are sent."
                 return
             }
 #endif

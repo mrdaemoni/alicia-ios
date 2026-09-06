@@ -18,6 +18,8 @@ struct DialogueReviewView: View {
     @State private var feedbackNote = ""
     @State private var reasonTags: Set<String> = []
     @State private var showWhy = false
+    private enum EditingField: Hashable { case feedback, correction, reason }
+    @FocusState private var editing: EditingField?
 
     private var storageKey: String { "alicia.replyReview." + (message.replyID ?? message.id.uuidString) }
 
@@ -35,6 +37,9 @@ struct DialogueReviewView: View {
     private var reviewContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
+                NavigationLink("Enrich context · about you and what shaped this reply") {
+                    ContextEnrichmentView(replyID: message.replyID ?? "")
+                }.font(.callout).frame(minHeight: 44).accessibilityIdentifier("review.context")
                 Text("BEHIND THIS REPLY")
                     .font(.system(size: 11, design: .monospaced)).tracking(2)
                     .foregroundStyle(Theme.accentSoft)
@@ -70,12 +75,16 @@ struct DialogueReviewView: View {
             .frame(maxWidth: 700, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(Theme.paper)
         .foregroundStyle(Theme.ink)
         .fontDesign(.serif)
         .navigationTitle("Alicia’s reply")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done writing") { editing = nil } }
+        }
         .task { await restoreDraft() }
         .task(id: detail?.comparison.status) {
             guard detail?.comparison.status == "pending" else { return }
@@ -103,7 +112,7 @@ struct DialogueReviewView: View {
         }
         await load()
         correction = UserDefaults.standard.string(forKey: storageKey + ".correction") ?? ""
-        feedbackNote = UserDefaults.standard.string(forKey: storageKey + ".feedbackNote.original") ?? UserDefaults.standard.string(forKey: storageKey + ".feedbackNote") ?? ""
+        feedbackNote = UserDefaults.standard.string(forKey: storageKey + ".feedbackNote." + selectedAnswer) ?? (selectedAnswer == "original" ? UserDefaults.standard.string(forKey: storageKey + ".feedbackNote") : nil) ?? ""
         reason = UserDefaults.standard.string(forKey: storageKey + ".reason") ?? detail?.preference?.reason ?? ""
         reasonTags = Set(UserDefaults.standard.stringArray(forKey: storageKey + ".reasonTags") ?? detail?.preference?.reason_tags ?? [])
         allowTraining = (UserDefaults.standard.object(forKey: storageKey + ".training") as? Bool) ?? detail?.preference?.training_allowed ?? false
@@ -126,6 +135,7 @@ struct DialogueReviewView: View {
                             Text("Length").tag("brevity")
                         }.frame(minHeight: 44)
                         TextField("What would make this answer better?", text: $feedbackNote, axis: .vertical)
+                            .focused($editing, equals: .feedback).accessibilityIdentifier("review.feedbackNote")
                             .lineLimit(2...6).padding(12)
                             .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                         if feedbackNote.unicodeScalars.count > 2000 {
@@ -154,6 +164,7 @@ struct DialogueReviewView: View {
                 Text(value.reading.strippedEmojis).textSelection(.enabled)
                 Text("A tentative reading you can correct.").font(.caption).foregroundStyle(Theme.accentSoft)
                 TextField("What did she miss?", text: $correction, axis: .vertical)
+                    .focused($editing, equals: .correction)
                     .lineLimit(2...6).padding(12)
                     .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                 if correction.unicodeScalars.count > 2000 {
@@ -193,7 +204,7 @@ struct DialogueReviewView: View {
                 Text("No named vault source was captured in the input for this reply.")
                     .font(.callout).foregroundStyle(Theme.accentSoft)
             } else {
-                Text("These excerpts were available to the model. They do not prove which passage shaped the answer.")
+                Text("This material was supplied to the model; it may include retrieval summaries. It does not prove which passage shaped the answer. Open Context enrichment to inspect the current source file.")
                     .font(.caption).foregroundStyle(Theme.accentSoft)
                 ForEach(value.sources) { source in
                     VStack(alignment: .leading, spacing: 8) {
@@ -293,6 +304,7 @@ struct DialogueReviewView: View {
                             }
                         }
                         TextField("Anything more specific?", text: $reason, axis: .vertical)
+                            .focused($editing, equals: .reason).accessibilityIdentifier("review.reason")
                             .lineLimit(2...6).padding(12)
                             .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                         if reason.unicodeScalars.count > 2000 {
@@ -403,12 +415,13 @@ struct DialogueReviewView: View {
     }
 
     private func refresh() async {
-        guard let id = message.replyID, let fresh = await store.replyInspection(id) else { return }
+        guard editing == nil, let id = message.replyID, let fresh = await store.replyInspection(id), editing == nil else { return }
         detail = fresh
     }
 
     private func submit(_ mutation: DialogueMutation) {
         guard !busy, pending == nil else { return }
+        editing = nil
         pending = mutation
         UserDefaults.standard.set(try? JSONEncoder().encode(mutation), forKey: storageKey + ".pending")
         Task { await retry() }

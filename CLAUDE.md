@@ -114,6 +114,8 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/episode_day?day=YYYY-MM-DD` | current or historical frame, probes, reactions, corrections, explicit keeps |
 | `POST /api/episode_day` | playing/progress/finished observations; reaction, feedback, correction, learning, refresh actions |
 | `GET /api/history` | last 120 actual shared conversation turns with stable receipts and optional reply_id; no proactive feed |
+| `GET /api/context_enrichment` | current working picture and captured reply context; optional reply_id; item_id opens captured source |
+| `POST /api/context_enrichment` | UUID-receipted attention priority, correction, explicit note or follow-up setting |
 | `GET /api/dialogue_review?reply_id=<UUID>` | public context for one saved reply; read-only |
 | `POST /api/dialogue_review` | explicit feedback, requested opposite-model comparison, or contextual preference; UUID receipt |
 | `GET /api/episode/<label>` | shownotes markdown |
@@ -211,3 +213,16 @@ and AliciaService. Legacy replies keep their original text but have no invented
 context. See `docs/DIALOGUE_REVIEW.md` for draft/retry and training boundaries.
 The preceding v38 / 1.0 (5) entry is historical. Exact branch build and Apple
 processing status are recorded in the shared A2-006 `RELEASE.md` receipt.
+
+
+## A2-007 — context enrichment candidate
+
+Dialogue owns its inspector sheet outside LazyVStack rows; each text field has a
+separate focus identity. `ContextEnrichmentView` uses AppStore/AliciaService for
+frozen context, tentative personal readings, source drill-in and durable edits.
+`ListeningPresence` reuses the selected home motion tied to actual microphone
+state. `ThoughtReturnNotifier` schedules the backend's optional prepared return
+with one local-day reservation, quiet hours and immediate stop/cancellation.
+No APNs, training, new Telegram stream or new animation family. Feature contract:
+`/Users/alicia/alicia/docs/CONTEXT_ENRICHMENT.md`. Release evidence belongs to
+`/Users/alicia/Documents/Alicia-development/tasks/A2-007/RELEASE.md`.

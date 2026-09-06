@@ -1,6 +1,11 @@
 # Session handoff — Alicia 2.0, iOS v38
 
-Current product baseline: September 5, 2026. Read `AGENTS.md` first, then this
+Current task: A2-007, September 6, 2026. This branch builds on the last recorded
+TestFlight 1.0 (6), v38 · codex/dialogue-insight at `0cd200e`. A2-007 is a
+candidate until its shared RELEASE.md records Apple state. The build-5 release
+section below is historical. Read `docs/CONTEXT_ENRICHMENT.md` for this change.
+
+Earlier product baseline: September 5, 2026. Read `AGENTS.md` first, then this
 file and `CLAUDE.md`. The complete cross-repository handoff is
 `/Users/alicia/alicia/docs/ALICIA_2_0.md`.
 
