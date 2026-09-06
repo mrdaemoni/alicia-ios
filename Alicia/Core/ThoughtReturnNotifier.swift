@@ -7,6 +7,8 @@ import UserNotifications
     private static var generation = 0
     private static var inFlight: Set<String> = []
 
+    static var locallyStopped: Bool { UserDefaults.standard.bool(forKey: key + "locallyStopped") }
+
     static func setLocalEnabled(_ enabled: Bool) {
         UserDefaults.standard.set(!enabled, forKey: key + "locallyStopped")
         if !enabled { cancel() }
@@ -23,27 +25,30 @@ import UserNotifications
         // create room for an extra nudge later that same day.
     }
 
-    static func sync(_ value: ContextEnrichment) async {
-        guard !UserDefaults.standard.bool(forKey: key + "locallyStopped"), value.followups_enabled, let followup = value.followup,
+    static func sync(_ value: ContextEnrichment, now: () -> Date = { Date() }) async {
+        guard !locallyStopped, value.followups_enabled, let followup = value.followup,
               let date = ThoughtReturnPolicy.date(followup.due_at) else { cancel(); return }
         let days = Set(UserDefaults.standard.stringArray(forKey: key + "reservedDays") ?? [])
         // A known scheduled candidate stays put across foreground polls.
         if UserDefaults.standard.string(forKey: key + "candidate") == followup.id,
-           date > Date() { return }
+           date > now(), ThoughtReturnPolicy.reservationDay(date: date, now: now(), reserved: []) != nil { return }
         cancel()
-        guard let day = ThoughtReturnPolicy.reservationDay(date: date, now: Date(), reserved: days) else { return }
+        guard let day = ThoughtReturnPolicy.reservationDay(date: date, now: now(), reserved: days) else { return }
         let ticket = generation
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
         guard ticket == generation,
               settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+        guard ThoughtReturnPolicy.reservationDay(date: date, now: now(), reserved: days) == day,
+              date.timeIntervalSince(now()) >= 1 else { return }
         let identifier = key + UUID().uuidString
         let content = UNMutableNotificationContent()
         content.title = "Alicia"
         content.body = followup.text
         content.sound = .default
         content.userInfo = ["thoughtReturn": followup.id]
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, date.timeIntervalSinceNow), repeats: false)
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second, .timeZone], from: date)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
         inFlight.insert(identifier)
         defer { inFlight.remove(identifier) }
         do {

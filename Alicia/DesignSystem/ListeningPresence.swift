@@ -6,12 +6,20 @@ struct ListeningPresence: View {
     let isStarting: Bool
     @Environment(\.scenePhase) private var scenePhase
 
+    private var previewReduction: Bool {
+#if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--episode-day-preview") && ProcessInfo.processInfo.arguments.contains("--reduce-motion-preview")
+#else
+        return false
+#endif
+    }
+
     var body: some View {
         HStack(spacing: 16) {
             ZStack {
                 AliciaPresence(voice: .musubi, state: isRecording ? .listening : .resting,
                     attention: isRecording ? 0.8 : 0.45,
-                    isActive: isRecording && scenePhase == .active)
+                    isActive: isRecording && scenePhase == .active, previewsReduceMotion: previewReduction)
                     .frame(width: 96, height: 78).opacity(0.65)
                 MicrophoneMark().stroke(Theme.ink, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
                     .frame(width: 21, height: 32)

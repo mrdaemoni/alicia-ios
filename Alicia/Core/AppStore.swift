@@ -106,6 +106,7 @@ final class AppStore {
         UserDefaults.standard.array(forKey: "alicia.playbackOutbox") as? [[String: Any]] ?? []
 
     private var contextActivityRevision = 0
+    private var contextSettingsRevision = 0
 
     func noteContextActivity() {
         contextActivityRevision += 1
@@ -123,11 +124,15 @@ final class AppStore {
     func changeContext(_ change: ContextChange) async -> ContextChangeResult? {
         noteContextActivity()
         let revision = contextActivityRevision
+        if change.action == "settings" { contextSettingsRevision += 1 }
+        let settingsRevision = contextSettingsRevision
         if change.action == "settings", !change.followups_enabled { ThoughtReturnNotifier.setLocalEnabled(false) }
         let result = await service.changeContext(change)
-        if result?.ok == true, let fresh = result?.context, revision == contextActivityRevision {
-            if change.action == "settings" { ThoughtReturnNotifier.setLocalEnabled(change.followups_enabled) }
-            await syncThoughtReturn(fresh)
+        if result?.ok == true, let fresh = result?.context {
+            if change.action == "settings", settingsRevision == contextSettingsRevision {
+                ThoughtReturnNotifier.setLocalEnabled(change.followups_enabled)
+            }
+            if revision == contextActivityRevision { await syncThoughtReturn(fresh) }
         }
         return result
     }
@@ -818,22 +823,23 @@ final class AppStore {
         messages.append(Message(sender: .alicia, text: ""))
         isStreaming = true
         Task {
-            // `defer` rather than a trailing assignment: a thrown or cancelled
-            // stream must not leave her looking permanently mid-thought.
-            defer { isStreaming = false }
-            for await event in service.stream(clean, voice: voiceReplies) {
-                guard messages.indices.contains(idx) else { break }
-                switch event {
-                case .token(let t):   messages[idx].text += t
-                case .details(let id): messages[idx].replyID = id
-                case .voice(let url): messages[idx].voiceURL = url
-                case .done(let mid):  messages[idx].messageID = mid
+            do {
+                // `defer` rather than a trailing assignment: a thrown or cancelled
+                // stream must not leave her looking permanently mid-thought.
+                defer { isStreaming = false }
+                for await event in service.stream(clean, voice: voiceReplies) {
+                    guard messages.indices.contains(idx) else { break }
+                    switch event {
+                    case .token(let t):   messages[idx].text += t
+                    case .details(let id): messages[idx].replyID = id
+                    case .voice(let url): messages[idx].voiceURL = url
+                    case .done(let mid):  messages[idx].messageID = mid
+                    }
                 }
+                // During a walk the backend accumulates instead of chatting —
+                // keep the word counter fresh.
+                if isWalking { (thinkingMode, walkWords) = await service.modeState() }
             }
-            // During a walk the backend accumulates instead of chatting —
-            // keep the word counter fresh.
-            if isWalking { (thinkingMode, walkWords) = await service.modeState() }
-            isStreaming = false
             await syncThoughtReturn()
         }
     }

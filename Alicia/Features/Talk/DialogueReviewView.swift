@@ -39,7 +39,7 @@ struct DialogueReviewView: View {
             VStack(alignment: .leading, spacing: 26) {
                 NavigationLink("Enrich context · about you and what shaped this reply") {
                     ContextEnrichmentView(replyID: message.replyID ?? "")
-                }.font(.callout).frame(minHeight: 44)
+                }.font(.callout).frame(minHeight: 44).accessibilityIdentifier("review.context")
                 Text("BEHIND THIS REPLY")
                     .font(.system(size: 11, design: .monospaced)).tracking(2)
                     .foregroundStyle(Theme.accentSoft)
@@ -112,7 +112,7 @@ struct DialogueReviewView: View {
         }
         await load()
         correction = UserDefaults.standard.string(forKey: storageKey + ".correction") ?? ""
-        feedbackNote = UserDefaults.standard.string(forKey: storageKey + ".feedbackNote.original") ?? UserDefaults.standard.string(forKey: storageKey + ".feedbackNote") ?? ""
+        feedbackNote = UserDefaults.standard.string(forKey: storageKey + ".feedbackNote." + selectedAnswer) ?? (selectedAnswer == "original" ? UserDefaults.standard.string(forKey: storageKey + ".feedbackNote") : nil) ?? ""
         reason = UserDefaults.standard.string(forKey: storageKey + ".reason") ?? detail?.preference?.reason ?? ""
         reasonTags = Set(UserDefaults.standard.stringArray(forKey: storageKey + ".reasonTags") ?? detail?.preference?.reason_tags ?? [])
         allowTraining = (UserDefaults.standard.object(forKey: storageKey + ".training") as? Bool) ?? detail?.preference?.training_allowed ?? false
@@ -135,7 +135,7 @@ struct DialogueReviewView: View {
                             Text("Length").tag("brevity")
                         }.frame(minHeight: 44)
                         TextField("What would make this answer better?", text: $feedbackNote, axis: .vertical)
-                            .focused($editing, equals: .feedback)
+                            .focused($editing, equals: .feedback).accessibilityIdentifier("review.feedbackNote")
                             .lineLimit(2...6).padding(12)
                             .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                         if feedbackNote.unicodeScalars.count > 2000 {
@@ -304,7 +304,7 @@ struct DialogueReviewView: View {
                             }
                         }
                         TextField("Anything more specific?", text: $reason, axis: .vertical)
-                            .focused($editing, equals: .reason)
+                            .focused($editing, equals: .reason).accessibilityIdentifier("review.reason")
                             .lineLimit(2...6).padding(12)
                             .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                         if reason.unicodeScalars.count > 2000 {

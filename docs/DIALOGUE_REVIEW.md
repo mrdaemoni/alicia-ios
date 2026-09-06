@@ -10,7 +10,7 @@ words, a tentative reading, optional public detail, archetype lens, supplied
 context/source excerpts and granular feedback. Provider labels reflect the
 actual route. Qwen runs on the Mac mini. No private thinking transcript is shown.
 
-The model tabs switch between the original and an explicitly requested alternative,
+The model tabs switch between the original and an automatically prepared alternative for each new iOS reply,
 cached by the backend. Tapping Prefer Qwen / Prefer Claude / Tie / Neither saves
 immediately. Add why is optional: reason chips plus a text box. Helpful / Okay /
 Missed me and the Depth / Tone / Length menu rate the selected answer separately.

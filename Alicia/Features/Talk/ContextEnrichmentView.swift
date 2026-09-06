@@ -74,8 +74,8 @@ struct ContextEnrichmentView: View {
             Text(next.text).font(.body)
             Text("From your words: “\(next.anchor)”").font(.caption).foregroundStyle(Theme.inkSoft)
         }
-        Button(value.followups_enabled ? "Stop these follow-ups" : "Allow gentle follow-ups") {
-            submit(ContextChange(action: "settings", reply_id: replyID, followups_enabled: !value.followups_enabled))
+        Button(value.followups_enabled && !ThoughtReturnNotifier.locallyStopped ? "Stop these follow-ups" : "Allow gentle follow-ups") {
+            submit(ContextChange(action: "settings", reply_id: replyID, followups_enabled: !(value.followups_enabled && !ThoughtReturnNotifier.locallyStopped)))
         }.frame(minHeight: 44).disabled(busy || pending != nil)
         Text("Scheduled on this iPhone when the app syncs. New activity here cancels the pending invitation. Activity elsewhere is checked on the next sync.")
             .font(.caption).foregroundStyle(Theme.inkSoft)
@@ -148,7 +148,7 @@ private struct ContextItemView: View {
                 }.pickerStyle(.segmented).disabled(pending != nil)
                 Text("More requests attention in the next reply; the latest choices come first. Long items use a labelled excerpt, and space may limit what fits. Less asks for less emphasis. These controls do not delete sources or change model weights.").font(.caption)
                 TextField("What should she understand differently?", text: $correction, axis: .vertical)
-                    .focused($writing).lineLimit(3...8).padding(14).background(Theme.ink.opacity(0.04))
+                    .focused($writing).accessibilityIdentifier("context.correction").lineLimit(3...8).padding(14).background(Theme.ink.opacity(0.04))
                     .disabled(pending != nil)
                 if correction.unicodeScalars.count > 2000 { Text("Keep the correction under 2,000 characters. Your draft is retained.").font(.caption) }
                 Button(pending == nil ? "Save context" : "Retry saved change") { Task { await save() } }
