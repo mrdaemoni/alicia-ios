@@ -107,6 +107,10 @@ struct DialogueReviewView: View {
                 TextField("What did she miss?", text: $correction, axis: .vertical)
                     .lineLimit(2...6).padding(12)
                     .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                if correction.unicodeScalars.count > 2000 {
+                    Text("Keep the correction under 2,000 characters before saving. Your draft is retained.")
+                        .font(.caption).foregroundStyle(Theme.rose)
+                }
                 feedbackRow("reading", labels: ["That’s right", "She misread me"], values: ["accurate", "misread"])
             }
         }
@@ -190,6 +194,10 @@ struct DialogueReviewView: View {
                 TextField("What made the difference?", text: $reason, axis: .vertical)
                     .lineLimit(2...5).padding(12)
                     .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                if reason.unicodeScalars.count > 2000 {
+                    Text("Keep the reason under 2,000 characters before saving. Your draft is retained.")
+                        .font(.caption).foregroundStyle(Theme.rose)
+                }
                 Toggle("Allow this pair to be reviewed for model training", isOn: $allowTraining)
                     .font(.callout)
                 Text("A reviewed batch is a separate step. Saving feedback does not train or replace a model.")
@@ -198,7 +206,7 @@ struct DialogueReviewView: View {
                     submit(DialogueMutation(action: "preference", reply_id: value.id,
                         choice: choice, reason: reason, training_allowed: allowTraining))
                 }.frame(minHeight: 44)
-                    .disabled(busy || pending != nil || choice.isEmpty || reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(busy || pending != nil || choice.isEmpty || reason.unicodeScalars.count > 2000 || reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if let saved = value.preference {
                     Text("Saved: \(saved.choice.replacingOccurrences(of: "_", with: " ")) · \(saved.reason)")
                         .font(.caption).foregroundStyle(Theme.accentSoft)
@@ -229,7 +237,10 @@ struct DialogueReviewView: View {
                         .background(detail?.feedback[target]?.verdict == values[index]
                                     ? Theme.accent.opacity(0.18) : Theme.ink.opacity(0.04),
                                     in: RoundedRectangle(cornerRadius: 10))
-                }.buttonStyle(.plain).disabled(busy || pending != nil)
+                }.buttonStyle(.plain)
+                    .accessibilityAddTraits(detail?.feedback[target]?.verdict == values[index] ? .isSelected : [])
+                    .accessibilityValue(detail?.feedback[target]?.verdict == values[index] ? "Saved" : "")
+                    .disabled(busy || pending != nil || (target == "reading" && correction.unicodeScalars.count > 2000))
             }
         }
     }
