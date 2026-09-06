@@ -95,6 +95,8 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | Endpoint | For |
 |---|---|
 | `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds a voice-note URL |
+| `GET /api/context_enrichment` | current working picture and captured reply context; optional reply_id; item_id opens captured source |
+| `POST /api/context_enrichment` | UUID-receipted attention priority, correction, explicit note or follow-up setting |
 | `GET /api/dialogue_review?reply_id=<UUID>` | public context for one saved reply; read-only |
 | `POST /api/dialogue_review` | explicit feedback, requested opposite-model comparison, or contextual preference; UUID receipt |
 | `GET /api/thoughts` · `/api/tracks` · `/api/gallery` · `/api/health` | tab data |
