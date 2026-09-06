@@ -62,6 +62,15 @@ agreed.
 
 ## 3. Recommended Codex–Opus collaboration
 
+For Hector's current task delegation, Codex coordinates and reviews Claude's
+implementation. Follow `/Users/alicia/alicia/docs/COLLABORATION.md` and the shared
+`/Users/alicia/Documents/Alicia-development/` board. Claim the task's worktree,
+branch and base before editing; hand off exact head SHAs and evidence. Run the
+backend's `scripts/work_board.py --remote` to read the review inbox. Either
+agent may initiate a task, but it must be registered before implementation.
+The role examples below remain useful for visualization exploration; they do
+not override a task's named implementer and reviewer.
+
 Use strengths without turning them into rigid job titles:
 
 - **Opus is especially useful for:** product intent, continuity with the full
