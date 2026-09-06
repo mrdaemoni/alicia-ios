@@ -216,7 +216,10 @@ struct EpisodeDetailView: View {
                             InkTitle(text: track.title, size: 21)
                         }
                         Spacer()
-                        Button { store.togglePlay() } label: {
+                            Button {
+                                if store.nowPlaying?.id == track.id { store.togglePlay() }
+                                else { store.play(track) }
+                            } label: {
                             InkPlayPause(
                                 playing: store.isPlaying && store.nowPlaying?.id == track.id,
                                 size: 42,
