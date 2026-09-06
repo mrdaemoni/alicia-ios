@@ -8,6 +8,8 @@ struct Message: Identifiable, Hashable {
     var date: Date = .now
     /// Backend id for reacting to this reply (negative ints, iOS-minted).
     var messageID: Int? = nil
+    /// Durable response snapshot; retained by conversation-history receipts.
+    var replyID: String? = nil
     /// Emoji the user reacted with (shown as a badge on the bubble).
     var reaction: String? = nil
     /// TTS voice note of this reply, when voice replies are on.
@@ -26,6 +28,7 @@ struct Message: Identifiable, Hashable {
 /// One event in a streamed chat reply.
 enum ChatEvent {
     case token(String)
+    case details(String)
     case voice(URL)
     case done(messageID: Int?)
 }
@@ -353,4 +356,3 @@ extension String {
             .trimmingCharacters(in: .whitespaces)
     }
 }
-

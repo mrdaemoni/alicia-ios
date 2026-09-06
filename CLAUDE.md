@@ -113,7 +113,9 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET/POST /api/mode` | walk/drive state; finish accepts `text`, `episode_id`, `request_id` and acknowledges durable save |
 | `GET /api/episode_day?day=YYYY-MM-DD` | current or historical frame, probes, reactions, corrections, explicit keeps |
 | `POST /api/episode_day` | playing/progress/finished observations; reaction, feedback, correction, learning, refresh actions |
-| `GET /api/history` | last 120 actual shared conversation turns with stable receipts; no proactive feed |
+| `GET /api/history` | last 120 actual shared conversation turns with stable receipts and optional reply_id; no proactive feed |
+| `GET /api/dialogue_review?reply_id=<UUID>` | public context for one saved reply; read-only |
+| `POST /api/dialogue_review` | explicit feedback, requested opposite-model comparison, or contextual preference; UUID receipt |
 | `GET /api/episode/<label>` | shownotes markdown |
 | `POST /api/speak` · `GET /api/speech/<name>` | read-aloud: her voice rendered in ramped chunks (`skills/reading_voice.py`), returned as an ordered chunk list — `ready` / `streaming` / `rendering`, never blocking |
 | `GET /api/playlists` · `POST /api/playlist` | Studio's listening queues (create/rename/delete/add/remove/reorder); adding also renders that piece's audio so a queue is warm before he drives |
@@ -196,3 +198,16 @@ branch automatically through `ship.sh`. Current base: **v38 (2026-09-05)**. Test
 - `docs/RESEARCH.md` (library research from the scaffold session) is
   historical — the zero-dependency approach won; consult it only if a real
   need for a chat/markdown/image library appears.
+
+
+## A2-006: brief Dialogue with inspection
+
+This branch adds `Core/DialogueReview.swift` and `Talk/DialogueReviewView.swift`.
+**Behind this reply** opens from the short message or its long-press menu. It
+shows a saved public reading, lens and supplied context, with granular feedback
+and optional labelled comparison; only unchanged-input pairs qualify for training review. `ChatEvent.details` and history `reply_id`
+keep the inspection bound to the exact reply. View requests go through AppStore
+and AliciaService. Legacy replies keep their original text but have no invented
+context. See `docs/DIALOGUE_REVIEW.md` for draft/retry and training boundaries.
+The preceding v38 / 1.0 (5) entry is historical. Exact branch build and Apple
+processing status are recorded in the shared A2-006 `RELEASE.md` receipt.
