@@ -1025,6 +1025,7 @@ final class AppStore {
 
     func togglePlay() {
         guard nowPlaying != nil else { return }
+        if !isPlaying, let track = nowPlaying { chooseEpisode(track) }
         if isPlaying { flushEpisodePlayback() }
         isPlaying.toggle()
         if let player {
