@@ -68,7 +68,7 @@ struct RootView: View {
             // mistake: it exists only while something is being read to you,
             // it follows you off the page you started it from, and its
             // crossed-out mark ends it in one tap.
-            EpisodeConversationBar()
+            if !store.composerFocused { EpisodeConversationBar() }
             ReadingBar()
             EditorialTabBar()
         }

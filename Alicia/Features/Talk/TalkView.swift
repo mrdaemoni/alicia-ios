@@ -17,8 +17,12 @@ struct TalkView: View {
                         HStack(alignment: .top) {
                             Text(episode.title.strippedEmojis).font(.subheadline).italic()
                             Spacer()
-                            Button("THINK ALOUD") { store.openWalk() }
-                                .font(.system(size: 10, design: .monospaced)).tracking(1)
+                            Button { focused = false; store.openWalk() } label: {
+                                Text("THINK ALOUD")
+                                    .font(.system(size: 10, design: .monospaced)).tracking(1)
+                                    .frame(minHeight: 44).contentShape(Rectangle())
+                            }
+                            .accessibilityIdentifier("episode.talkFromDialogue")
                         }
                     }
                     if store.episodeChoiceSyncing {
