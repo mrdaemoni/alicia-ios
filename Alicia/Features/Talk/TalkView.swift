@@ -120,6 +120,7 @@ struct TalkView: View {
                 .font(.subheadline)
                 .lineLimit(1...5)
                 .focused($focused)
+                .accessibilityIdentifier("dialogue.composer")
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .foregroundStyle(Theme.ink)
