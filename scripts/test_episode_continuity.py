@@ -22,7 +22,10 @@ struct Track { var label: String?; var title: String }
  }
  func episodeDay(day:String) async -> EpisodeDay? { nil }
 }
+struct VoiceArchiveStub { func hasAudio(_ id:String)->Bool { false } }
 @MainActor final class Harness {
+ let voiceArchive=VoiceArchiveStub()
+ var walkRecordingID=""
  let service=Service()
  var playbackFlushing=false, episodeChoiceNeedsRefresh=false
  var episodeDay: EpisodeDay?

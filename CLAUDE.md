@@ -226,3 +226,13 @@ with one local-day reservation, quiet hours and immediate stop/cancellation.
 No APNs, training, new Telegram stream or new animation family. Feature contract:
 `/Users/alicia/alicia/docs/CONTEXT_ENRICHMENT.md`. Release evidence belongs to
 `/Users/alicia/Documents/Alicia-development/tasks/A2-007/RELEASE.md`.
+
+## Original voice archive (A2-009)
+
+`Core/VoiceEvidence.swift` owns original CAF files, capture metadata, text versions,
+and the durable upload/deletion outbox. `SpeechTranscriber` restarts only on-device
+recognition while the raw sink continues; backgrounding or closing pauses recording.
+`Talk/VoiceRecordingsView.swift` offers replay, corrections, context and deletion.
+AppStore/AliciaService use GET/POST `/api/voice_evidence` and PUT/GET
+`/api/voice_evidence/audio/<recording>/<segment>`. The original stays on phone and
+private Mac until explicit deletion; no automatic training or new audio provider.

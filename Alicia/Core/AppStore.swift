@@ -36,16 +36,28 @@ final class AppStore {
     /// backend has rendered it). Shares the audio session with the podcast
     /// player, so the two hand off rather than talk over each other.
     let reader = SpeechReader()
+    let voiceArchive: VoiceArchive
+    var walkRecordingID = UserDefaults.standard.string(forKey: "alicia.walkRecordingID") ?? "" {
+        didSet { UserDefaults.standard.set(walkRecordingID, forKey: "alicia.walkRecordingID") }
+    }
 
     init(service: AliciaService) {
         self.service = service
         self.isMock = service is MockAliciaService
+        self.voiceArchive = VoiceArchive(root: service is MockAliciaService
+            ? FileManager.default.temporaryDirectory.appendingPathComponent("voice-preview-" + UUID().uuidString) : nil)
         if isMock { messages = SampleData.messages }
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { messages = [] }
         if ProcessInfo.processInfo.arguments.contains("--dialogue-review-preview") {
             messages = [Message(sender: .me, text: "Preview · " + DialogueReview.preview.user_text),
                         Message(sender: .alicia, text: DialogueReview.preview.reply, replyID: DialogueReview.previewID)]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") {
+            voiceArchive.seedPreview()
+            messages = [Message(sender: .me, text: "Preview · I want to revisit the criteria for ending a commitment.",
+                                recordingID: VoiceArchive.previewID)]
+            episodeDay = EpisodeDay.preview
         }
 #endif
         reader.service = service
@@ -244,23 +256,26 @@ final class AppStore {
         if let pending = pendingWalkSave, pending["episode_id"] != episode.id {
             episodeError = "A reflection for \(pending["episode_id"] ?? walkEpisodeID) still needs its save confirmed. Retry it before starting \(episode.id)."
             walkEpisodeID = pending["episode_id"] ?? walkEpisodeID
+            walkRecordingID = pending["recording_id"] ?? walkRecordingID
             showWalk = true
             return
         }
         if walkEpisodeID != episode.id {
             // Keep separate drafts when a new Studio choice opens a different walk.
             var drafts = UserDefaults.standard.dictionary(forKey: "alicia.episodeWalkDrafts") as? [String: [String: String]] ?? [:]
-            if !walkDraft.isEmpty, !walkEpisodeID.isEmpty {
-                drafts[walkEpisodeID] = ["text": walkDraft, "prompt": walkPrompt, "request_id": walkRequestID]
+            if (!walkDraft.isEmpty || voiceArchive.hasAudio(walkRecordingID)), !walkEpisodeID.isEmpty {
+                drafts[walkEpisodeID] = ["text": walkDraft, "prompt": walkPrompt, "request_id": walkRequestID, "recording_id": walkRecordingID]
             }
             let restored = drafts.removeValue(forKey: episode.id)
             UserDefaults.standard.set(drafts, forKey: "alicia.episodeWalkDrafts")
             walkDraft = restored?["text"] ?? ""
             walkPrompt = restored?["prompt"] ?? probe
             walkRequestID = restored?["request_id"] ?? UUID().uuidString
-        } else if walkDraft.isEmpty, pendingWalkSave == nil {
+            walkRecordingID = restored?["recording_id"] ?? walkRequestID
+        } else if walkDraft.isEmpty, pendingWalkSave == nil, !voiceArchive.hasAudio(walkRecordingID) {
             walkPrompt = probe
             walkRequestID = UUID().uuidString
+            walkRecordingID = walkRequestID
         }
         walkEpisodeID = episode.id
         UserDefaults.standard.set(walkEpisodeID, forKey: "alicia.walkEpisodeID")
@@ -277,17 +292,50 @@ final class AppStore {
         }
         guard showWalk else { return false }
         prepareForRecording()
-        (thinkingMode, walkWords) = await service.modeState()
-        guard showWalk, !Task.isCancelled else { return false }
-        if !isWalking {
-            guard await service.modeAction("start_walk", topic: "Reaction to \(walkEpisodeID)") != nil else {
-                episodeError = "The walk couldn't connect. You can keep writing here and try again."
-                return false
-            }
-            thinkingMode = "walk"
-        }
-        guard showWalk, !Task.isCancelled else { pauseEpisodeWalk(); return false }
+        // Capturing the original never waits for the Mac or a network request.
+        // finishWalk starts/ends the shared server mode when words are submitted.
         return true
+    }
+
+    func startVoiceCapture(_ speech: SpeechTranscriber, id: String, walk: Bool) throws {
+        guard !isMock else { throw CocoaError(.featureUnsupported) }
+        let episodeID = walk ? walkEpisodeID : episodeDay?.episode?.id ?? ""
+        let sameEpisode = episodeDay?.episode?.id == episodeID
+        let context = VoiceContext(session_id: id, source: walk ? "ios_walk" : "ios_dialogue",
+            started_at: voiceTimestamp(), timezone: TimeZone.current.identifier,
+            episode_id: episodeID, episode_title: sameEpisode ? episodeDay?.episode?.title ?? "" : episodeID,
+            episode_basis: sameEpisode ? episodeDay?.episode_basis ?? "" : "",
+            frame_id: sameEpisode ? episodeDay?.frame_id ?? "" : "", question_presented: walk ? walkPrompt : "",
+            playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0)
+        let sink = try voiceArchive.begin(id: id, context: context)
+        try speech.start(sink: sink, onSegments: { [weak self] segments in
+            guard let self else { return }
+            self.voiceArchive.addSegments(segments, to: id)
+            Task { await self.syncVoiceArchive() }
+        }, onTranscript: { [weak self] text in
+            guard let self else { return }
+            self.voiceArchive.addTranscript(text, kind: "on_device", to: id)
+            Task { await self.syncVoiceArchive() }
+        })
+        Task { await syncVoiceArchive() }
+    }
+
+    func syncVoiceArchive() async { if !isMock { await voiceArchive.sync(using: service) } }
+    func refreshVoiceArchive() async { if !isMock { await voiceArchive.refresh(using: service) } }
+    func voiceDetail(_ id: String) async -> VoiceEvidencePayload? { await service.voiceRecordings(recordingID: id) }
+    func playOriginalVoice(_ id: String) async -> [URL] {
+        prepareForRecording()
+        return await voiceArchive.playbackFiles(id, using: service)
+    }
+    func correctVoice(_ id: String, text: String) async -> Bool {
+        guard voiceArchive.addTranscript(text, kind: "correction", to: id) else { return false }
+        await syncVoiceArchive()
+        await refreshEpisodeDay()
+        return true
+    }
+    func deleteOriginalVoice(_ id: String) async {
+        do { try voiceArchive.deleteAudio(id); await syncVoiceArchive() }
+        catch { voiceArchive.lastError = "Audio deletion needs another attempt." }
     }
 
     func pauseEpisodeWalk() {
@@ -306,8 +354,20 @@ final class AppStore {
     }
 
     func finishEpisodeWalk() async -> Bool {
+        if walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           voiceArchive.hasAudio(walkRecordingID), pendingWalkSave == nil {
+            // Audio-only is a valid saved source, not fabricated transcript text.
+            showWalk = false
+            pauseEpisodeWalk()
+            walkRecordingID = ""
+            walkRequestID = UUID().uuidString
+            UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+            await syncVoiceArchive()
+            return true
+        }
         let pending = pendingWalkSave ?? ["text": walkDraft.trimmingCharacters(in: .whitespacesAndNewlines),
-                                          "episode_id": walkEpisodeID, "request_id": walkRequestID, "prompt": walkPrompt]
+                                          "episode_id": walkEpisodeID, "request_id": walkRequestID, "prompt": walkPrompt,
+                                          "recording_id": walkRecordingID]
         let text = pending["text"] ?? ""
         guard !text.isEmpty, !isSavingWalk else { return false }
         guard text.unicodeScalars.count <= 60000 else {
@@ -319,7 +379,8 @@ final class AppStore {
         isSavingWalk = true
         defer { isSavingWalk = false }
         guard let receipt = await service.finishWalk(text: text, episodeID: pending["episode_id"] ?? walkEpisodeID,
-                                                      requestID: pending["request_id"] ?? walkRequestID, prompt: pending["prompt"] ?? "") else {
+                                                      requestID: pending["request_id"] ?? walkRequestID, prompt: pending["prompt"] ?? "",
+                                                      recordingID: pending["recording_id"] ?? "") else {
             episodeError = "I couldn't confirm the save. The submitted words are kept here; tap Retry save."
             return false
         }
@@ -333,10 +394,16 @@ final class AppStore {
             return false
         }
         pendingWalkSave = nil
-        messages.append(Message(sender: .me, text: text))
+        let recordedID = pending["recording_id"] ?? walkRecordingID
+        if voiceArchive.recording(recordedID) != nil {
+            voiceArchive.addTranscript(text, kind: "submitted", to: recordedID)
+            Task { await syncVoiceArchive() }
+        }
+        messages.append(Message(sender: .me, text: text, recordingID: recordedID.isEmpty ? nil : recordedID))
         // Never erase words that arrived after the submitted snapshot.
         if walkDraft.trimmingCharacters(in: .whitespacesAndNewlines) == text { walkDraft = "" }
         walkRequestID = UUID().uuidString
+        walkRecordingID = ""
         UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
         thinkingMode = "idle"
         episodeError = ""
@@ -516,6 +583,7 @@ final class AppStore {
     private var liveTimelineSeeded = false
 
     func load() async {
+        Task { await refreshVoiceArchive() }
         let messagesAtStart = messages.map(\.id)
         async let day = service.episodeDay(day: "")
         async let history = service.conversationHistory()
@@ -534,7 +602,7 @@ final class AppStore {
         if let transcript = await history, !isStreaming, messages.map(\.id) == messagesAtStart {
             messages = transcript.messages.map { row in
                 Message(sender: row.role == "user" ? .me : .alicia, text: row.content,
-                        date: Self.historyDate(row.ts), replyID: row.reply_id)
+                        date: Self.historyDate(row.ts), replyID: row.reply_id, recordingID: row.recording_id)
             }
         }
         Task { await flushPlaybackOutbox() }
@@ -887,13 +955,17 @@ final class AppStore {
         answeringAskExcerpt = ""
     }
 
-    func send(_ text: String) {
+    func send(_ text: String, recordingID: String = "") {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, !isStreaming, !episodeChoiceSyncing else { return }
         noteContextActivity()
+        if !recordingID.isEmpty {
+            voiceArchive.addTranscript(clean, kind: "submitted", to: recordingID)
+            Task { await syncVoiceArchive() }
+        }
         if let askID = answeringAskID {
             cancelAnswering()
-            messages.append(Message(sender: .me, text: clean))
+            messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID))
             Task {
                 let reply = await service.reply(proactiveID: askID, text: clean)
                 if let reply, !reply.isEmpty {
@@ -906,7 +978,7 @@ final class AppStore {
             }
             return
         }
-        messages.append(Message(sender: .me, text: clean))
+        messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID))
         let idx = messages.count
         messages.append(Message(sender: .alicia, text: ""))
         isStreaming = true
@@ -915,7 +987,7 @@ final class AppStore {
                 // `defer` rather than a trailing assignment: a thrown or cancelled
                 // stream must not leave her looking permanently mid-thought.
                 defer { isStreaming = false }
-                for await event in service.stream(clean, voice: voiceReplies) {
+                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID) {
                     guard messages.indices.contains(idx) else { break }
                     switch event {
                     case .token(let t):   messages[idx].text += t

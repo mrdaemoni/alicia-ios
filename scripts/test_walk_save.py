@@ -28,13 +28,22 @@ enum Section { case us, mind }
     var result: WalkReceipt?
     var sent: [[String: String]] = []
     var duringSave: (() -> Void)?
-    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? {
-        sent.append(["text": text, "episode_id": episodeID, "request_id": requestID, "prompt": prompt])
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
+        sent.append(["text": text, "episode_id": episodeID, "request_id": requestID, "prompt": prompt, "recording_id": recordingID])
         duringSave?()
         return result
     }
 }
+struct VoiceArchiveStub {
+ func hasAudio(_ id:String)->Bool { false }
+ func recording(_ id:String)->Bool? { nil }
+ func addTranscript(_ text:String, kind:String, to:String) {}
+}
 @MainActor final class Store {
+ let voiceArchive=VoiceArchiveStub()
+ var walkRecordingID=""
+ func syncVoiceArchive() async {}
+ func pauseEpisodeWalk() {}
     let service = FakeService()
     var pendingWalkSave: [String: String]?
     var walkDraft = "My reflection", walkEpisodeID = "S1E01", walkRequestID = "receipt-1", walkPrompt = "The actual question"

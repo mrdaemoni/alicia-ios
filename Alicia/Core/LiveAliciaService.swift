@@ -117,12 +117,49 @@ struct LiveAliciaService: AliciaService {
     }
 
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? {
+        await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt, recordingID: "")
+    }
+
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
         await post("/api/mode", body: ["action": "end_walk", "text": text,
-                                     "episode_id": episodeID, "request_id": requestID, "topic": prompt])
+                                     "episode_id": episodeID, "request_id": requestID, "topic": prompt,
+                                     "recording_id": recordingID])
     }
 
     func conversationHistory() async -> ConversationHistory? {
         await fetchOne("/api/history")
+    }
+
+    func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult? {
+        await post("/api/voice_evidence", body: body)
+    }
+
+    func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload? {
+        guard recordingID.isEmpty || UUID(uuidString: recordingID) != nil else { return nil }
+        return await fetchOne("/api/voice_evidence" + (recordingID.isEmpty ? "" : "?recording_id=" + recordingID))
+    }
+
+    func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult? {
+        guard UUID(uuidString: recordingID) != nil, UUID(uuidString: segment.id) != nil else { return nil }
+        do {
+            var req = request("/api/voice_evidence/audio/" + recordingID + "/" + segment.id, method: "PUT")
+            req.setValue("audio/x-caf", forHTTPHeaderField: "Content-Type")
+            req.setValue(try JSONEncoder().encode(segment).base64EncodedString(), forHTTPHeaderField: "X-Alicia-Audio")
+            req.timeoutInterval = 90
+            let (data, response) = try await URLSession.shared.upload(for: req, fromFile: file)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return try JSONDecoder().decode(VoiceEvidenceResult.self, from: data)
+        } catch { return nil }
+    }
+
+    func downloadVoice(recordingID: String, segmentID: String) async -> Data? {
+        guard UUID(uuidString: recordingID) != nil, UUID(uuidString: segmentID) != nil else { return nil }
+        do {
+            var req = request("/api/voice_evidence/audio/" + recordingID + "/" + segmentID)
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+            let (bytes, response) = try await URLSession.shared.data(for: req)
+            return (response as? HTTPURLResponse)?.statusCode == 200 ? bytes : nil
+        } catch { return nil }
     }
 
     func contextEnrichment(replyID: String) async -> ContextEnrichment? {
@@ -150,11 +187,15 @@ struct LiveAliciaService: AliciaService {
     }
 
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: "")
+    }
+
+    func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in
             let task = Task {
                 do {
                     let body = try JSONSerialization.data(
-                        withJSONObject: ["text": prompt, "voice": voice])
+                        withJSONObject: ["text": prompt, "voice": voice, "recording_id": recordingID])
                     let (bytes, resp) = try await URLSession.shared.bytes(
                         for: request("/api/chat", method: "POST", body: body))
                     guard (resp as? HTTPURLResponse)?.statusCode == 200 else {

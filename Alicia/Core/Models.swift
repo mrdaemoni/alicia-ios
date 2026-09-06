@@ -10,6 +10,7 @@ struct Message: Identifiable, Hashable {
     var messageID: Int? = nil
     /// Durable response snapshot; retained by conversation-history receipts.
     var replyID: String? = nil
+    var recordingID: String? = nil
     /// Emoji the user reacted with (shown as a badge on the bubble).
     var reaction: String? = nil
     /// TTS voice note of this reply, when voice replies are on.
