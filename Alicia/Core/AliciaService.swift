@@ -54,6 +54,8 @@ protocol AliciaService {
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse?
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt?
     func conversationHistory() async -> ConversationHistory?
+    func dialogueReview(replyID: String) async -> DialogueReview?
+    func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult?
     /// Streams a reply as events: tokens, an optional voice-note URL, and a
     /// final `.done` carrying the backend message id (for reactions).
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent>
@@ -219,6 +221,13 @@ struct MockAliciaService: AliciaService {
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? { nil }
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? { nil }
     func conversationHistory() async -> ConversationHistory? { nil }
+    func dialogueReview(replyID: String) async -> DialogueReview? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return DialogueReview.preview }
+#endif
+        return nil
+    }
+    func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult? { nil }
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
         let reply = SampleData.reply(to: prompt)
         return AsyncStream { continuation in

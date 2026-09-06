@@ -209,37 +209,14 @@ struct ProactiveWhisper: View {
 struct MessageBubble: View {
     @Environment(AppStore.self) private var store
     let message: Message
-    @State private var expanded = false
+    @State private var showDetails = false
     private var isMe: Bool { message.sender == .me }
 
     // Reactions render as words in her register (InkReactions); the emoji
     // strings still travel to the backend, where the loops key on them.
 
-    /// A long message from her that isn't asking or answering directly —
-    /// a report. Reports open folded to their first breath; direct speech
-    /// (anything that ends in a question, or short) stays full-size.
-    private var isReport: Bool {
-        guard !isMe, message.text.count > 350 else { return false }
-        let tail = message.text.suffix(120)
-        return !tail.contains("?")
-    }
-
-    /// Her text arrives with Telegram's inline emoji markers (💭/✨/🎙) —
-    /// on paper, the ink chrome does that work, so they're shed (v24).
-    private var cleanText: String {
-        isMe ? message.text : message.text.strippedEmojis
-    }
-
     private var displayText: String {
-        let text = cleanText
-        guard isReport, !expanded else { return text }
-        // Fold at the first paragraph break past a minimum, else hard-cut.
-        if text.count > 120,
-           let cut = text.range(of: "\n\n", range:
-                text.index(text.startIndex, offsetBy: 120)..<text.endIndex) {
-            return String(text[..<cut.lowerBound])
-        }
-        return String(text.prefix(220)) + "…"
+        isMe ? message.text : message.conversationalPreview.strippedEmojis
     }
 
     /// Markdown-rendered body (falls back to plain text on parse failure).
@@ -296,17 +273,13 @@ struct MessageBubble: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(message.text.isEmpty ? AttributedString("…") : rendered)
                     .foregroundStyle(Theme.ink)
-                if isReport {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
-                    } label: {
-                        Text(expanded ? "LESS" : "THE REST →")
-                            .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                            .tracking(1.6)
-                            .underline()
-                            .foregroundStyle(Theme.accentSoft)
-                    }
-                    .buttonStyle(.plain)
+                if !isMe, !message.text.isEmpty {
+                    Button("BEHIND THIS REPLY") { showDetails = true }
+                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                        .tracking(1.2)
+                        .foregroundStyle(Theme.accentSoft)
+                        .frame(minHeight: 44)
+                        .buttonStyle(.plain)
                 }
             }
 
@@ -338,7 +311,11 @@ struct MessageBubble: View {
                     .offset(x: isMe ? -8 : 8, y: 11)
             }
         }
+        .sheet(isPresented: $showDetails) { DialogueReviewView(message: message) }
         .contextMenu {
+            if !isMe, !message.text.isEmpty {
+                Button("Behind this reply") { showDetails = true }
+            }
             // React to her messages — chat replies feed the archetype loop,
             // proactive messages feed their circulation entry. Words in
             // her register; the emoji rides underneath to the backend.
@@ -359,5 +336,5 @@ struct MessageBubble: View {
     TalkView()
         .environment(AppStore(service: MockAliciaService()))
         .tint(Theme.accent)
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
 }

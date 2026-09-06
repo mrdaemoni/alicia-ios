@@ -125,6 +125,15 @@ struct LiveAliciaService: AliciaService {
         await fetchOne("/api/history")
     }
 
+    func dialogueReview(replyID: String) async -> DialogueReview? {
+        guard UUID(uuidString: replyID) != nil else { return nil }
+        return await fetchOne("/api/dialogue_review?reply_id=" + replyID)
+    }
+
+    func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult? {
+        await post("/api/dialogue_review", body: mutation.body)
+    }
+
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in
             let task = Task {
@@ -146,6 +155,7 @@ struct LiveAliciaService: AliciaService {
                               let event = try? JSONDecoder().decode(WireEvent.self, from: data)
                         else { continue }
                         if let t = event.t { continuation.yield(.token(t)) }
+                        if let id = event.reply_id { continuation.yield(.details(id)) }
                         if let v = event.voice, let url = mediaURL(v) {
                             continuation.yield(.voice(url))
                         }
@@ -174,6 +184,7 @@ struct LiveAliciaService: AliciaService {
         var voice: String?
         var done: Bool?
         var message_id: Int?
+        var reply_id: String?
         var error: String?
     }
 

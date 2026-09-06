@@ -43,6 +43,10 @@ final class AppStore {
         if isMock { messages = SampleData.messages }
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { messages = [] }
+        if ProcessInfo.processInfo.arguments.contains("--dialogue-review-preview") {
+            messages = [Message(sender: .me, text: "Preview · " + DialogueReview.preview.user_text),
+                        Message(sender: .alicia, text: DialogueReview.preview.reply, replyID: DialogueReview.previewID)]
+        }
 #endif
         reader.service = service
         // Presence telemetry rides the same service (and is a no-op on the
@@ -398,7 +402,7 @@ final class AppStore {
         if let transcript = await history, !isStreaming, messages.map(\.id) == messagesAtStart {
             messages = transcript.messages.map { row in
                 Message(sender: row.role == "user" ? .me : .alicia, text: row.content,
-                        date: Self.historyDate(row.ts))
+                        date: Self.historyDate(row.ts), replyID: row.reply_id)
             }
         }
         Task { await flushPlaybackOutbox() }
@@ -781,6 +785,7 @@ final class AppStore {
                 guard messages.indices.contains(idx) else { break }
                 switch event {
                 case .token(let t):   messages[idx].text += t
+                case .details(let id): messages[idx].replyID = id
                 case .voice(let url): messages[idx].voiceURL = url
                 case .done(let mid):  messages[idx].messageID = mid
                 }
@@ -789,6 +794,15 @@ final class AppStore {
             // keep the word counter fresh.
             if isWalking { (thinkingMode, walkWords) = await service.modeState() }
         }
+    }
+
+    /// Saved public context for one particular reply.
+    func replyInspection(_ replyID: String) async -> DialogueReview? {
+        await service.dialogueReview(replyID: replyID)
+    }
+
+    func saveReplyReview(_ mutation: DialogueMutation) async -> DialogueMutationResult? {
+        await service.dialogueReviewAction(mutation)
     }
 
     /// Shownotes markdown for an episode (Studio detail page).

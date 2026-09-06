@@ -113,3 +113,29 @@ help/catalog text changes, its backend PR owns the targeted restart.
 Earlier app and handoff history remains in `docs/history/SESSION_HANDOFF-before-alicia-2.md`.
 Do not restore the old orbit, voice gallery, daily broadcast arc or weekly survey
 as a fix for missing UI or a retired assertion.
+
+
+## A2-006 — current review candidate
+
+`codex/dialogue-insight` adds brief Dialogue and **Behind this reply** (button or
+long press). The paired backend branch uses that same name in `alicia`.
+`docs/DIALOGUE_REVIEW.md` is the feature contract. Backend must deploy before
+the dependent app; the shipped v38 record above is not changed by this branch.
+
+The sheet reveals saved public response metadata and supplied context, never a
+private reasoning transcript. Feedback belongs to an exact response/reading/
+source set/lens/length. Optional Qwen/Claude comparison uses frozen input and
+runs only on a deliberate tap. Qwen is on the Mac mini, not the phone. It is a
+contextual preference with visible providers, separate from blind Labs trials.
+A decisive choice, reason and explicit permission can enter a pending-review
+export; saving feedback does not train or replace any model.
+
+Pending mutations are persisted with immutable payload and UUID until confirmed;
+retries cannot turn edited words into the same request. No automatic comparison
+on expansion. Older replies have no invented saved context. The existing quiet
+schedule, episode/day signals and explicit vault keeps remain separate.
+
+Fixtures use `--dialogue-review-preview`, `--dialogue-review-sheet-preview`, and
+optionally `--dialogue-review-comparison-preview`; any dialogue-review preview
+flag forces MockAliciaService in DEBUG. All preview text is fixture content;
+no production feedback, presence, model generation or vault writes occur.

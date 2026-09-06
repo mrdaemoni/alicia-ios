@@ -34,7 +34,10 @@ struct WalkReceipt: Decodable {
 }
 
 struct ConversationHistory: Decodable {
-    struct Turn: Decodable { var id, ts, role, content, source: String }
+    struct Turn: Decodable {
+        var id, ts, role, content, source: String
+        var reply_id: String?
+    }
     var messages: [Turn]
 }
 

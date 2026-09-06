@@ -6,7 +6,7 @@ struct AliciaApp: App {
     /// mock otherwise — see AliciaConfig.
     @State private var store = AppStore(service: {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { return MockAliciaService() }
+        if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return MockAliciaService() }
 #endif
         return AliciaConfig.makeService()
     }())
@@ -43,6 +43,9 @@ struct AliciaApp: App {
 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--motion-lab") {
                     MotionLabView()
+                } else if ProcessInfo.processInfo.arguments.contains("--dialogue-review-sheet-preview") {
+                    DialogueReviewView(message: Message(sender: .alicia, text: DialogueReview.preview.reply,
+                                                        replyID: DialogueReview.previewID))
                 } else {
                     RootView()
                 }
