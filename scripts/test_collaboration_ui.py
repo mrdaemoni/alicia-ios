@@ -97,7 +97,7 @@ final class ContextUITests: XCTestCase {
   let edits=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","collaboration.editGoal."))
   let second=edits.element(boundBy:1);reveal(second,app:app);second.tap()
   let title=app.textFields["collaboration.field.Title"];XCTAssertTrue(title.waitForExistence(timeout:10));XCTAssertEqual(title.value as? String,"Second shared goal")
-  title.tap();title.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:"Second shared goal".count)+"Revised second goal")
+  title.tap(withNumberOfTaps:3,numberOfTouches:1);title.typeText("Revised second goal");XCTAssertEqual(title.value as? String,"Revised second goal")
   if app.buttons["Done writing"].exists{app.buttons["Done writing"].tap()}
   let save=app.buttons["collaboration.saveGoal"];reveal(save,app:app);save.tap()
   XCTAssertTrue(app.navigationBars["Together"].waitForExistence(timeout:10))
@@ -134,4 +134,7 @@ final class ContextUITests: XCTestCase {
 ''')
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
 result=pathlib.Path(os.environ.get('ALICIA_TEST_EVIDENCE_DIR',str(work)))/('collaboration-ui-'+work.name+'.xcresult')
-subprocess.run(['xcodebuild','-project',str(project),'-scheme','Alicia','-destination','platform=iOS Simulator,id=F36E7803-4EEE-47D1-8D8A-7C930515EB27','-derivedDataPath',str(work/'DerivedData'),'-resultBundlePath',str(result),'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','test'],env=env,check=True)
+selected=[name for name in os.environ.get('ALICIA_UI_TESTS','').split(',') if name]
+assert all(name in {'testUseClarifyCommitAndOutcome','testGoalAndEvidence','testQuietSettingsAndReduceMotion','testExactTarget','testDirectGoalWork','testContextPendingKeepsExactWords','testThreeConcurrentGoalsAndIndependentEdit'} for name in selected)
+filters=['-only-testing:ContextUITests/ContextUITests/'+name for name in selected]
+subprocess.run(['xcodebuild','-project',str(project),'-scheme','Alicia','-destination','platform=iOS Simulator,id=F36E7803-4EEE-47D1-8D8A-7C930515EB27','-derivedDataPath',str(work/'DerivedData'),'-resultBundlePath',str(result),'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','test']+filters,env=env,check=True)

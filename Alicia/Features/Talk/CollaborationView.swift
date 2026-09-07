@@ -359,7 +359,6 @@ private struct CollaborationEditor: View {
                 switch kind {
                 case .goal(let goal):
                     Text(goal == nil ? "Add a goal" : "Edit your goal").font(.title2)
-                    if goal == nil { Text("This adds a separate goal alongside your existing ones.").font(.callout) }
                     field("Title", text: $title); field("What would a useful outcome look like?", text: $outcome); field("Why does it matter?", text: $why)
                     Picker("Attention", selection: $priority) { Text("Less").tag("less"); Text("Normal").tag("normal"); Text("More").tag("more") }.pickerStyle(.segmented)
                     if goal != nil { Picker("Goal state", selection: $status) { Text("Active").tag("active"); Text("Paused").tag("paused"); Text("Completed").tag("completed") } }
