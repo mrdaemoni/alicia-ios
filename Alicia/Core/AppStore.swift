@@ -36,6 +36,7 @@ final class AppStore {
     /// backend has rendered it). Shares the audio session with the podcast
     /// player, so the two hand off rather than talk over each other.
     let reader = SpeechReader()
+    let collaboration: CollaborationStore
     let voiceArchive: VoiceArchive
     var walkRecordingID = UserDefaults.standard.string(forKey: "alicia.walkRecordingID") ?? "" {
         didSet { UserDefaults.standard.set(walkRecordingID, forKey: "alicia.walkRecordingID") }
@@ -44,6 +45,9 @@ final class AppStore {
     init(service: AliciaService) {
         self.service = service
         self.isMock = service is MockAliciaService
+        self.collaboration = CollaborationStore(service: service,
+            defaults: service is MockAliciaService ? UserDefaults(suiteName: "collaboration-preview-" + UUID().uuidString)! : .standard,
+            notifications: !(service is MockAliciaService))
         self.voiceArchive = VoiceArchive(root: service is MockAliciaService
             ? FileManager.default.temporaryDirectory.appendingPathComponent("voice-preview-" + UUID().uuidString) : nil)
         if isMock { messages = SampleData.messages }
@@ -52,6 +56,13 @@ final class AppStore {
         if ProcessInfo.processInfo.arguments.contains("--dialogue-review-preview") {
             messages = [Message(sender: .me, text: "Preview · " + DialogueReview.preview.user_text),
                         Message(sender: .alicia, text: DialogueReview.preview.reply, replyID: DialogueReview.previewID)]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") {
+            voiceArchive.seedPreview()
+            messages = []
+            if ProcessInfo.processInfo.arguments.contains("--collaboration-target-preview") {
+                collaboration.route = CollaborationRoute(candidateID: "preview-candidate", goalID: CollaborationPreview.goalID, connectionID: CollaborationPreview.connectionID)
+            }
         }
         if ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") {
             voiceArchive.seedPreview()
@@ -152,6 +163,7 @@ final class AppStore {
     }
 
     private func syncThoughtReturn(_ supplied: ContextEnrichment? = nil) async {
+        if collaboration.state != nil { ThoughtReturnNotifier.cancel(); return }
         guard service is LiveAliciaService, !showWalk, !isWalking, !isStreaming else { return }
         let revision = contextActivityRevision
         let fresh: ContextEnrichment?
@@ -583,6 +595,7 @@ final class AppStore {
     private var liveTimelineSeeded = false
 
     func load() async {
+        Task { await collaboration.load() }
         Task { await refreshVoiceArchive() }
         let messagesAtStart = messages.map(\.id)
         async let day = service.episodeDay(day: "")
@@ -699,6 +712,7 @@ final class AppStore {
     }
 
     private func pollProactive() async {
+        await collaboration.load()
         await refreshEpisodeDay()
         await flushPlaybackOutbox()
         let fresh = await service.proactive(limit: 30)

@@ -50,6 +50,10 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
+    func collaboration() async -> CollaborationState?
+    func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse?
+    func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource?
+
     func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult?
     func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload?
     func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult?
@@ -157,6 +161,25 @@ protocol AliciaService {
 }
 
 extension AliciaService {
+    func collaboration() async -> CollaborationState? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") { return await CollaborationPreview.shared.read() }
+#endif
+        return nil
+    }
+    func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") { return await CollaborationPreview.shared.save(mutation) }
+#endif
+        return nil
+    }
+    func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") { return ContextSource(title: "Preview source", text: "Preview: removal serves the outcome; it is not an end in itself.", notice: "Fixture source. No live file was read.") }
+#endif
+        return nil
+    }
+
     func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String? {
         await reply(proactiveID: proactiveID, text: text)
     }

@@ -1,15 +1,15 @@
-# Session handoff — Alicia 2.0, iOS v38
+# Session handoff — Alicia 2.0
 
-Current task: A2-007, September 6, 2026. This branch builds on the last recorded
-TestFlight 1.0 (6), v38 · codex/dialogue-insight at `0cd200e`. A2-007 is a
-candidate until its shared RELEASE.md records Apple state. The build-5 release
-section below is historical. Read `docs/CONTEXT_ENRICHMENT.md` for this change.
+Current task: A2-010 collaborative Alicia, September 7, 2026. This candidate
+builds on A2-009 source 55798db. Read docs/COLLABORATION.md for the current iOS
+implementation; Apple release status is recorded only in the shared A2-010
+RELEASE.md. Historical release sections below are retained as history.
 
 Earlier product baseline: September 5, 2026. Read `AGENTS.md` first, then this
 file and `CLAUDE.md`. The complete cross-repository handoff is
 `/Users/alicia/alicia/docs/ALICIA_2_0.md`.
 
-## What is released
+## September 5 release baseline (historical)
 
 - iOS PR #6, merge `9b353f5`, implements episode/day focus and the foreground
   walk/reflection screen's keep-awake behavior.
@@ -34,12 +34,12 @@ documentation reconciliation; verify again before future work.
 current episode views are implemented in `Features/Home/EpisodeDayView.swift`.
 Older orbit, card and voice-gallery implementations remain unmounted.
 
-- **Us:** the exact played episode, two or three probes with source passages,
+- **Us:** shared goal/current connection, then the exact played episode and two or three probes with source passages,
   This helps / Go deeper / Missed me on the exact question, and Walk with this.
 - **Dialogue:** actual persisted conversation from `/api/history`, a small
   episode header, dictation, optional voice replies, and Think aloud. A proactive
   feed does not seed the transcript.
-- **Alicia:** tentative understanding, Hector's words, corrections and explicit
+- **Alicia:** shared goals and agreements, tentative understanding, Hector's words, corrections and explicit
   keeps. His correction is evidence; a generated interpretation is not his belief.
 - **Studio / Knowledge:** the podcast, playlist, synthesis and thinker libraries
   remain available. Studio retains its canvas tools.
@@ -188,3 +188,25 @@ release status is `/Users/alicia/Documents/Alicia-development/tasks/A2-009/RELEA
 Backend behavior: `docs/VOICE_EVIDENCE.md` in the paired backend worktree.
 Physical microphone/headset completeness remains a device check, separate from
 simulator file/buffer/UI evidence. Earlier missing recordings cannot be recovered.
+
+## A2-010 — shared focus across episodes
+
+Us and Alicia now show a compact shared goal/current connection independently of
+playback. Dialogue and Context enrichment open the same collaboration review.
+Explicit edits distinguish use, clarification, commitment, reported outcomes and
+change of course. Source and original voice drill-down reuse existing surfaces;
+long reviews offer explicitly labelled local read-aloud. Shared state uses a
+monotonic revision and durable exact mutation receipts; drafts retain the entity
+revision they originally edited.
+Alicia's internal research can also appear directly under a saved goal, labelled
+prepared work. It does not create a human agreement or report an achieved outcome.
+
+Purposeful local returns supersede the earlier daily-slot ThoughtReturn policy
+when the collaboration API is available. Quiet hours and immediate Stop remain;
+unrelated conversation does not cancel an agreement. Notification targets open
+the exact connection/agreement. The backend owns candidate relevance and work;
+iOS neither generates a result nor claims a scheduled notification was delivered.
+
+No release, live input, microphone call, model request or send is part of the iOS
+fixture checks. docs/COLLABORATION.md and shared A2-010 evidence describe the
+current candidate. Preserve the existing voice archive and comparison consent.

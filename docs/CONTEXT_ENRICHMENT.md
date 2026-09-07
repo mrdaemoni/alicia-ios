@@ -1,5 +1,9 @@
 # Context enrichment — A2-007
 
+A2-010 adds shared goals and agreements through docs/COLLABORATION.md. Its
+purposeful-return policy supersedes the daily reservation below when the
+collaboration endpoint is supported; context attention controls remain.
+
 Hector wants a short conversation, an inspectable account of what was supplied,
 and quick ways to correct or reprioritize that context. This follows his first
 real morning using build 6. It is a candidate until the shared task RELEASE.md

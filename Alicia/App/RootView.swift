@@ -48,6 +48,7 @@ struct RootView: View {
 
     var body: some View {
         @Bindable var store = store
+        @Bindable var collaboration = store.collaboration
         // A hard layout, not a safe-area inset: the inset mechanism
         // repeatedly failed on device (bar floating above the bottom,
         // covering the composer). Content and bar are siblings — the bar
@@ -75,6 +76,16 @@ struct RootView: View {
         .ignoresSafeArea(edges: .bottom)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("alicia.openThoughtReturn"))) { _ in
             store.selectedSection = .mind
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("alicia.openCollaboration"))) { note in
+            let info = note.userInfo ?? [:]
+            store.collaboration.route = CollaborationRoute(candidateID: info["collaborationCandidate"] as? String ?? "",
+                goalID: info["goalID"] as? String ?? "", connectionID: info["connectionID"] as? String ?? "",
+                agreementID: info["agreementID"] as? String ?? "")
+        }
+        .task { store.collaboration.restoreRoute() }
+        .sheet(item: $collaboration.route) { route in
+            NavigationStack { CollaborationView(target: route) }
         }
         // Presence: which tab, for how long. Fires on every change including
         // the first, so the section he lands on is timed from the start.

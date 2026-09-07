@@ -103,7 +103,19 @@ enum ProactiveNotifier {
     private static func handle(_ task: BGAppRefreshTask) {
         schedule()   // always chain the next window
         let work = Task {
-            let fresh = await AliciaConfig.makeService().proactive(limit: 10)
+            let service = AliciaConfig.makeService()
+            if let state = await service.collaboration() {
+                await CollaborationNotifier.sync(state)
+                task.setTaskCompleted(success: true)
+                return
+            }
+            // A temporary failure of the new endpoint must not revive old broadcasts.
+            let hasSharedState = await CollaborationNotifier.hasSharedState
+            guard !Task.isCancelled, !hasSharedState else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            let fresh = await service.proactive(limit: 10)
             for m in unseen(of: fresh).prefix(3) {
                 await notify(m)
             }
@@ -118,7 +130,18 @@ enum ProactiveNotifier {
 final class ForegroundBanner: NSObject, UNUserNotificationCenterDelegate {
     static let shared = ForegroundBanner()
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        if response.notification.request.content.userInfo["thoughtReturn"] != nil {
+        let info = response.notification.request.content.userInfo
+        if info["collaborationCandidate"] != nil {
+            let route = CollaborationRoute(candidateID: info["collaborationCandidate"] as? String ?? "",
+                goalID: info["goalID"] as? String ?? "", connectionID: info["connectionID"] as? String ?? "",
+                agreementID: info["agreementID"] as? String ?? "")
+            await MainActor.run {
+                UserDefaults.standard.set(try? JSONEncoder().encode(route), forKey: "alicia.collaboration.openTarget")
+                NotificationCenter.default.post(name: Notification.Name("alicia.openCollaboration"), object: nil,
+                    userInfo: ["collaborationCandidate": route.candidateID, "goalID": route.goalID,
+                               "connectionID": route.connectionID, "agreementID": route.agreementID])
+            }
+        } else if info["thoughtReturn"] != nil {
             await MainActor.run { NotificationCenter.default.post(name: Notification.Name("alicia.openThoughtReturn"), object: nil) }
         }
     }

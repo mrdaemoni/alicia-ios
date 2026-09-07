@@ -9,6 +9,7 @@ struct EpisodeHomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
                     SectionHeader(title: "Us", kicker: Date.now.formatted(date: .complete, time: .omitted))
+                    CollaborationSummary()
                     if let day = store.episodeDay, let episode = day.episode {
                         EpisodeHeading(episode: episode)
                         if !day.focus.isEmpty {
@@ -46,11 +47,17 @@ struct EpisodeHomeView: View {
                         Button("CONTINUE IN DIALOGUE") { store.selectedSection = .dialogue }
                             .font(.system(size: 11, design: .monospaced)).tracking(1.3)
                     } else {
-                        InkTitle(text: "Begin with what you hear", size: 32)
-                        Text("Play an episode in Studio. Its ideas will be here, ready for your reaction.")
-                            .font(.system(size: 20, design: .serif))
-                        Button("OPEN STUDIO") { store.selectedSection = .studio }
-                            .buttonStyle(EpisodeButtonStyle())
+                        if store.collaboration.state?.goals.contains(where: { $0.status == "active" }) == true {
+                            Text("An episode can add another perspective.").font(.subheadline).italic()
+                            Button("BRING IN AN EPISODE") { store.selectedSection = .studio }
+                                .font(.caption.monospaced()).frame(minHeight: 44)
+                        } else {
+                            InkTitle(text: "Begin with what you hear", size: 32)
+                            Text("Play an episode in Studio. Its ideas will be here, ready for your reaction.")
+                                .font(.system(size: 20, design: .serif))
+                            Button("OPEN STUDIO") { store.selectedSection = .studio }
+                                .buttonStyle(EpisodeButtonStyle())
+                        }
                         if !store.walkDraft.isEmpty {
                             Button("RETURN TO YOUR REFLECTION") {
                                 store.walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? ""
@@ -271,6 +278,7 @@ struct EpisodeMindView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     SectionHeader(title: "Alicia", kicker: "WHAT I'M HOLDING WITH YOU")
+                    CollaborationSummary()
                     NavigationLink("About you · enrich Alicia’s context") { ContextEnrichmentView() }
                         .font(.callout).frame(minHeight: 44)
                     if let day = store.episodeDay, let episode = day.episode {

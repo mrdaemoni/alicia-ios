@@ -124,7 +124,8 @@ extension View {
                         voice: TabPresence.voice(for: section),
                         state: TabPresence.state(for: section, store: store),
                         attention: TabPresence.attention(for: section, store: store),
-                        isActive: store.selectedSection == section
+                        isActive: store.selectedSection == section,
+                        previewsReduceMotion: previewsCollaborationStillness
                     )
                     .frame(width: geo.size.width * 1.9,
                            height: geo.size.height * 1.9)
@@ -136,5 +137,14 @@ extension View {
             }
             .ignoresSafeArea()
         }
+    }
+
+    private var previewsCollaborationStillness: Bool {
+#if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        return args.contains("--collaboration-preview") && args.contains("--collaboration-reduce-motion-preview")
+#else
+        return false
+#endif
     }
 }
