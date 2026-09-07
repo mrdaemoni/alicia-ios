@@ -37,6 +37,10 @@ struct TalkView: View {
                         Button("Syncing your episode choice · tap to retry") { store.retryEpisodeSync() }
                             .font(.caption).foregroundStyle(Theme.inkSoft)
                     }
+                    Button("OUR SHARED FOCUS") {
+                        cancelMicrophoneStart(); speech.stop(); focused = false
+                        store.collaboration.route = CollaborationRoute()
+                    }.font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
                     EpisodeErrorLine()
                     Button("RECORDINGS") { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = nil; showRecordings = true }
                         .font(.system(size: 10, design: .monospaced)).tracking(1)

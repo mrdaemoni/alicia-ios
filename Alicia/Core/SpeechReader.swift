@@ -202,6 +202,14 @@ final class SpeechReader: NSObject {
         begin(item)
     }
 
+    /// Deliberate local review: never sends the review text for a new render.
+    func readLocally(_ item: Readable) {
+        if current == item, voice == .device { toggle(); return }
+        stop(); queueItems = [item]; queuePosition = 0; playlistName = nil
+        willStartReading?(); current = item; progress = 0
+        activateAudioSession(); fallBackToDevice(item, reason: nil)
+    }
+
     /// Move to another piece in the queue, keeping the queue intact.
     func advance(by offset: Int) {
         if current?.episodeID != nil { episodeStopped?(false) }

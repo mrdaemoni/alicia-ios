@@ -162,6 +162,17 @@ struct LiveAliciaService: AliciaService {
         } catch { return nil }
     }
 
+    func collaboration() async -> CollaborationState? { await fetchOne("/api/collaboration") }
+    func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse? {
+        await post("/api/collaboration", body: mutation.body)
+    }
+    func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource? {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: resultID.isEmpty ? "connection_id" : "result_id", value: resultID.isEmpty ? connectionID : resultID), URLQueryItem(name: "evidence_id", value: evidenceID)]
+        guard let query = components.percentEncodedQuery else { return nil }
+        return await fetchOne("/api/collaboration/source?" + query)
+    }
+
     func contextEnrichment(replyID: String) async -> ContextEnrichment? {
         guard replyID.isEmpty || UUID(uuidString: replyID) != nil else { return nil }
         return await fetchOne("/api/context_enrichment?reply_id=" + replyID)

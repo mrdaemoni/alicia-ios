@@ -236,3 +236,14 @@ recognition while the raw sink continues; backgrounding or closing pauses record
 AppStore/AliciaService use GET/POST `/api/voice_evidence` and PUT/GET
 `/api/voice_evidence/audio/<recording>/<segment>`. The original stays on phone and
 private Mac until explicit deletion; no automatic training or new audio provider.
+
+## A2-010 — collaborative partner
+
+Read docs/COLLABORATION.md. Core/Collaboration.swift owns the shared goals,
+connections, agreements, outcomes and exact pending receipts. CollaborationView
+is reached through compact Us/Alicia summaries, Dialogue and Context enrichment;
+there is no sixth tab. CollaborationNotifier consumes the shared backend's
+purposeful return and preserves its exact navigation target. Its policy has no
+daily reservation and supersedes the old ThoughtReturn policy when supported.
+The new state uses AliciaService GET/POST /api/collaboration and bounded source
+reads; views do not issue HTTP. --collaboration-preview is mock-only.

@@ -17,6 +17,8 @@ struct ContextEnrichmentView: View {
                 Text("Your context, open to revision").font(.title2)
                 Text("See what Alicia is holding, correct a reading, or give an idea more attention. Changes guide future replies.")
                     .font(.callout).foregroundStyle(Theme.inkSoft)
+                NavigationLink("Our shared focus · goals and agreements") { CollaborationView() }
+                    .frame(minHeight: 44)
                 if let value {
                     context(value)
                 } else {
@@ -67,6 +69,7 @@ struct ContextEnrichmentView: View {
             .disabled(busy || pending != nil || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || note.unicodeScalars.count > 2000)
         if note.unicodeScalars.count > 2000 { Text("Keep the note under 2,000 characters; your draft is retained.").font(.caption) }
         Divider()
+        if store.collaboration.state == nil {
         Text("A gentle return").font(.headline)
         Text("At most one prepared invitation a day, at least two hours after a conversation or reflection, between 9am and 7pm. It needs a specific unresolved idea; quiet days stay quiet.")
             .font(.callout)
@@ -80,6 +83,7 @@ struct ContextEnrichmentView: View {
         Text("Scheduled on this iPhone when the app syncs. New activity here cancels the pending invitation. Activity elsewhere is checked on the next sync.")
             .font(.caption).foregroundStyle(Theme.inkSoft)
         Button("Allow iPhone notifications") { ProactiveNotifier.requestPermission() }.font(.callout).frame(minHeight: 44)
+        }
         DisclosureGroup("When context is shared") { Text(value.exposure).font(.callout) }
     }
 
