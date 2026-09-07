@@ -9,8 +9,17 @@ import UserNotifications
     static var hasSharedState: Bool {
         UserDefaults.standard.object(forKey: key + "revision") != nil || UserDefaults.standard.data(forKey: "alicia.collaboration.state") != nil
     }
-    static func stop() { UserDefaults.standard.set(true, forKey: key + "stopped"); cancel() }
-    static func allow() { UserDefaults.standard.set(false, forKey: key + "stopped") }
+    static func stop() {
+        CollaborationReturnPreferences.migrateLegacyStop()
+        UserDefaults.standard.set(true, forKey: key + "stopped")
+        UserDefaults.standard.set(true, forKey: "alicia.collaboration.stopped")
+        cancel()
+    }
+    static func allow() {
+        CollaborationReturnPreferences.migrateLegacyStop()
+        UserDefaults.standard.set(false, forKey: key + "stopped")
+        UserDefaults.standard.set(false, forKey: "alicia.collaboration.stopped")
+    }
     static func cancel() {
         generation += 1
         let prior = UserDefaults.standard.string(forKey: key + "pending")
@@ -23,6 +32,7 @@ import UserNotifications
     }
     static func sync(_ state: CollaborationState, now: () -> Date = { Date() }) async {
         guard !Task.isCancelled else { return }
+        CollaborationReturnPreferences.migrateLegacyStop()
         ThoughtReturnNotifier.cancel()
         if let prior = UserDefaults.standard.object(forKey: key + "revision") as? Int, state.revision < prior { return }
         UserDefaults.standard.set(state.revision, forKey: key + "revision")

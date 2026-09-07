@@ -49,6 +49,15 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
   let defaults=UserDefaults(suiteName:suite)!
   defer {defaults.removePersistentDomain(forName:suite)}
   func state(_ revision:Int)->CollaborationState { .init(revision:revision,goals:[],connections:[],agreements:[],results:[],signals:[],pending:false,error:"",followups_enabled:true,telegram_returns_enabled:false) }
+  let upgradeSuite=suite+".upgrade",upgrade=UserDefaults(suiteName:suite+".upgrade")!,upgradeService=Fake()
+  defer {upgrade.removePersistentDomain(forName:upgradeSuite)}
+  upgrade.set(true,forKey:"alicia.thoughtReturn.locallyStopped")
+  let migrated=CollaborationStore(service:upgradeService,defaults:upgrade,notifications:false)
+  precondition(migrated.locallyStopped)
+  upgradeService.result = .init(ok:true,state:state(1))
+  _ = await migrated.submit(CollaborationMutation(action:"settings",followups_enabled:true,telegram_returns_enabled:false))
+  CollaborationReturnPreferences.migrateLegacyStop(in:upgrade)
+  precondition(!migrated.locallyStopped)
   let fake=Fake(),store=CollaborationStore(service:Fake(),defaults:defaults,notifications:false)
   precondition(store.accept(state(9)));precondition(!store.accept(state(2)));precondition(store.state?.revision==9)
   let wire=CollaborationMutation(action:"commit",expected_revision:7,connection_id:"connection",action_text:"My exact decision",owner:"together",review_condition:"When we can compare")
@@ -71,6 +80,29 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
   fake.result = .init(ok:false,error:"stale target",state:state(11))
   _ = await restored.submit(CollaborationMutation(action:"goal",expected_revision:1,goal_id:"old",title:"draft",outcome:"outcome",why:"why"))
   precondition(restored.canEdit && restored.error=="stale target" && restored.state?.revision==11)
+  let rejection = Data(#"{"ok":false,"error":"stale target"}"#.utf8)
+  fake.result = CollaborationResponse.decode(rejection,status:400)
+  _ = await restored.submit(CollaborationMutation(action:"goal",expected_revision:1,goal_id:"old",title:"retained",outcome:"outcome"))
+  precondition(restored.canEdit && restored.error=="stale target")
+  for status in [401,403,429,500,503] { precondition(CollaborationResponse.decode(rejection,status:status)==nil) }
+  precondition(CollaborationResponse.decode(rejection,status:nil)==nil)
+  for bytes in [Data("not json".utf8),Data(#"{"ok":true}"#.utf8),Data(#"{"ok":false}"#.utf8)] { precondition(CollaborationResponse.decode(bytes,status:400)==nil) }
+  let unconfirmed = CollaborationMutation(action:"refresh")
+  fake.result = CollaborationResponse.decode(rejection,status:500)
+  _ = await restored.submit(unconfirmed)
+  precondition(restored.pending==[unconfirmed] && !restored.canEdit)
+  let success = try JSONEncoder().encode(CollaborationResponse(ok:true,state:state(11)))
+  fake.result = CollaborationResponse.decode(success,status:200)
+  await restored.retry();precondition(restored.pending.isEmpty)
+  restored.saveDraft(["text":"My unsaved revision","revision":"1"],name:"reload")
+  fake.value=nil
+  let failedReload = await restored.reloadDraft("reload")
+  precondition(!failedReload && restored.draft("reload")?["text"]=="My unsaved revision" && restored.draft("reload")?["revision"]=="1")
+  var refreshed=state(12)
+  refreshed.goals=[.init(id:"old",title:"Current server goal",outcome:"Current outcome",why:"Current reason",status:"active",priority:"normal",revision:12,created_at:"then",updated_at:"now")]
+  fake.value=refreshed
+  let freshReload = await restored.reloadDraft("reload")
+  precondition(freshReload && restored.draft("reload")==nil && restored.state?.goals.first?.revision==12)
   restored.saveDraft(["text":"keep every word","revision":"1"],name:"goal")
   precondition(restored.draft("goal")?["text"]=="keep every word")
   fake.suspend=true;fake.result = .init(ok:true,state:state(13))
@@ -87,6 +119,9 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
   precondition(CollaborationNotifier.scheduleDate(candidate,now:now,calendar:cal)==ThoughtReturnPolicy.date("2026-09-08T09:00:00Z"))
   candidate.expires_at="2026-09-07T22:00:00Z";precondition(CollaborationNotifier.scheduleDate(candidate,now:now,calendar:cal)==nil)
   let key="alicia.collaboration.notification."
+  let migrationKeys=["alicia.collaboration.stopped","alicia.collaboration.legacyStopMigrated","alicia.thoughtReturn.locallyStopped"]
+  for name in migrationKeys {UserDefaults.standard.removeObject(forKey:name)}
+  defer {for name in migrationKeys {UserDefaults.standard.removeObject(forKey:name)}}
   for name in UserDefaults.standard.dictionaryRepresentation().keys where name.hasPrefix(key){UserDefaults.standard.removeObject(forKey:name)}
   defer{for name in UserDefaults.standard.dictionaryRepresentation().keys where name.hasPrefix(key){UserDefaults.standard.removeObject(forKey:name)}}
   let center=UNUserNotificationCenter.shared
@@ -95,7 +130,11 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
   var payload=state(20)
   candidate.not_before=ISO8601DateFormatter().string(from:clock.addingTimeInterval(300));candidate.expires_at=nil
   payload.followup=candidate
+  UserDefaults.standard.set(true,forKey:"alicia.thoughtReturn.locallyStopped")
+  await CollaborationNotifier.sync(payload,now:{clock})
+  precondition(center.requests.isEmpty && UserDefaults.standard.bool(forKey:"alicia.collaboration.stopped"))
   CollaborationNotifier.allow();await CollaborationNotifier.sync(payload,now:{clock})
+  precondition(!UserDefaults.standard.bool(forKey:"alicia.collaboration.stopped"))
   await CollaborationNotifier.sync(payload,now:{clock});precondition(center.requests.count==1)
   precondition(center.requests[0].content.userInfo["agreementID"]=="a")
   // Another purposeful candidate can schedule the same day.
@@ -107,7 +146,7 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
   while center.waiter==nil{await Task.yield()}
   CollaborationNotifier.stop();center.waiter?.resume(returning:.init(authorizationStatus:.authorized));await waiting.value
   precondition(center.requests.count==3)
-  print("19 collaboration checks passed: wire, revision guard, uncertain save, immutable restore, reentrancy, malformed success, acknowledgment, rejection, drafts, later stop, quiet deferral, expiry, same-day purposeful returns, stale notification cancellation, confirmed draft cleanup, late draft callback, legacy result decode, stale scheduler snapshot, cancelled candidate can return")
+  print("30 collaboration checks passed: wire, revision guard, uncertain save, immutable restore, reentrancy, malformed success, acknowledgment, rejection, drafts, later stop, quiet deferral, expiry, same-day purposeful returns, stale notification cancellation, confirmed draft cleanup, late draft callback, legacy result decode, stale scheduler snapshot, cancelled candidate can return, HTTP400 rejection, HTTP200 acknowledgment, auth and server uncertainty, malformed validation uncertainty, HTTP500 keeps receipt, failed reload retains draft, fresh reload advances revision, foreground stop migration, deliberate allow after migration, background stop migration, background allow after migration")
  }
 }
 '''

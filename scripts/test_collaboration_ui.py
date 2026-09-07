@@ -88,6 +88,15 @@ final class ContextUITests: XCTestCase {
  }
  func testExactTarget(){let app=launch(["--collaboration-target-preview"]);XCTAssertTrue(app.navigationBars["The connection"].waitForExistence(timeout:20));capture("exact-notification-target",app:app)}
  func testDirectGoalWork(){let app=launch();let open=app.buttons["collaboration.open"];XCTAssertTrue(open.waitForExistence(timeout:15));open.tap();let work=app.buttons["collaboration.result.preview-goal-result"];XCTAssertTrue(work.waitForExistence(timeout:10));reveal(work,app:app);work.tap();XCTAssertTrue(app.staticTexts["Prepared toward your saved goal. This is work to inspect, not an agreed action or a verified outcome."].waitForExistence(timeout:10));capture("prepared-toward-goal-without-agreement",app:app)}
+ func testContextPendingKeepsExactWords(){
+  let app=launch(["--collaboration-save-delay-preview"]);let open=app.buttons["collaboration.open"];XCTAssertTrue(open.waitForExistence(timeout:15));open.tap()
+  let context=app.buttons["Your context right now"];reveal(context,app:app);context.tap()
+  let field=app.textFields["collaboration.signal"];reveal(field,app:app);field.tap();field.typeText("Preview context awaiting confirmation")
+  let save=app.buttons["Save my context"];reveal(save,app:app);save.tap()
+  XCTAssertFalse(field.isEnabled);XCTAssertEqual(field.value as? String,"Preview context awaiting confirmation");capture("context-draft-locked-during-save",app:app)
+  XCTAssertTrue(app.staticTexts["Saved."].waitForExistence(timeout:15));XCTAssertTrue(field.isEnabled)
+  XCTAssertEqual(field.value as? String,"What should she know now?")
+ }
 }
 ''')
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')

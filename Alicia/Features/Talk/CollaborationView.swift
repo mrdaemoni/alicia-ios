@@ -109,6 +109,7 @@ struct CollaborationView: View {
                                 }
                                 TextField("What should she know now?", text: $signal, axis: .vertical)
                                     .lineLimit(3...8).focused($writing).accessibilityIdentifier("collaboration.signal")
+                                    .disabled(!shared.canEdit)
                                 Button("Save my context") {
                                     writing = false
                                     let change = CollaborationMutation(action: "signal", priority: "more", text: signal)
@@ -334,7 +335,7 @@ private struct CollaborationEditor: View {
                         .disabled(!valid(title) || !valid(outcome) || why.unicodeScalars.count > 2000).accessibilityIdentifier("collaboration.saveGoal")
                 case .commit(let connection):
                     Text("Make this our agreement").font(.title2)
-                    Text("Edit Alicia's proposal before committing. This authorizes the stated internal work; it does not mark the outcome achieved.").font(.callout)
+                    Text("What will we try, and what would make it worth revisiting?").font(.callout)
                     field("What will happen?", text: $action)
                     Picker("Who takes it forward?", selection: $owner) { Text("Me").tag("hector"); Text("Alicia").tag("alicia"); Text("Together").tag("together") }.pickerStyle(.segmented)
                     field("When should we review it?", text: $condition)
@@ -352,7 +353,10 @@ private struct CollaborationEditor: View {
                 }.disabled(!store.collaboration.canEdit)
                 CollaborationSaveStatus()
                 Text("Your draft stays until the save is confirmed. To revise a changed record, reload its current version first.").font(.caption)
-                Button("Reload current version") { seed(force: true) }.disabled(!store.collaboration.canEdit)
+                Button("Reload current version") {
+                    editing = nil
+                    Task { if await store.collaboration.reloadDraft(key) { seed(force: true) } }
+                }.disabled(!store.collaboration.canEdit)
             }.padding(22)
         }.background(Theme.paper).navigationTitle("Your decision")
             .scrollDismissesKeyboard(.interactively)

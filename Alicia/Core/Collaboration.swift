@@ -72,6 +72,18 @@ struct CollaborationResponse: Codable {
     var ok: Bool
     var error: String?
     var state: CollaborationState?
+
+    /// Only the endpoint's explicit validation response confirms rejection.
+    /// Auth, server failures and malformed replies leave the exact save pending.
+    static func decode(_ data: Data, status: Int?) -> Self? {
+        guard status == 200 || status == 400,
+              let reply = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+        if status == 400 {
+            guard !reply.ok, let error = reply.error,
+                  !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        }
+        return reply
+    }
 }
 struct CollaborationRoute: Identifiable, Codable, Sendable {
     var id = UUID().uuidString
@@ -79,6 +91,22 @@ struct CollaborationRoute: Identifiable, Codable, Sendable {
     var goalID = ""
     var connectionID = ""
     var agreementID = ""
+}
+
+enum CollaborationReturnPreferences {
+    static func migrateLegacyStop(in defaults: UserDefaults = .standard) {
+        let migrated = "alicia.collaboration.legacyStopMigrated"
+        guard !defaults.bool(forKey: migrated) else { return }
+        let stopped = "alicia.collaboration.stopped"
+        let notificationStopped = "alicia.collaboration.notification.stopped"
+        if defaults.object(forKey: stopped) == nil,
+           defaults.object(forKey: notificationStopped) == nil,
+           defaults.bool(forKey: "alicia.thoughtReturn.locallyStopped") {
+            defaults.set(true, forKey: stopped)
+            defaults.set(true, forKey: notificationStopped)
+        }
+        defaults.set(true, forKey: migrated)
+    }
 }
 
 /// One durable outbox and monotonic shared snapshot for every mounted surface.
@@ -99,6 +127,7 @@ final class CollaborationStore {
 
     init(service: AliciaService, defaults: UserDefaults = .standard, notifications: Bool = true) {
         self.service = service; self.defaults = defaults; self.notifications = notifications
+        CollaborationReturnPreferences.migrateLegacyStop(in: defaults)
         if let data = defaults.data(forKey: key + "pending") { pending = (try? JSONDecoder().decode([CollaborationMutation].self, from: data)) ?? [] }
         if let data = defaults.data(forKey: key + "state") { state = try? JSONDecoder().decode(CollaborationState.self, from: data) }
     }
@@ -127,11 +156,25 @@ final class CollaborationStore {
         defaults.set(try? JSONEncoder().encode(fresh), forKey: key + "state")
         return true
     }
-    func load() async {
+    @discardableResult func load() async -> Bool {
         if !pending.isEmpty { await retry() }
-        if let fresh = await service.collaboration() { _ = accept(fresh) }
-        else if state == nil { error = "Shared focus is unavailable. Your drafts stay on this phone." }
+        let fetched: Bool
+        if let fresh = await service.collaboration() { fetched = accept(fresh) }
+        else {
+            fetched = false
+            error = "Shared focus could not refresh. Your drafts stay on this phone."
+        }
         await syncReturn()
+        return fetched
+    }
+    func reloadDraft(_ name: String) async -> Bool {
+        guard canEdit else { return false }
+        busy = true
+        defer { busy = false }
+        guard await load() else { return false }
+        clearDraft(name)
+        error = ""
+        return true
     }
     func source(connectionID: String = "", resultID: String = "", evidenceID: String) async -> ContextSource? {
         await service.collaborationSource(connectionID: connectionID, resultID: resultID, evidenceID: evidenceID)

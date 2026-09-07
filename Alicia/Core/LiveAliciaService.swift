@@ -164,7 +164,12 @@ struct LiveAliciaService: AliciaService {
 
     func collaboration() async -> CollaborationState? { await fetchOne("/api/collaboration") }
     func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse? {
-        await post("/api/collaboration", body: mutation.body)
+        do {
+            let bytes = try JSONEncoder().encode(mutation)
+            let (data, response) = try await URLSession.shared.data(
+                for: request("/api/collaboration", method: "POST", body: bytes))
+            return CollaborationResponse.decode(data, status: (response as? HTTPURLResponse)?.statusCode)
+        } catch { return nil }
     }
     func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource? {
         var components = URLComponents()

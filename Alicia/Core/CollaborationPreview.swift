@@ -13,7 +13,10 @@ import Foundation
         agreements: [], results: [.init(id: "preview-goal-result", agreement_id: "", title: "Preview · What the saved goal suggests", body: "A first comparison: decide what should remain before deciding what to remove. This is a draft toward your saved goal, without a new commitment.", status: "prepared", evidence: [], created_at: "2026-09-07T15:00:00Z", goal_id: goalID)], signals: [.init(id: "preview-signal", kind: "self_report", title: "Preview · You said", value: "I have space to think this through today.", source: "Your explicit context", observed_at: "2026-09-07T15:00:00Z", notice: "Fixture, not an inference from audio.")], pending: false, error: "", followups_enabled: true, telegram_returns_enabled: false)
     private var receipts = [String: CollaborationMutation]()
     func read() -> CollaborationState { value }
-    func save(_ change: CollaborationMutation) -> CollaborationResponse {
+    func save(_ change: CollaborationMutation) async -> CollaborationResponse {
+        if change.action == "signal", ProcessInfo.processInfo.arguments.contains("--collaboration-save-delay-preview") {
+            try? await Task.sleep(for: .seconds(6))
+        }
         if let prior = receipts[change.event_id] {
             return .init(ok: prior == change, error: prior == change ? nil : "Conflicting fixture receipt", state: value)
         }

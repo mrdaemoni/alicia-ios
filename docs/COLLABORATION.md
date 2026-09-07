@@ -37,6 +37,10 @@ through uncertain replies and app relaunch. Incomplete success remains pending;
 a definite rejection unlocks the retained draft. Entity editors preserve their
 original revision with draft words so a stale edit requires deliberate reload.
 Opening or syncing shared focus retries pending receipts before fetching fresh state.
+The collaboration endpoint's valid HTTP 400 rejection unlocks the draft; auth,
+server and malformed responses remain unconfirmed. Reload current version fetches
+fresh state before replacing draft words and revision, retaining both if it fails.
+Context input is locked while its exact submitted receipt awaits confirmation.
 Acknowledgments clear only the draft bound to that exact receipt, including when
 its editor is closed. An on-screen editor closes after a later retry confirms it.
 
@@ -55,6 +59,8 @@ Local quiet hours are 9am–7pm. New shared revisions invalidate an older local
 schedule; an ordinary chat does not cancel an agreement. Stop cancels on this
 phone immediately, persists locally, and queues the server setting. It does not
 cancel goals. Telegram returns have their own explicit setting.
+An existing local Stop from the earlier ThoughtReturn feature migrates once,
+including when background sync runs first. A deliberate new Allow clears it.
 Older scheduler snapshots are ignored. Once the collaboration payload has been
 seen, an unavailable endpoint cannot revive legacy background broadcasts.
 
