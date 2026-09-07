@@ -3,25 +3,42 @@ import SwiftUI
 struct CollaborationSummary: View {
     @Environment(AppStore.self) private var store
     var body: some View {
-        Button { store.collaboration.route = CollaborationRoute() } label: {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
                 Text("OUR SHARED FOCUS").font(.caption.monospaced()).tracking(1.2)
-                if let state = store.collaboration.state {
-                    if let goal = state.goals.first(where: { $0.status == "active" }) {
-                        Text(goal.title.strippedEmojis).font(.system(size: 23, design: .serif))
-                        Text(goal.outcome.strippedEmojis).font(.subheadline).lineLimit(2)
-                    } else { Text("What would you like us to work toward?").font(.system(size: 21, design: .serif)) }
-                    if let connection = state.connections.first(where: { $0.status == "proposed" }) {
-                        Text(connection.title.strippedEmojis).font(.subheadline).italic().lineLimit(2)
-                    } else if let agreement = state.agreements.first(where: { $0.status == "active" }) {
-                        Text("Agreed: " + agreement.action.strippedEmojis).font(.subheadline).lineLimit(2)
+                Spacer()
+                Button("Add goal") { store.collaboration.route = CollaborationRoute(newGoal: true) }
+                    .font(.callout).frame(minHeight: 44)
+                    .accessibilityIdentifier("collaboration.addGoal")
+            }
+            if let state = store.collaboration.state {
+                if !state.activeGoals.isEmpty {
+                    Text("\(state.activeGoals.count) active \(state.activeGoals.count == 1 ? "goal" : "goals")")
+                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                        .accessibilityIdentifier("collaboration.goalCount")
+                    ForEach(state.activeGoals.prefix(3)) { goal in
+                        Button { store.collaboration.route = CollaborationRoute(goalID: goal.id) } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(goal.title.strippedEmojis).font(.system(size: 21, design: .serif))
+                                Text(goal.outcome.strippedEmojis).font(.subheadline).lineLimit(1)
+                                Text(goal.priority.capitalized + " attention").font(.caption).foregroundStyle(Theme.inkSoft)
+                            }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }.accessibilityIdentifier("collaboration.summaryGoal." + goal.id)
                     }
-                    if state.pending { Text("Revisiting the evidence…").font(.caption) }
-                } else { Text("Open goals, connections and agreements").font(.subheadline) }
-                Text("OPEN TOGETHER").font(.caption.monospaced())
-            }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .padding(.vertical, 12)
-        }.buttonStyle(.plain).accessibilityIdentifier("collaboration.open")
+                } else { Text("What would you like us to work toward?").font(.system(size: 21, design: .serif)) }
+                if let connection = state.connections.first(where: { $0.status == "proposed" }) {
+                    Text(connection.title.strippedEmojis).font(.subheadline).italic().lineLimit(2)
+                } else if let agreement = state.agreements.first(where: { $0.status == "active" }) {
+                    Text("Agreed: " + agreement.action.strippedEmojis).font(.subheadline).lineLimit(2)
+                }
+                if state.pending { Text("Revisiting the evidence…").font(.caption) }
+            } else { Text("Open goals, connections and agreements").font(.subheadline) }
+            Button { store.collaboration.route = CollaborationRoute() } label: {
+                Text((store.collaboration.state?.activeGoals.count ?? 0) > 3 ? "VIEW ALL GOALS · OPEN TOGETHER" : "OPEN TOGETHER")
+                    .font(.caption.monospaced()).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }.accessibilityIdentifier("collaboration.open")
+        }.frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 12).buttonStyle(.plain)
     }
 }
 
@@ -31,6 +48,8 @@ struct CollaborationView: View {
     var target = CollaborationRoute()
     @State private var viewed = false
     @State private var openTarget = false
+    @State private var openNewGoal = false
+    @State private var openedGoalEditor = false
     @State private var signal = ""
     @State private var signalRequestID = ""
     @FocusState private var writing: Bool
@@ -50,12 +69,21 @@ struct CollaborationView: View {
                         }
                         if state.pending { Text("Alicia is revisiting the evidence. Prepared work will appear here.").font(.callout) }
                         if !state.error.isEmpty { Text(state.error).font(.callout).foregroundStyle(Theme.rose) }
-                        ForEach(state.goals) { goal in
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Your goals · \(state.activeGoals.count) active").font(.title2)
+                            Spacer()
+                            NavigationLink("Add goal") { CollaborationEditor(kind: .goal(nil)) }
+                                .accessibilityIdentifier("collaboration.newGoal")
+                        }
+                        Text("Keep several goals active together. Each has its own attention and outcome.")
+                            .font(.caption).foregroundStyle(Theme.inkSoft)
+                        ForEach(state.activeGoals + state.goals.filter { $0.status != "active" }) { goal in
                             VStack(alignment: .leading, spacing: 9) {
                                 Text(goal.title.strippedEmojis).font(.title2)
                                 Text(goal.outcome.strippedEmojis)
                                 Text("Your goal · " + goal.status + " · " + goal.priority + " attention").font(.caption).foregroundStyle(Theme.inkSoft)
                                 NavigationLink("Edit goal or change direction") { CollaborationEditor(kind: .goal(goal)) }
+                                    .accessibilityIdentifier("collaboration.editGoal." + goal.id)
                                 ForEach(state.results.filter { $0.agreement_id.isEmpty && $0.goal_id == goal.id }) { result in
                                     NavigationLink { CollaborationResultView(result: result) } label: {
                                         VStack(alignment: .leading, spacing: 6) {
@@ -66,8 +94,6 @@ struct CollaborationView: View {
                                 }
                             }.id(goal.id)
                         }
-                        NavigationLink("Set a goal in your words") { CollaborationEditor(kind: .goal(nil)) }
-                            .accessibilityIdentifier("collaboration.newGoal")
                         if !state.connections.isEmpty {
                             Divider()
                             Text("Connections to consider").font(.title2)
@@ -148,6 +174,10 @@ struct CollaborationView: View {
                 signal = shared.draft("signal")?["text"] ?? ""
                 signalRequestID = shared.draft("signal")?["request_id"] ?? ""
                 await shared.load()
+                if target.newGoal == true, !openedGoalEditor {
+                    openedGoalEditor = true
+                    openNewGoal = true
+                }
                 let id = !target.agreementID.isEmpty ? target.agreementID : !target.connectionID.isEmpty ? target.connectionID : target.goalID
                 if !id.isEmpty { scroll.scrollTo(id, anchor: .top) }
                 if !viewed {
@@ -162,6 +192,7 @@ struct CollaborationView: View {
         }
         .background(Theme.paper).foregroundStyle(Theme.ink)
         .navigationTitle("Together").navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $openNewGoal) { CollaborationEditor(kind: .goal(nil)) }
         .navigationDestination(isPresented: $openTarget) {
             Group {
                 if !target.agreementID.isEmpty { CollaborationAgreementView(id: target.agreementID) }
@@ -327,7 +358,8 @@ private struct CollaborationEditor: View {
                 Group {
                 switch kind {
                 case .goal(let goal):
-                    Text("A goal in your words").font(.title2)
+                    Text(goal == nil ? "Add a goal" : "Edit your goal").font(.title2)
+                    if goal == nil { Text("This adds a separate goal alongside your existing ones.").font(.callout) }
                     field("Title", text: $title); field("What would a useful outcome look like?", text: $outcome); field("Why does it matter?", text: $why)
                     Picker("Attention", selection: $priority) { Text("Less").tag("less"); Text("Normal").tag("normal"); Text("More").tag("more") }.pickerStyle(.segmented)
                     if goal != nil { Picker("Goal state", selection: $status) { Text("Active").tag("active"); Text("Paused").tag("paused"); Text("Completed").tag("completed") } }
