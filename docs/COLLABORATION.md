@@ -1,7 +1,7 @@
 # Shared focus — A2-010
 
-The current candidate adds one collaboration sheet to the five-tab app. Us and
-Alicia show a compact goal and current connection or agreement even when no
+The collaboration sheet is shared by the five-tab app. Us and
+Alicia show up to three active goals and the current connection or agreement even when no
 morning episode has played. Dialogue and Context enrichment open the same work.
 The source baseline is 55798db; release evidence belongs to the shared A2-010
 RELEASE.md. A compiled candidate is not a shipped TestFlight build.
@@ -10,6 +10,17 @@ Goals are Hector's explicit words, with a desired outcome, reason, state and
 Less / Normal / More attention. Alicia proposes connections with captured source
 passages and a reason for returning now. Use keeps the connection in view;
 Clarify requests a grounded question. Neither commits Hector to an action.
+
+A2-011 makes concurrent goals visible. The summary shows the active count, up to
+three independently tappable goals ordered by attention, and Add goal at the top.
+Open together retains all goals, including paused/completed ones, with Add goal
+above their details. The three-row summary is a display choice, not a storage cap.
+Adding creates a separate identity; editing targets only the selected goal.
+The direct Add goal route uses the existing retained draft and immutable save.
+Historical notification routes decode without the optional new-goal flag.
+Backend A2-011 also reserves three goal records in Qwen's compact context;
+full-context conversation and the background worker retain every active goal.
+Release evidence is in the shared A2-011 task, not inferred from compilation.
 
 Consider a commitment opens an editable action, owner and review condition.
 Commit explicitly submits that agreement. Alicia's prepared result is labelled

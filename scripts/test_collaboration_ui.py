@@ -80,6 +80,39 @@ final class ContextUITests: XCTestCase {
   let voice=app.buttons["Preview · Your recorded question"];reveal(voice,app:app);voice.tap();app.buttons["Review original voice"].tap()
   XCTAssertTrue(app.buttons["voice.playOriginal"].waitForExistence(timeout:10));capture("original-voice-drilldown",app:app)
  }
+ func testThreeConcurrentGoalsAndIndependentEdit(){
+  let app=launch();let add=app.buttons["collaboration.addGoal"];XCTAssertTrue(add.waitForExistence(timeout:15));add.tap()
+  func fillAndSave(_ title:String){
+   let field=app.textFields["collaboration.field.Title"];XCTAssertTrue(field.waitForExistence(timeout:10));field.tap();field.typeText(title)
+   let outcome=app.textFields["collaboration.field.What would a useful outcome look like?"];reveal(outcome,app:app);outcome.tap();outcome.typeText("A distinct useful outcome for this goal")
+   if app.buttons["Done writing"].exists{app.buttons["Done writing"].tap()}
+   let save=app.buttons["collaboration.saveGoal"];reveal(save,app:app);save.tap()
+   XCTAssertTrue(app.navigationBars["Together"].waitForExistence(timeout:10))
+  }
+  fillAndSave("Second shared goal")
+  let another=app.buttons["collaboration.newGoal"];reveal(another,app:app,up:false);XCTAssertTrue(another.isHittable);another.tap()
+  let newTitle=app.textFields["collaboration.field.Title"];XCTAssertTrue(newTitle.waitForExistence(timeout:10));XCTAssertEqual(newTitle.value as? String,"Title")
+  fillAndSave("Third shared goal")
+  let count=app.staticTexts["Your goals · 3 active"];reveal(count,app:app,up:false);XCTAssertTrue(count.exists);capture("three-independent-active-goals",app:app)
+  let edits=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","collaboration.editGoal."))
+  let second=edits.element(boundBy:1);reveal(second,app:app);second.tap()
+  let title=app.textFields["collaboration.field.Title"];XCTAssertTrue(title.waitForExistence(timeout:10));XCTAssertEqual(title.value as? String,"Second shared goal")
+  title.tap(withNumberOfTaps:3,numberOfTouches:1);title.typeText("Revised second goal");XCTAssertEqual(title.value as? String,"Revised second goal")
+  if app.buttons["Done writing"].exists{app.buttons["Done writing"].tap()}
+  let save=app.buttons["collaboration.saveGoal"];reveal(save,app:app);save.tap()
+  XCTAssertTrue(app.navigationBars["Together"].waitForExistence(timeout:10))
+  XCTAssertTrue(app.staticTexts["Preview · Make room for what matters"].exists)
+  XCTAssertTrue(app.staticTexts["Revised second goal"].exists);XCTAssertTrue(app.staticTexts["Third shared goal"].exists)
+  app.buttons["Close"].tap()
+  let summary=app.staticTexts["collaboration.goalCount"];XCTAssertTrue(summary.waitForExistence(timeout:10));XCTAssertEqual(summary.label,"3 active goals")
+  XCTAssertEqual(app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","collaboration.summaryGoal.")).count,3)
+  capture("three-goals-on-us",app:app)
+  let direct=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@ AND label CONTAINS %@","collaboration.summaryGoal.","Third shared goal")).firstMatch
+  reveal(direct,app:app,up:false);direct.tap();XCTAssertTrue(app.staticTexts["Third shared goal"].waitForExistence(timeout:10))
+  let fourth=app.buttons["collaboration.newGoal"];reveal(fourth,app:app,up:false);fourth.tap();fillAndSave("Fourth shared goal")
+  XCTAssertTrue(app.staticTexts["Your goals · 4 active"].exists)
+  capture("adding-is-not-capped-at-three",app:app)
+ }
  func testQuietSettingsAndReduceMotion(){
   let app=launch(["--collaboration-reduce-motion-preview"]);let open=app.buttons["collaboration.open"];XCTAssertTrue(open.waitForExistence(timeout:15));capture("shared-focus-reduce-motion",app:app);open.tap()
   let settings=app.buttons["When Alicia returns"];reveal(settings,app:app);settings.tap()
@@ -101,4 +134,7 @@ final class ContextUITests: XCTestCase {
 ''')
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
 result=pathlib.Path(os.environ.get('ALICIA_TEST_EVIDENCE_DIR',str(work)))/('collaboration-ui-'+work.name+'.xcresult')
-subprocess.run(['xcodebuild','-project',str(project),'-scheme','Alicia','-destination','platform=iOS Simulator,id=F36E7803-4EEE-47D1-8D8A-7C930515EB27','-derivedDataPath',str(work/'DerivedData'),'-resultBundlePath',str(result),'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','test'],env=env,check=True)
+selected=[name for name in os.environ.get('ALICIA_UI_TESTS','').split(',') if name]
+assert all(name in {'testUseClarifyCommitAndOutcome','testGoalAndEvidence','testQuietSettingsAndReduceMotion','testExactTarget','testDirectGoalWork','testContextPendingKeepsExactWords','testThreeConcurrentGoalsAndIndependentEdit'} for name in selected)
+filters=['-only-testing:ContextUITests/ContextUITests/'+name for name in selected]
+subprocess.run(['xcodebuild','-project',str(project),'-scheme','Alicia','-destination','platform=iOS Simulator,id=F36E7803-4EEE-47D1-8D8A-7C930515EB27','-derivedDataPath',str(work/'DerivedData'),'-resultBundlePath',str(result),'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','test']+filters,env=env,check=True)

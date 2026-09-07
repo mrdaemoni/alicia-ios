@@ -1,5 +1,13 @@
 # Session handoff — Alicia 2.0
 
+Current task: A2-011 concurrent goals, stacked on build 11 source 712cd62.
+Us and Alicia expose three active goal rows, their total count and a direct Add
+goal action; Together keeps all goals and moves Add goal above existing details.
+There is no three-goal storage cap. The paired backend corrects compact local
+context so at least three active goals survive alongside corrections/agreements.
+Read docs/COLLABORATION.md and the shared A2-011 HANDOFF.md/RELEASE.md for current
+commit and TestFlight receipts. The A2-010 records below are the earlier release.
+
 Current task: A2-010 collaborative Alicia, September 7, 2026. This candidate
 builds on A2-009 source 55798db. Read docs/COLLABORATION.md for the current iOS
 implementation; Apple release status is recorded only in the shared A2-010

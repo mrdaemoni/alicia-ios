@@ -146,6 +146,26 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
   while center.waiter==nil{await Task.yield()}
   CollaborationNotifier.stop();center.waiter?.resume(returning:.init(authorizationStatus:.authorized));await waiting.value
   precondition(center.requests.count==3)
+  var multiple=state(30)
+  multiple.goals = [
+   .init(id:"goal-low",title:"Family time",outcome:"Protected evenings",why:"",status:"active",priority:"less",revision:28,created_at:"then",updated_at:"now"),
+   .init(id:"goal-high",title:"Writing",outcome:"A clear draft",why:"",status:"active",priority:"more",revision:29,created_at:"then",updated_at:"now"),
+   .init(id:"goal-normal",title:"Learning",outcome:"Useful connections",why:"",status:"active",priority:"normal",revision:30,created_at:"then",updated_at:"now"),
+   .init(id:"paused",title:"Paused",outcome:"Later",why:"",status:"paused",priority:"more",revision:27,created_at:"then",updated_at:"now")]
+  fake.value=multiple
+  let reloaded=CollaborationStore(service:fake,defaults:defaults,notifications:false)
+  await reloaded.load()
+  precondition(reloaded.state?.activeGoals.map(\.id)==["goal-high","goal-normal","goal-low"])
+  precondition(reloaded.state?.goals.count==4)
+  let newGoal=CollaborationMutation(action:"goal",title:"Fourth goal",outcome:"A separate outcome",priority:"normal",status:"active")
+  precondition(newGoal.body["goal_id"]==nil && newGoal.body["expected_revision"]==nil)
+  let oldRoute=Data(#"{"id":"old","candidateID":"","goalID":"goal-high","connectionID":"","agreementID":""}"#.utf8)
+  let restoredRoute=try JSONDecoder().decode(CollaborationRoute.self,from:oldRoute)
+  precondition(restoredRoute.newGoal==nil && restoredRoute.goalID=="goal-high")
+  let createRoute=CollaborationRoute(newGoal:true)
+  let decodedRoute=try JSONDecoder().decode(CollaborationRoute.self,from:JSONEncoder().encode(createRoute))
+  precondition(decodedRoute.newGoal==true && decodedRoute.goalID.isEmpty)
+  print("5 concurrent-goal checks passed: sorted active goals, retained paused goals, creation does not target an existing goal, historical route decode, direct new-goal route")
   print("30 collaboration checks passed: wire, revision guard, uncertain save, immutable restore, reentrancy, malformed success, acknowledgment, rejection, drafts, later stop, quiet deferral, expiry, same-day purposeful returns, stale notification cancellation, confirmed draft cleanup, late draft callback, legacy result decode, stale scheduler snapshot, cancelled candidate can return, HTTP400 rejection, HTTP200 acknowledgment, auth and server uncertainty, malformed validation uncertainty, HTTP500 keeps receipt, failed reload retains draft, fresh reload advances revision, foreground stop migration, deliberate allow after migration, background stop migration, background allow after migration")
  }
 }

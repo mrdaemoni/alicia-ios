@@ -51,6 +51,16 @@ struct CollaborationState: Codable {
     var error: String
     var followups_enabled, telegram_returns_enabled: Bool
     var followup: Followup?
+
+    /// Priorities affect presentation without hiding other active goals.
+    var activeGoals: [Goal] {
+        let rank = ["more": 0, "normal": 1, "less": 2]
+        return goals.enumerated().filter { $0.element.status == "active" }.sorted {
+            let left = rank[$0.element.priority, default: 1]
+            let right = rank[$1.element.priority, default: 1]
+            return left == right ? $0.offset < $1.offset : left < right
+        }.map(\.element)
+    }
 }
 
 struct CollaborationMutation: Codable, Equatable {
@@ -91,6 +101,7 @@ struct CollaborationRoute: Identifiable, Codable, Sendable {
     var goalID = ""
     var connectionID = ""
     var agreementID = ""
+    var newGoal: Bool?
 }
 
 enum CollaborationReturnPreferences {
