@@ -145,6 +145,9 @@ struct TalkView: View {
                       : dictationBase + (new.isEmpty ? "" : " " + new)
             }
         }
+        .onChange(of: speech.isRecording) { was, now in
+            if was && !now && acceptingDictation { applyFinalDictation(); acceptingDictation = false }
+        }
         // Choosing an ask to answer pulls the keyboard up ready to write.
         .onChange(of: store.answeringAskID) { _, id in
             if id != nil { focused = true }
@@ -218,7 +221,7 @@ struct TalkView: View {
             Task {
                 await speech.finishAndStop()
                 guard generation == microphoneGeneration, visible, scenePhase == .active else { return }
-                applyFinalDictation(); acceptingDictation = false
+                if acceptingDictation { applyFinalDictation() }; acceptingDictation = false
             }
             return
         }

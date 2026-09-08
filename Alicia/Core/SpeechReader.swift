@@ -18,9 +18,10 @@ struct Readable: Equatable {
     var speechChunks: [SpeechChunk] = []
     var speechDuration: TimeInterval = 0
     var episodeID: String? = nil
+    var stableID: String? = nil
     /// Stable identity so re-tapping the same piece resumes instead of
     /// restarting, and so the reader can tell "this card" from "that card".
-    var id: String { "\(kind)|\(title)|\(body.count)" }
+    var id: String { stableID ?? "\(kind)|\(title)|\(body.count)" }
 
     var spokenText: String {
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)

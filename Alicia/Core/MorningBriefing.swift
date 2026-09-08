@@ -98,7 +98,8 @@ struct MorningBriefing: Codable, Equatable, Identifiable {
 
     var availabilityText: String {
         if hasPlayableAudio { return "Ready to listen." }
-        if status == "preparing" { return "The audio is being prepared." }
+        if ["preparing", "draft", "rendering"].contains(status) { return "The audio is being prepared." }
+        if status == "scheduled" { return "Prepared each morning for your exercise, aiming for 6 a.m. Pacific." }
         if status == "ready" { return "The audio isn't ready to play yet." }
         return "The briefing isn't available right now."
     }

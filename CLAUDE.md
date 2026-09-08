@@ -247,3 +247,7 @@ purposeful return and preserves its exact navigation target. Its policy has no
 daily reservation and supersedes the old ThoughtReturn policy when supported.
 The new state uses AliciaService GET/POST /api/collaboration and bounded source
 reads; views do not issue HTTP. --collaboration-preview is mock-only.
+
+Morning exercise briefing: `GET /api/morning_briefing` (read-only dated snapshot)
+and `GET /api/morning_briefing/audio/<id>.m4a` (authenticated Range audio).
+See docs/MORNING_BRIEFING.md. It never selects a podcast episode or manufactures listening evidence.

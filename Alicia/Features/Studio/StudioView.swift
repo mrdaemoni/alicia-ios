@@ -29,6 +29,7 @@ struct StudioView: View {
     @State private var drawing = false
 
     var body: some View {
+        @Bindable var store = store
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -115,6 +116,11 @@ struct StudioView: View {
             }
             .navigationDestination(for: PodcastCollection.self) { collection in
                 CollectionDetailView(collection: collection)
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { store.morningPlaylistID != nil },
+                set: { if !$0 { store.morningPlaylistID = nil } })) {
+                if let id = store.morningPlaylistID { PlaylistDetailView(playlistID: id) }
             }
             .refreshable { await store.load() }
             .task { await store.loadPlaylists() }

@@ -113,7 +113,8 @@ struct Playlist: Identifiable, Hashable {
         var readable: Readable {
             Readable(title: title, body: body, kind: kind,
                      speechChunks: speechChunks, speechDuration: duration,
-                     episodeID: kind == "episode" ? source : nil)
+                     episodeID: kind == "episode" ? source : nil,
+                     stableID: source == "alicia_morning_briefing" ? "morning:" + id : nil)
         }
     }
 

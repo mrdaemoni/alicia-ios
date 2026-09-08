@@ -92,6 +92,7 @@ struct WalkReflectionView: View {
         }
         .disabled(store.isSavingWalk)
         .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.paper)
         .sheet(isPresented: $showRecording) { VoiceRecordingsView(recordingID: didSave ? savedRecordingID : store.walkRecordingID) }
         .task {
@@ -132,6 +133,8 @@ struct WalkReflectionView: View {
         VStack(alignment: .leading, spacing: 24) {
             Text("SAVED").font(.system(size: 11, design: .monospaced)).tracking(1.5)
             InkTitle(text: savedAudioOnly ? "Your recording is kept" : "Your reflection is saved", size: 30)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(savedAudioOnly ? "Your recording is kept" : "Your reflection is saved")
             Text(savedAudioOnly ? "The audio is kept for review. No transcript was sent as your reflection." : "Your words reached Alicia. The original recording stays available for review.")
                 .font(.system(size: 20, design: .serif))
             if let recording = store.voiceArchive.recording(savedRecordingID) {
@@ -143,13 +146,14 @@ struct WalkReflectionView: View {
                 .font(.system(size: 11, design: .monospaced)).frame(minHeight: 44)
             Button("DONE") { store.showWalk = false; if !savedAudioOnly { store.selectedSection = .mind } }
                 .buttonStyle(EpisodeButtonStyle())
-        }.accessibilityIdentifier("walk.savedConfirmation")
+        }
     }
 
     private func save(audioOnly: Bool) async {
         let recordingID = store.walkRecordingID
+        let onlyAudio = audioOnly || (store.pendingWalkSave == nil && store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         if await store.finishEpisodeWalk(closeOnSuccess: false, audioOnly: audioOnly) {
-            savedRecordingID = recordingID; savedAudioOnly = audioOnly; didSave = true
+            savedRecordingID = recordingID; savedAudioOnly = onlyAudio; didSave = true
         }
     }
 

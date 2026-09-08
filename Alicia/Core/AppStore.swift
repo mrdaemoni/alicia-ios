@@ -523,6 +523,34 @@ final class AppStore {
 
     // MARK: playlists — the listening queues (Studio)
 
+    var morningBriefing: MorningBriefing?
+    var morningBriefingRefreshing = false
+    var morningPlaylistID: String?
+
+    func refreshMorningBriefing() async {
+        guard !morningBriefingRefreshing else { return }
+        morningBriefingRefreshing = true
+        defer { morningBriefingRefreshing = false }
+        if let fresh = await service.morningBriefing() { morningBriefing = fresh }
+    }
+
+    var playingMorningBriefingID: String? {
+        guard reader.isSpeaking, let id = reader.current?.stableID, id.hasPrefix("morning:") else { return nil }
+        return String(id.dropFirst("morning:".count))
+    }
+
+    func toggleMorningBriefing(_ briefing: MorningBriefing) {
+        guard briefing.hasPlayableAudio, let url = URL(string: briefing.audio_url) else { return }
+        readAloud(Readable(title: briefing.title, body: briefing.text, kind: "note",
+            speechChunks: [SpeechChunk(url: url, duration: briefing.duration)],
+            speechDuration: briefing.duration, stableID: "morning:" + briefing.id))
+    }
+
+    func openMorningPlaylist(_ id: String) {
+        morningPlaylistID = id
+        selectedSection = .studio
+    }
+
     /// Her weekly mind note. Empty string means she had nothing citable this
     /// week — the view renders nothing, never a placeholder.
     var mindNote: String = ""
@@ -606,6 +634,7 @@ final class AppStore {
     private var liveTimelineSeeded = false
 
     func load() async {
+        Task { await refreshMorningBriefing() }
         Task { await collaboration.load() }
         Task { await refreshVoiceArchive() }
         let messagesAtStart = messages.map(\.id)

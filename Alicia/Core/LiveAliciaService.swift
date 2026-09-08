@@ -635,6 +635,12 @@ struct LiveAliciaService: AliciaService {
 
     // MARK: playlists
 
+    func morningBriefing() async -> MorningBriefing? {
+        guard var briefing: MorningBriefing = await fetchOne("/api/morning_briefing") else { return nil }
+        if !briefing.audio_url.isEmpty { briefing.audio_url = mediaURL(briefing.audio_url)?.absoluteString ?? "" }
+        return briefing
+    }
+
     private struct PlaylistDTO: Decodable {
         struct ItemDTO: Decodable {
             var id, kind, title: String?

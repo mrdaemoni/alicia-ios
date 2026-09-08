@@ -55,7 +55,7 @@ final class ContextUITests: XCTestCase {
   let finish=app.buttons["episode.finishWalk"]
   XCTAssertTrue(finish.waitForExistence(timeout:10));XCTAssertTrue(finish.isHittable)
   capture("walk-paused-before-save",app:app);finish.tap()
-  XCTAssertTrue(app.staticTexts["Your reflection is saved"].waitForExistence(timeout:10))
+  XCTAssertTrue(app.descendants(matching:.any)["Your reflection is saved"].waitForExistence(timeout:10))
   XCTAssertTrue(app.staticTexts["Your words reached Alicia. The original recording stays available for review."].exists)
   XCTAssertTrue(app.staticTexts["walk.audioSaveStatus"].label.contains("saved on this phone"))
   XCTAssertFalse(app.staticTexts["walk.audioSaveStatus"].label.contains("phone and your Mac"))
@@ -67,7 +67,7 @@ final class ContextUITests: XCTestCase {
   let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-save-preview"];app.launch()
   let save=app.buttons["walk.saveAudioOnly"]
   XCTAssertTrue(save.waitForExistence(timeout:10));XCTAssertTrue(save.isHittable);save.tap()
-  XCTAssertTrue(app.staticTexts["Your recording is kept"].waitForExistence(timeout:10))
+  XCTAssertTrue(app.descendants(matching:.any)["Your recording is kept"].waitForExistence(timeout:10))
   XCTAssertTrue(app.staticTexts["The audio is kept for review. No transcript was sent as your reflection."].exists)
   capture("walk-audio-only-confirmation",app:app)
  }

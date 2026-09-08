@@ -6,9 +6,10 @@ episode selection on Us, including when no episode has been chosen. Studio keeps
 the existing playlist library. Opening the card or reading its text starts no
 audio, generation, conversation, notification, or learning event.
 
-This branch supplies the model and view only. AppStore, service, playback and
-Us/Studio integration belong to the receiving change. It is not a released app
-or evidence that a real morning recording has been generated.
+The app now wires the model and view through AliciaService and AppStore. Us places
+the dated briefing above the goal/episode frame. Studio opens the exact playlist;
+both surfaces use the same stable UUID and prepared audio, with lock-screen controls.
+Deployment and real preparation evidence belongs to A2-013/RELEASE.md.
 
 ## Data contract
 
@@ -52,15 +53,14 @@ there is no project-file change or new dependency.
 MorningBriefingView(
     briefing: store.morningBriefing,
     playingBriefingID: store.playingMorningBriefingID,
-    isRefreshing: store.isRefreshingMorningBriefing,
+    isRefreshing: store.morningBriefingRefreshing,
     onTogglePlayback: { briefing in store.toggleMorningBriefing(briefing) },
     onOpenPlaylist: { id in store.openMorningPlaylist(id) },
     onRefresh: { Task { await store.refreshMorningBriefing() } }
 )
 ```
 
-The AppStore names in that example are proposed owner-side wiring, not methods
-introduced by this branch. `onRefresh` is optional; no callback means no refresh
+The AppStore names in that example are implemented by the integration. `onRefresh` is optional; no callback means no refresh
 button. The owner supplies `isRefreshing` to prevent duplicate check requests.
 
 Required owner behavior:
