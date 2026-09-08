@@ -11,6 +11,9 @@ struct EpisodeHomeView: View {
                     SectionHeader(title: "Us", kicker: Date.now.formatted(date: .complete, time: .omitted))
                     MorningBriefingView(briefing: store.morningBriefing,
                         playingBriefingID: store.playingMorningBriefingID,
+                        loadingBriefingID: store.reader.isLoadingMedia ? store.currentMorningBriefingID : nil,
+                        failedBriefingID: store.reader.failure != nil ? store.currentMorningBriefingID : nil,
+                        playbackError: store.reader.failure,
                         isRefreshing: store.morningBriefingRefreshing,
                         onTogglePlayback: store.toggleMorningBriefing,
                         onOpenPlaylist: store.openMorningPlaylist,

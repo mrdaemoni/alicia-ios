@@ -534,10 +534,12 @@ final class AppStore {
         if let fresh = await service.morningBriefing() { morningBriefing = fresh }
     }
 
-    var playingMorningBriefingID: String? {
-        guard reader.isSpeaking, let id = reader.current?.stableID, id.hasPrefix("morning:") else { return nil }
+    var currentMorningBriefingID: String? {
+        guard let id = reader.current?.stableID, id.hasPrefix("morning:") else { return nil }
         return String(id.dropFirst("morning:".count))
     }
+
+    var playingMorningBriefingID: String? { reader.isSpeaking ? currentMorningBriefingID : nil }
 
     func toggleMorningBriefing(_ briefing: MorningBriefing) {
         guard briefing.hasPlayableAudio, let url = URL(string: briefing.audio_url) else { return }

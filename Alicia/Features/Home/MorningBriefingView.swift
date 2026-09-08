@@ -5,6 +5,9 @@ import SwiftUI
 struct MorningBriefingView: View {
     let briefing: MorningBriefing?
     var playingBriefingID: String? = nil
+    var loadingBriefingID: String? = nil
+    var failedBriefingID: String? = nil
+    var playbackError: String? = nil
     var isRefreshing = false
     let onTogglePlayback: (MorningBriefing) -> Void
     let onOpenPlaylist: (String) -> Void
@@ -28,6 +31,8 @@ struct MorningBriefingView: View {
                         .accessibilityAddTraits(.isHeader)
                     if briefing.hasPlayableAudio {
                         playbackButton(briefing)
+                        if loadingBriefingID == briefing.id { Text("Loading audio…").font(.caption).foregroundStyle(Theme.inkSoft) }
+                        if failedBriefingID == briefing.id, let playbackError { Text(playbackError).font(.caption).foregroundStyle(Theme.inkSoft) }
                     } else {
                         Text(briefing.availabilityText).font(.body).fontDesign(.serif)
                             .foregroundStyle(Theme.inkSoft)
@@ -59,12 +64,14 @@ struct MorningBriefingView: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
         .sheet(item: $inspectedBriefing) { inspected in
             MorningBriefingReading(briefing: inspected, playingBriefingID: playingBriefingID,
+                                   loadingBriefingID: loadingBriefingID, failedBriefingID: failedBriefingID, playbackError: playbackError,
                                    onTogglePlayback: onTogglePlayback, onOpenPlaylist: onOpenPlaylist)
         }
     }
 
     private func playbackButton(_ item: MorningBriefing) -> some View {
         MorningBriefingPlayButton(briefing: item, isPlaying: playingBriefingID == item.id,
+                                 isLoading: loadingBriefingID == item.id, hasFailed: failedBriefingID == item.id,
                                  action: { onTogglePlayback(item) })
     }
 
@@ -132,6 +139,8 @@ private struct MorningBriefingDate: View {
 private struct MorningBriefingPlayButton: View {
     let briefing: MorningBriefing
     let isPlaying: Bool
+    var isLoading = false
+    var hasFailed = false
     var accessibilityID = "morningBriefing.play"
     let action: () -> Void
 
@@ -140,7 +149,7 @@ private struct MorningBriefingPlayButton: View {
             HStack(spacing: 13) {
                 InkPlayPause(playing: isPlaying, size: 34, color: Theme.ink, ringed: true)
                     .accessibilityHidden(true)
-                Text(isPlaying ? "Pause" : "Listen")
+                Text(hasFailed ? "Retry" : isPlaying ? "Pause" : "Listen")
                     .font(.title3).fontDesign(.serif)
                 Spacer(minLength: 8)
                 if let duration = briefing.durationLabel {
@@ -150,8 +159,8 @@ private struct MorningBriefingPlayButton: View {
             .frame(minHeight: 48).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(isPlaying ? "Pause" : "Listen to") \(briefing.displayTitle.strippedEmojis)")
-        .accessibilityValue("\(isPlaying ? "Playing" : "Ready"), \(briefing.spokenDuration ?? "duration unavailable")")
+        .accessibilityLabel("\(hasFailed ? "Retry" : isPlaying ? "Pause" : "Listen to") \(briefing.displayTitle.strippedEmojis)")
+        .accessibilityValue("\(hasFailed ? "Audio unavailable" : isLoading ? "Loading audio" : isPlaying ? "Playing" : "Ready"), \(briefing.spokenDuration ?? "duration unavailable")")
         .accessibilityHint(isPlaying ? "Pauses this briefing." : "Plays the prepared recording when you tap.")
         .accessibilityIdentifier(accessibilityID)
     }
@@ -161,6 +170,9 @@ private struct MorningBriefingReading: View {
     @Environment(\.dismiss) private var dismiss
     let briefing: MorningBriefing
     let playingBriefingID: String?
+    let loadingBriefingID: String?
+    let failedBriefingID: String?
+    let playbackError: String?
     let onTogglePlayback: (MorningBriefing) -> Void
     let onOpenPlaylist: (String) -> Void
     @State private var showSources = false
@@ -176,8 +188,11 @@ private struct MorningBriefingReading: View {
                         .accessibilityAddTraits(.isHeader)
                     if briefing.hasPlayableAudio {
                         MorningBriefingPlayButton(briefing: briefing, isPlaying: playingBriefingID == briefing.id,
+                                                 isLoading: loadingBriefingID == briefing.id, hasFailed: failedBriefingID == briefing.id,
                                                  accessibilityID: "morningBriefing.reading.play",
                                                  action: { onTogglePlayback(briefing) })
+                        if loadingBriefingID == briefing.id { Text("Loading audio…").font(.caption).foregroundStyle(Theme.inkSoft) }
+                        if failedBriefingID == briefing.id, let playbackError { Text(playbackError).font(.caption).foregroundStyle(Theme.inkSoft) }
                     } else {
                         Text(briefing.availabilityText).font(.subheadline).foregroundStyle(Theme.inkSoft)
                     }
