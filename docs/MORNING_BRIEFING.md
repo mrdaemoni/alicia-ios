@@ -53,6 +53,9 @@ there is no project-file change or new dependency.
 MorningBriefingView(
     briefing: store.morningBriefing,
     playingBriefingID: store.playingMorningBriefingID,
+    loadingBriefingID: store.reader.isLoadingMedia ? store.currentMorningBriefingID : nil,
+    failedBriefingID: store.reader.failure == nil ? nil : store.currentMorningBriefingID,
+    playbackError: store.reader.failure,
     isRefreshing: store.morningBriefingRefreshing,
     onTogglePlayback: { briefing in store.toggleMorningBriefing(briefing) },
     onOpenPlaylist: { id in store.openMorningPlaylist(id) },
@@ -73,9 +76,11 @@ Required owner behavior:
 - Resolve relative media paths through the configured private service and its
   existing authenticated-media helper. Reuse the existing player/audio-session
   behavior. Opening Us or the inspection sheet must not start playback.
-- `playingBriefingID` names a briefing that is actually playing. Set it to nil
-  on pause/end/failure or playback of other content. A paused/preparing request
-  is not already playing. Do not optimistically claim playback during loading.
+- `playingBriefingID` carries the existing player's playback intent. The separate
+  `loadingBriefingID` takes precedence in the card and sheet until AVPlayer reports
+  actual playback, and during buffering. Pause/end/failure clears the intent.
+  Failures stay visible with Retry for that exact record; retry rebuilds the
+  media queue at its retained position without another model or TTS request.
 - The playback callback receives the exact inspected `MorningBriefing`, not
   an unqualified "play latest" action. The reading sheet retains its captured
   text/sources across refreshes. Stop/pause must remain bound to that identity.

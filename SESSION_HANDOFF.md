@@ -15,6 +15,13 @@ characters reached the backend. Full local ASR recovery remains unconfirmed.
 Read docs/MORNING_BRIEFING.md, docs/VOICE_CAPTURE.md and shared A2-013 HANDOFF.md/
 RELEASE.md for source, checks and Apple receipts. Prior sections below are history.
 
+The integrated candidate passed a generic iOS build, 25 speech buffer/lifecycle
+checks, 13 raw-audio archive checks, 10 walk save cases, 4 actual voice UI flows,
+8 shared morning playback checks and 20 media loading/retry checks. Morning
+component checks also covered 5 UI flows. Simulator fixtures do not validate
+physical microphone accuracy. Internal reviews cover the exact source commits
+in A2-013 evidence; Claude's own review remains separate.
+
 # Session handoff — Alicia 2.0
 
 Current task: A2-011 concurrent goals, stacked on build 11 source 712cd62.
