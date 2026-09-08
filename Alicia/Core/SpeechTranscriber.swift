@@ -2,23 +2,74 @@ import Foundation
 import Speech
 import AVFoundation
 
+/// The audio tap's memory is reused after its callback. Retain owned copies only
+/// while recognition hands off; both byte and buffer counts have hard bounds.
+private struct SpeechPCMQueue {
+    var maxBytes = 2_000_000
+    var maxBuffers = 128
+    private(set) var byteCount = 0
+    private(set) var dropped = false
+    private var buffers: [AVAudioPCMBuffer] = []
+
+    mutating func append(_ input: AVAudioPCMBuffer) {
+        let source = UnsafeMutableAudioBufferListPointer(input.mutableAudioBufferList)
+        let bytes = source.reduce(0) { $0 + Int($1.mDataByteSize) }
+        guard input.frameLength > 0, bytes > 0 else { return }
+        guard buffers.count < maxBuffers, bytes <= maxBytes - byteCount,
+              let copy = AVAudioPCMBuffer(pcmFormat: input.format, frameCapacity: input.frameLength) else {
+            dropped = true; return
+        }
+        copy.frameLength = input.frameLength
+        let target = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
+        guard source.count == target.count else { dropped = true; return }
+        for index in source.indices {
+            guard let from = source[index].mData, let to = target[index].mData,
+                  target[index].mDataByteSize >= source[index].mDataByteSize else { dropped = true; return }
+            memcpy(to, from, Int(source[index].mDataByteSize))
+        }
+        buffers.append(copy); byteCount += bytes
+    }
+
+    mutating func take() -> [AVAudioPCMBuffer] {
+        let result = buffers
+        buffers = []; byteCount = 0
+        return result
+    }
+
+    mutating func discard() {
+        if byteCount > 0 { dropped = true }
+        _ = take()
+    }
+}
+
 /// A small lock keeps the realtime tap independent of recognition restarts.
 private final class SpeechRequestRelay: @unchecked Sendable {
     private let lock = NSLock()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var seconds = 0.0
     private var level = 0.0
+    private var buffering = false
+    private var pending = SpeechPCMQueue()
     func reset() {
         lock.lock(); defer { lock.unlock() }
         seconds = 0; level = 0
+        pending = SpeechPCMQueue(); buffering = false
     }
-    func metrics() -> (seconds: Double, level: Double) {
+    func metrics() -> (seconds: Double, level: Double, dropped: Bool) {
         lock.lock(); defer { lock.unlock() }
-        return (seconds, level)
+        return (seconds, level, pending.dropped)
     }
-    func set(_ next: SFSpeechAudioBufferRecognitionRequest?) {
+    var hasBufferedAudio: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return pending.byteCount > 0
+    }
+    func set(_ next: SFSpeechAudioBufferRecognitionRequest?, bufferWhileUnavailable: Bool = false) {
         lock.lock(); defer { lock.unlock() }
         request?.endAudio(); request = next
+        buffering = bufferWhileUnavailable
+        if let next {
+            for buffer in pending.take() { next.append(buffer) }
+        } else if !buffering { pending.discard() }
     }
     func append(_ buffer: AVAudioPCMBuffer) {
         lock.lock(); defer { lock.unlock() }
@@ -32,7 +83,8 @@ private final class SpeechRequestRelay: @unchecked Sendable {
             // Meter only. Original samples and the recognizer input are unchanged.
             level = max(0, min(1, (20 * log10(max(rms, 0.00001)) + 65) / 55))
         }
-        request?.append(buffer)
+        if let request { request.append(buffer) }
+        else if buffering { pending.append(buffer) }
     }
 }
 
@@ -57,6 +109,8 @@ final class SpeechTranscriber {
     private var words = SpeechTranscriptBuffer()
     private var recognitionStarted = 0.0
     private var retryAt = 0.0
+    private var recognitionDeadline: Double?
+    private let finalizationGrace = 0.75
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var task: SFSpeechRecognitionTask?
     private let engine = AVAudioEngine()
@@ -122,6 +176,7 @@ final class SpeechTranscriber {
         guard isRecording else { return }
         guard speechAuthorized, let recognizer, recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
             liveTextAvailable = false; transcriptNeedsReview = true
+            relay.set(nil)
             retryAt = ProcessInfo.processInfo.systemUptime + 30
             lastError = "Audio is recording. Live text is unavailable; the transcript may be incomplete."
             return
@@ -153,37 +208,57 @@ final class SpeechTranscriber {
                     self.failures = error == nil ? 0 : self.failures + 1
                     if error != nil {
                         self.transcriptNeedsReview = true
-                        self.lastError = "Audio is recording. Live text is reconnecting; check the words before sending."
+                        self.lastError = self.isFinishing ? "Live text ended early. Check the words before sending."
+                            : "Audio is recording. Live text is reconnecting; check the words before sending."
                     }
-                    self.finishRecognition()
-                    self.retryAt = ProcessInfo.processInfo.systemUptime + (error == nil ? 0.2 : min(30, pow(2, Double(min(self.failures, 5)))))
+                    self.finishRecognition(preserveBufferedAudio: true)
+                    self.retryAt = ProcessInfo.processInfo.systemUptime + (error == nil ? 0 : min(30, pow(2, Double(min(self.failures, 5)))))
+                    if error == nil, !self.isFinishing { self.startRecognition() }
                 }
             }
         }
     }
 
-    private func finishRecognition() {
+    private func finishRecognition(preserveBufferedAudio: Bool = false) {
         recognitionGeneration += 1
         words.finishRequest(); transcript = words.text
-        relay.set(nil); task?.cancel(); task = nil
+        relay.set(nil, bufferWhileUnavailable: preserveBufferedAudio); task?.cancel(); task = nil
         liveTextAvailable = false
+        recognitionDeadline = nil
+    }
+
+    private func beginRecognitionFinalization(now: Double) {
+        guard task != nil, recognitionDeadline == nil else { return }
+        recognitionDeadline = now + finalizationGrace
+        liveTextAvailable = false
+        // Keep this request's generation alive so its final callback can update
+        // the retained words. The raw sink and bounded PCM queue keep receiving.
+        relay.set(nil, bufferWhileUnavailable: true)
     }
 
     private func drainAudio() {
-        guard let sink else { return }
+        // Invalidating a Timer does not cancel a MainActor Task it already queued.
+        guard !isFinishing, let sink else { return }
         let metrics = relay.metrics()
         recordedSeconds = metrics.seconds; inputLevel = metrics.level
-        let now = ProcessInfo.processInfo.systemUptime
-        if isRecording, task != nil, now - recognitionStarted >= 40 {
-            // Bound each recognition request; its saved words survive the next.
-            finishRecognition(); retryAt = now + 0.2
+        if metrics.dropped, !transcriptNeedsReview {
+            transcriptNeedsReview = true
+            lastError = "Live text may have missed words during reconnection. The original audio is still recording."
         }
-        if isRecording, task == nil, now >= retryAt { startRecognition() }
+        let now = ProcessInfo.processInfo.systemUptime
         if isRecording && !engine.isRunning {
             lastError = "Recording paused because the microphone route changed. Captured audio is kept; tap to resume."
             stop()
             return
         }
+        if isRecording, let deadline = recognitionDeadline, now >= deadline {
+            transcriptNeedsReview = true
+            lastError = "Live text did not finish a passage. Review the original audio before sending."
+            finishRecognition(preserveBufferedAudio: true); retryAt = now
+        } else if isRecording, task != nil, now - recognitionStarted >= 40 {
+            beginRecognitionFinalization(now: now)
+        }
+        if isRecording, task == nil, now >= retryAt { startRecognition() }
         let result = sink.drain()
         if !result.segments.isEmpty { deliverSegments?(result.segments) }
         if result.error != nil {
@@ -199,10 +274,30 @@ final class SpeechTranscriber {
         timer?.invalidate(); timer = nil
         engine.stop()
         if hasTap { engine.inputNode.removeTap(onBus: 0); hasTap = false }
-        relay.set(nil) // Let Speech return its final hypothesis for the last buffers.
-        if task != nil { try? await Task.sleep(for: .milliseconds(750)) }
-        guard generation == stamp else { return } // A close/interruption owns its stop.
+        relay.set(nil, bufferWhileUnavailable: true)
+        guard await awaitFinalRecognition(stamp: stamp) else { return }
+        // Finish can be tapped during rollover or a retry. Those queued samples
+        // belong to a final request, even though the microphone has now stopped.
+        if relay.hasBufferedAudio {
+            startRecognition()
+            relay.set(nil, bufferWhileUnavailable: true)
+            guard await awaitFinalRecognition(stamp: stamp) else { return }
+        }
         stop()
+    }
+
+    private func awaitFinalRecognition(stamp: Int) async -> Bool {
+        if task != nil {
+            do { try await Task.sleep(for: .seconds(finalizationGrace)) }
+            catch { if generation == stamp { stop() }; return false }
+        }
+        guard generation == stamp else { return false }
+        if task != nil {
+            transcriptNeedsReview = true
+            lastError = "Live text did not finish. Review the original recording for the last words."
+            finishRecognition(preserveBufferedAudio: true)
+        }
+        return true
     }
 
     func stop() {
@@ -212,7 +307,16 @@ final class SpeechTranscriber {
         let wasActive = hasTap || isRecording || engine.isRunning
         engine.stop()
         if hasTap { engine.inputNode.removeTap(onBus: 0); hasTap = false }
+        let unfinishedText = task != nil || relay.hasBufferedAudio
         finishRecognition()
+        let metrics = relay.metrics()
+        recordedSeconds = metrics.seconds; inputLevel = 0
+        transcriptNeedsReview = transcriptNeedsReview || unfinishedText || metrics.dropped
+        if transcriptNeedsReview, lastError == nil || lastError?.hasPrefix("Audio is recording.") == true
+            || lastError?.hasPrefix("Live text resumed.") == true
+            || lastError?.contains("original audio is still recording") == true {
+            lastError = "Live text may be incomplete. Review the original recording before sending."
+        }
         if let sink {
             let result = sink.drain(close: true)
             if !result.segments.isEmpty { deliverSegments?(result.segments) }
