@@ -9,6 +9,15 @@ struct EpisodeHomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
                     SectionHeader(title: "Us", kicker: Date.now.formatted(date: .complete, time: .omitted))
+                    MorningBriefingView(briefing: store.morningBriefing,
+                        playingBriefingID: store.playingMorningBriefingID,
+                        loadingBriefingID: store.reader.isLoadingMedia ? store.currentMorningBriefingID : nil,
+                        failedBriefingID: store.reader.failure != nil ? store.currentMorningBriefingID : nil,
+                        playbackError: store.reader.failure,
+                        isRefreshing: store.morningBriefingRefreshing,
+                        onTogglePlayback: store.toggleMorningBriefing,
+                        onOpenPlaylist: store.openMorningPlaylist,
+                        onRefresh: { Task { await store.refreshMorningBriefing() } })
                     CollaborationSummary()
                     if let day = store.episodeDay, let episode = day.episode {
                         EpisodeHeading(episode: episode)
@@ -77,7 +86,8 @@ struct EpisodeHomeView: View {
                 .padding(22)
                 .padding(.bottom, 20)
             }
-            .refreshable { await store.refreshEpisodeDay() }
+            .task { await store.refreshMorningBriefing() }
+            .refreshable { await store.refreshMorningBriefing(); await store.refreshEpisodeDay() }
             .presenceBackground(.us, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showHistory) { EpisodeHistoryView() }

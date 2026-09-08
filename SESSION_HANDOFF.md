@@ -1,3 +1,27 @@
+# A2-013 — morning briefing and long voice capture
+
+Current work builds on TestFlight 1.0 (12), source3932615. Us places the dated
+morning briefing above shared goals and the selected episode. Its full reading,
+sources and measured audio remain available; Studio opens the same playlist and
+stable record identity. Service refresh is read-only and audio uses the configured
+private media route. It neither chooses an episode nor manufactures listening.
+
+Walk and Dialogue show microphone state, actual input route, elapsed audio and
+level. A saved confirmation distinguishes words received by Alicia from audio
+retained locally and upload progress. Review/correction preserves the original.
+The full Sept7 recording survived (333.3seconds,35segments); only13 transcript
+characters reached the backend. Full local ASR recovery remains unconfirmed.
+
+Read docs/MORNING_BRIEFING.md, docs/VOICE_CAPTURE.md and shared A2-013 HANDOFF.md/
+RELEASE.md for source, checks and Apple receipts. Prior sections below are history.
+
+The integrated candidate passed a generic iOS build, 25 speech buffer/lifecycle
+checks, 13 raw-audio archive checks, 10 walk save cases, 4 actual voice UI flows,
+8 shared morning playback checks and 20 media loading/retry checks. Morning
+component checks also covered 5 UI flows. Simulator fixtures do not validate
+physical microphone accuracy. Internal reviews cover the exact source commits
+in A2-013 evidence; Claude's own review remains separate.
+
 # Session handoff — Alicia 2.0
 
 Current task: A2-011 concurrent goals, stacked on build 11 source 712cd62.
@@ -193,7 +217,7 @@ visibly pending. No raw-audio cloud provider or automatic training was added.
 
 The implementation is stacked on TestFlight 1.0 (9), source 0de4440. Its own
 release status is `/Users/alicia/Documents/Alicia-development/tasks/A2-009/RELEASE.md`.
-Backend behavior: `docs/VOICE_EVIDENCE.md` in the paired backend worktree.
+Backend behavior: `docs/VOICE_CAPTURE.md` in the paired backend worktree.
 Physical microphone/headset completeness remains a device check, separate from
 simulator file/buffer/UI evidence. Earlier missing recordings cannot be recovered.
 

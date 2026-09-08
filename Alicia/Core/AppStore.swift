@@ -69,6 +69,13 @@ final class AppStore {
             messages = [Message(sender: .me, text: "Preview · I want to revisit the criteria for ending a commitment.",
                                 recordingID: VoiceArchive.previewID)]
             episodeDay = EpisodeDay.preview
+            if ProcessInfo.processInfo.arguments.contains("--voice-save-preview") {
+                pendingWalkSave = nil
+                walkRecordingID = VoiceArchive.previewID
+                walkEpisodeID = "S15E07"; walkDraft = "Preview reflection about a useful criterion."
+                walkPrompt = "Preview — what would help you decide?"
+                showWalk = true
+            }
         }
 #endif
         reader.service = service
@@ -365,16 +372,21 @@ final class AppStore {
         voicePlayer?.pause()
     }
 
-    func finishEpisodeWalk() async -> Bool {
-        if walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+    func finishEpisodeWalk(closeOnSuccess: Bool = true, audioOnly: Bool = false) async -> Bool {
+        if audioOnly, pendingWalkSave != nil { return false }
+        if audioOnly, !voiceArchive.hasAudio(walkRecordingID) {
+            episodeError = "There is no saved recording yet. Your words are still here."
+            return false
+        }
+        if (audioOnly || walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
            voiceArchive.hasAudio(walkRecordingID), pendingWalkSave == nil {
             // Audio-only is a valid saved source, not fabricated transcript text.
-            showWalk = false
+            if closeOnSuccess { showWalk = false }
             pauseEpisodeWalk()
             walkRecordingID = ""
             walkRequestID = UUID().uuidString
             UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
-            await syncVoiceArchive()
+            Task { await syncVoiceArchive() }
             return true
         }
         let pending = pendingWalkSave ?? ["text": walkDraft.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -419,8 +431,7 @@ final class AppStore {
         UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
         thinkingMode = "idle"
         episodeError = ""
-        showWalk = false
-        selectedSection = .mind
+        if closeOnSuccess { showWalk = false; selectedSection = .mind }
         await refreshEpisodeDay()
         awaitEpisodeFrame()
         return true
@@ -512,6 +523,36 @@ final class AppStore {
 
     // MARK: playlists — the listening queues (Studio)
 
+    var morningBriefing: MorningBriefing?
+    var morningBriefingRefreshing = false
+    var morningPlaylistID: String?
+
+    func refreshMorningBriefing() async {
+        guard !morningBriefingRefreshing else { return }
+        morningBriefingRefreshing = true
+        defer { morningBriefingRefreshing = false }
+        if let fresh = await service.morningBriefing() { morningBriefing = fresh }
+    }
+
+    var currentMorningBriefingID: String? {
+        guard let id = reader.current?.stableID, id.hasPrefix("morning:") else { return nil }
+        return String(id.dropFirst("morning:".count))
+    }
+
+    var playingMorningBriefingID: String? { reader.isSpeaking ? currentMorningBriefingID : nil }
+
+    func toggleMorningBriefing(_ briefing: MorningBriefing) {
+        guard briefing.hasPlayableAudio, let url = URL(string: briefing.audio_url) else { return }
+        readAloud(Readable(title: briefing.title, body: briefing.text, kind: "note",
+            speechChunks: [SpeechChunk(url: url, duration: briefing.duration)],
+            speechDuration: briefing.duration, stableID: "morning:" + briefing.id))
+    }
+
+    func openMorningPlaylist(_ id: String) {
+        morningPlaylistID = id
+        selectedSection = .studio
+    }
+
     /// Her weekly mind note. Empty string means she had nothing citable this
     /// week — the view renders nothing, never a placeholder.
     var mindNote: String = ""
@@ -595,6 +636,7 @@ final class AppStore {
     private var liveTimelineSeeded = false
 
     func load() async {
+        Task { await refreshMorningBriefing() }
         Task { await collaboration.load() }
         Task { await refreshVoiceArchive() }
         let messagesAtStart = messages.map(\.id)

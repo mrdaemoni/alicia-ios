@@ -66,6 +66,17 @@ protocol AliciaService {
  func downloadVoice(recordingID:String,segmentID:String) async -> Data? { download }
 }
 final class VoiceEvidenceTests:XCTestCase {
+ @MainActor func testSaveStatusSeparatesPhoneAndMacReceipts()async throws {
+  let a=archive(),id=UUID().uuidString
+  _ = try capture(a,id:id,count:600)
+  XCTAssertTrue(a.recording(id)!.syncSummary.contains("saved on this phone"))
+  XCTAssertFalse(a.recording(id)!.syncSummary.contains("phone and your Mac"))
+  let service=FakeService();service.offline=true
+  await a.sync(using:service)
+  XCTAssertFalse(a.recording(id)!.syncSummary.contains("phone and your Mac"))
+  service.offline=false;await a.sync(using:service)
+  XCTAssertEqual(a.recording(id)!.syncSummary,"Audio saved on this phone and your Mac.")
+ }
  @MainActor func context(_ id:String)->VoiceContext {
   VoiceContext(session_id:id,source:"ios_walk",started_at:"2026-09-05T01:02:03.000Z",timezone:"America/Los_Angeles",episode_id:"S15E07",episode_title:"Fixture only",episode_basis:"selected",frame_id:"fixture",question_presented:"A supplied question",playback_position_ms:12345)
  }

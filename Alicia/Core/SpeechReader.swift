@@ -18,9 +18,10 @@ struct Readable: Equatable {
     var speechChunks: [SpeechChunk] = []
     var speechDuration: TimeInterval = 0
     var episodeID: String? = nil
+    var stableID: String? = nil
     /// Stable identity so re-tapping the same piece resumes instead of
     /// restarting, and so the reader can tell "this card" from "that card".
-    var id: String { "\(kind)|\(title)|\(body.count)" }
+    var id: String { stableID ?? "\(kind)|\(title)|\(body.count)" }
 
     var spokenText: String {
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -105,6 +106,9 @@ final class SpeechReader: NSObject {
 
     private(set) var current: Readable?
     private(set) var isSpeaking = false
+    /// Playback intent stays in isSpeaking; this distinguishes startup/stalling
+    /// from samples actually playing. Prepared audio never needs a new render.
+    private(set) var isLoadingMedia = false
     private(set) var voice: Voice = .her
     /// Waiting on her first chunk — the bar shows this rather than looking
     /// like a play button that did nothing.
@@ -134,7 +138,7 @@ final class SpeechReader: NSObject {
 
     // MARK: engine state
 
-    private let queue = AVQueuePlayer()
+    private var queue = AVQueuePlayer()
     /// Chunks known so far, in speaking order.
     private var chunks: [SpeechChunk] = []
     /// How many of `chunks` have been handed to the queue player.
@@ -144,6 +148,12 @@ final class SpeechReader: NSObject {
     private var currentIndex = 0
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var mediaFailureObserver: NSObjectProtocol?
+    private var mediaTimeObservation: NSKeyValueObservation?
+    private var mediaStatusObservation: NSKeyValueObservation?
+    private var itemStatusObservations: [ObjectIdentifier: NSKeyValueObservation] = [:]
+    private var mediaGeneration = 0
+    private var mediaFailed = false
     private var pollTask: Task<Void, Never>?
     private var prefetchTask: Task<Void, Never>?
 
@@ -247,6 +257,8 @@ final class SpeechReader: NSObject {
         current = item
         progress = 0
         failure = nil
+        mediaFailed = false
+        isLoadingMedia = false
         activateAudioSession()
 
         if !item.speechChunks.isEmpty {
@@ -271,9 +283,14 @@ final class SpeechReader: NSObject {
 
     func toggle() {
         guard isActive else { return }
+        if mediaFailed, voice == .her {
+            retryMedia()
+            return
+        }
         if isSpeaking {
             if current?.episodeID != nil { episodeStopped?(false) }
             isSpeaking = false
+            isLoadingMedia = false
             if voice == .her {
                 queue.pause()
             } else {
@@ -283,12 +300,14 @@ final class SpeechReader: NSObject {
             isSpeaking = true
             activateAudioSession()
             if voice == .her {
+                isLoadingMedia = true
                 queue.play()
                 queue.rate = rate
             } else if !synth.continueSpeaking() {
                 speakOnDevice(from: deviceCharIndex(for: progress))
             }
         }
+        if voice == .her { updateMediaState(generation: mediaGeneration) }
         publishNowPlaying()
     }
 
@@ -305,6 +324,8 @@ final class SpeechReader: NSObject {
         playlistName = nil
         current = nil
         isSpeaking = false
+        isLoadingMedia = false
+        mediaFailed = false
         isPreparing = false
         isStreaming = false
         progress = 0
@@ -395,39 +416,108 @@ final class SpeechReader: NSObject {
         let start = min(max(0, index), chunks.count - 1)
         detachObservers()
         queue.removeAllItems()
+        if queue.status == .failed {
+            queue = AVQueuePlayer()
+            queue.actionAtItemEnd = .advance
+        }
         indexOfItem = [:]
         queuedCount = start
         for i in start..<chunks.count { append(chunkAt: i) }
         currentIndex = start
         attachObservers()
+        guard !mediaFailed else { return }
         if offset > 0, let item = queue.currentItem {
             item.seek(to: CMTime(seconds: offset, preferredTimescale: 600),
                       completionHandler: nil)
         }
         isSpeaking = true
         isPreparing = false
+        isLoadingMedia = true
         queue.play()
         queue.rate = rate
+        updateMediaState(generation: mediaGeneration)
     }
 
     private func append(chunkAt index: Int) {
-        guard index < chunks.count else { return }
+        guard !mediaFailed, index < chunks.count else { return }
         let item = AVPlayerItem(url: chunks[index].url)
         // Each chunk is small and +faststart, so a short buffer is plenty.
         item.preferredForwardBufferDuration = 15
-        indexOfItem[ObjectIdentifier(item)] = index
+        let identity = ObjectIdentifier(item)
+        indexOfItem[identity] = index
+        let stamp = mediaGeneration
+        itemStatusObservations[identity] = item.observe(\.status, options: [.initial, .new]) { [weak self] observed, _ in
+            guard observed.status == .failed else { return }
+            Task { @MainActor in
+                // The queue may release a failed item before this actor turn.
+                self?.mediaDidFail(generation: stamp, itemID: identity)
+            }
+        }
         if queue.canInsert(item, after: nil) {
             queue.insert(item, after: nil)
             queuedCount = max(queuedCount, index + 1)
+        } else {
+            mediaDidFail(generation: stamp, itemID: identity)
         }
     }
 
+    private func updateMediaState(generation stamp: Int) {
+        guard stamp == mediaGeneration, voice == .her, current != nil else { return }
+        if queue.status == .failed || queue.currentItem?.status == .failed {
+            mediaDidFail(generation: stamp)
+            return
+        }
+        // A paused player with playback intent can be between play() and its
+        // first waiting/playing notification. Keep startup visibly loading.
+        isLoadingMedia = !mediaFailed && isSpeaking && queue.timeControlStatus != .playing
+    }
+
+    private func mediaDidFail(generation stamp: Int, itemID: ObjectIdentifier? = nil) {
+        guard stamp == mediaGeneration, voice == .her, current != nil, !mediaFailed else { return }
+        if let itemID, indexOfItem[itemID] == nil { return }
+        mediaFailed = true
+        queue.pause()
+        pollTask?.cancel(); pollTask = nil
+        isSpeaking = false; isLoadingMedia = false; isPreparing = false
+        failure = "The recording couldn't play. You can retry it."
+        if current?.episodeID != nil { episodeStopped?(false) }
+        publishNowPlaying()
+    }
+
+    private func retryMedia() {
+        guard mediaFailed, let item = current, !chunks.isEmpty else { return }
+        let target = locate(duration * progress)
+        // Rebuilding replaces failed items/player while preserving the logical
+        // playlist, position and source. Prepared audio needs no new render.
+        mediaFailed = false; failure = nil
+        activateAudioSession()
+        rebuildQueue(from: target.index, offset: target.offset)
+        if isStreaming, !mediaFailed { requestHerVoice(for: item) }
+        publishNowPlaying()
+    }
+
     private func attachObservers() {
+        let stamp = mediaGeneration
+        mediaTimeObservation = queue.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] _, _ in
+            Task { @MainActor in self?.updateMediaState(generation: stamp) }
+        }
+        mediaStatusObservation = queue.observe(\.status, options: [.initial, .new]) { [weak self] _, _ in
+            Task { @MainActor in self?.updateMediaState(generation: stamp) }
+        }
+        mediaFailureObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, let item = note.object as? AVPlayerItem else { return }
+                self.mediaDidFail(generation: stamp, itemID: ObjectIdentifier(item))
+            }
+        }
         timeObserver = queue.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.3, preferredTimescale: 600), queue: .main
         ) { [weak self] time in
             MainActor.assumeIsolated {
-                guard let self, !self.isScrubbing, self.duration > 0 else { return }
+                guard let self, stamp == self.mediaGeneration, !self.mediaFailed,
+                      !self.isScrubbing, self.duration > 0 else { return }
                 // Keep currentIndex honest: the queue advances on its own at
                 // a chunk seam, and progress must not snap back to zero.
                 if let item = self.queue.currentItem,
@@ -447,7 +537,8 @@ final class SpeechReader: NSObject {
             object: nil, queue: .main
         ) { [weak self] note in
             MainActor.assumeIsolated {
-                guard let self, let item = note.object as? AVPlayerItem,
+                guard let self, stamp == self.mediaGeneration, !self.mediaFailed,
+                      let item = note.object as? AVPlayerItem,
                       let index = self.indexOfItem[ObjectIdentifier(item)] else { return }
                 // The last chunk of a finished reading ends the piece; the
                 // last chunk of a still-rendering one just means we've caught
@@ -465,8 +556,14 @@ final class SpeechReader: NSObject {
     }
 
     private func detachObservers() {
+        mediaGeneration += 1
         if let timeObserver { queue.removeTimeObserver(timeObserver) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        if let mediaFailureObserver { NotificationCenter.default.removeObserver(mediaFailureObserver) }
+        mediaTimeObservation?.invalidate(); mediaStatusObservation?.invalidate()
+        itemStatusObservations.values.forEach { $0.invalidate() }
+        itemStatusObservations = [:]
+        mediaTimeObservation = nil; mediaStatusObservation = nil; mediaFailureObserver = nil
         timeObserver = nil
         endObserver = nil
     }
@@ -481,7 +578,7 @@ final class SpeechReader: NSObject {
     /// Fold newly-rendered chunks into a reading already in progress.
     private func extend(with newChunks: [SpeechChunk], total: TimeInterval,
                         complete: Bool) {
-        guard newChunks.count >= chunks.count else { return }
+        guard !mediaFailed, newChunks.count >= chunks.count else { return }
         let hadNone = chunks.isEmpty
         chunks = newChunks
         duration = total > 0 ? total : chunks.reduce(0) { $0 + $1.duration }
@@ -491,14 +588,17 @@ final class SpeechReader: NSObject {
             return
         }
         for i in queuedCount..<chunks.count { append(chunkAt: i) }
+        guard !mediaFailed else { return }
         // We may have run dry waiting for this; get moving again.
         if isPreparing, isSpeaking == false || queue.rate == 0 {
             isPreparing = false
+            isSpeaking = true
+            isLoadingMedia = true
             queue.play()
             queue.rate = rate
-            isSpeaking = true
         }
         isPreparing = false
+        updateMediaState(generation: mediaGeneration)
     }
 
     /// Ask the backend for her voice and follow the render until it's done.
@@ -510,7 +610,7 @@ final class SpeechReader: NSObject {
                 if Task.isCancelled { return }
                 let result = await service.requestSpeech(text: item.spokenText,
                                                          kind: item.kind)
-                guard let self, self.current?.id == item.id else { return }
+                guard !Task.isCancelled, let self, self.current?.id == item.id else { return }
                 switch result {
                 case .ready(let chunks, let duration):
                     self.extend(with: chunks, total: duration, complete: true)
@@ -544,6 +644,7 @@ final class SpeechReader: NSObject {
 
     private func fallBackToDevice(_ item: Readable, reason: String?) {
         voice = .device
+        isLoadingMedia = false
         isPreparing = false
         isStreaming = false
         failure = reason
@@ -614,6 +715,7 @@ final class SpeechReader: NSObject {
 
     private func finishQueue() {
         isSpeaking = false
+        isLoadingMedia = false
         isPreparing = false
         isStreaming = false
         progress = 1

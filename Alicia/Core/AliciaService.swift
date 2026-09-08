@@ -50,6 +50,7 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
+    func morningBriefing() async -> MorningBriefing?
     func collaboration() async -> CollaborationState?
     func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse?
     func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource?
@@ -161,6 +162,7 @@ protocol AliciaService {
 }
 
 extension AliciaService {
+    func morningBriefing() async -> MorningBriefing? { nil }
     func collaboration() async -> CollaborationState? {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") { return await CollaborationPreview.shared.read() }
@@ -301,7 +303,12 @@ struct MockAliciaService: AliciaService {
 #endif
         return nil
     }
-    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? { nil }
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--voice-save-preview") { return WalkReceipt(ok: true) }
+#endif
+        return nil
+    }
     func conversationHistory() async -> ConversationHistory? { nil }
     func dialogueReview(replyID: String) async -> DialogueReview? {
 #if DEBUG
