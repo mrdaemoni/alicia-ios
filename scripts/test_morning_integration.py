@@ -9,9 +9,10 @@ m=(root/'Alicia/Core/Models.swift').read_text()
 playlist=m[m.index('struct Playlist:'):m.index('/// A piece of audio Alicia')]
 r=(root/'Alicia/Core/SpeechReader.swift').read_text()
 readable=r[r.index('struct Readable:'):r.index('extension String')]
+featured=m[m.index('struct FeaturedSynthesis:'):m.index('// In an extension so the memberwise') ]
 program='''import Foundation
 struct SpeechChunk: Hashable { var url:URL; var duration:TimeInterval }
-'''+(root/'Alicia/Core/MorningBriefing.swift').read_text()+readable+playlist+'''
+'''+(root/'Alicia/Core/MorningBriefing.swift').read_text()+readable+playlist+featured+'''
 @MainActor final class FakeService {
  var value:MorningBriefing?
  func morningBriefing() async -> MorningBriefing? { value }
@@ -33,11 +34,15 @@ enum Section {case us,studio}
   store.toggleMorningBriefing(b);precondition(store.playingMorningBriefingID == b.id)
   let item=Playlist.Item(id:b.id,kind:"note",title:b.title,body:b.text,source:"alicia_morning_briefing",duration:b.duration,speechChunks:[SpeechChunk(url:URL(string:b.audio_url)!,duration:b.duration)])
   precondition(item.readable == store.reader.current && item.readable.episodeID == nil)
+  let opened=FeaturedSynthesis(title:item.title,excerpt:"",body:item.body,date:item.source,speechChunks:item.speechChunks,speechDuration:item.duration,stableReadingID:item.readable.stableID)
+  precondition(opened.readable.id == item.readable.id)
+  store.readAloud(opened.readable);precondition(!store.reader.isSpeaking && store.reader.current?.id == item.readable.id)
+  store.readAloud(opened.readable);precondition(store.reader.isSpeaking)
   store.toggleMorningBriefing(b);precondition(store.playingMorningBriefingID == nil)
   let before=store.reader.current
   store.toggleMorningBriefing(MorningBriefing(id:"missing",status:"preparing"));precondition(store.reader.current == before)
   store.openMorningPlaylist("exact-playlist");precondition(store.morningPlaylistID == "exact-playlist" && store.selectedSection == .studio)
-  print("7 morning integration checks passed: read-only refresh, failed refresh retention, shared playback identity, pause, not-ready, episode separation, exact playlist route")
+  print("8 morning integration checks passed: read-only refresh, failed refresh retention, shared playback identity, pause, not-ready, episode separation, exact playlist route")
  }
 }
 '''

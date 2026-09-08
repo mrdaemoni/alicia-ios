@@ -386,7 +386,7 @@ final class AppStore {
             walkRecordingID = ""
             walkRequestID = UUID().uuidString
             UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
-            await syncVoiceArchive()
+            Task { await syncVoiceArchive() }
             return true
         }
         let pending = pendingWalkSave ?? ["text": walkDraft.trimmingCharacters(in: .whitespacesAndNewlines),

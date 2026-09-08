@@ -49,11 +49,12 @@ struct FeaturedSynthesis: Hashable, Identifiable {
     /// for it and starts on the lead chunk a few seconds later.
     var speechChunks: [SpeechChunk] = []
     var speechDuration: TimeInterval = 0
+    var stableReadingID: String? = nil
 
     /// This piece as something to press play on.
     var readable: Readable {
         Readable(title: title, body: body, kind: "synthesis",
-                 speechChunks: speechChunks, speechDuration: speechDuration)
+                 speechChunks: speechChunks, speechDuration: speechDuration, stableID: stableReadingID)
     }
 
     /// Pin identity. Keyed on the title because that's what survives the
