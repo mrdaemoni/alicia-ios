@@ -301,7 +301,12 @@ struct MockAliciaService: AliciaService {
 #endif
         return nil
     }
-    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? { nil }
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--voice-save-preview") { return WalkReceipt(ok: true) }
+#endif
+        return nil
+    }
     func conversationHistory() async -> ConversationHistory? { nil }
     func dialogueReview(replyID: String) async -> DialogueReview? {
 #if DEBUG

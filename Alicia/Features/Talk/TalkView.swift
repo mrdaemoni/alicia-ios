@@ -14,6 +14,8 @@ struct TalkView: View {
     @State private var microphoneError = ""
     @State private var microphoneGeneration = 0
     @State private var microphoneStarting = false
+    @State private var lastSavedRecordingID = ""
+    @State private var acceptingDictation = false
     @State private var visible = false
 
     var body: some View {
@@ -118,11 +120,18 @@ struct TalkView: View {
                 }
                 .padding(.horizontal, 4)
             }
+            if speech.isRecording || microphoneStarting {
+                ListeningPresence(isRecording: speech.isRecording && !speech.isFinishing, isStarting: microphoneStarting,
+                    seconds: speech.recordedSeconds, level: speech.inputLevel,
+                    microphoneName: speech.microphoneName, liveTextAvailable: speech.liveTextAvailable)
+                    .padding(12).background(Theme.paper, in: RoundedRectangle(cornerRadius: 12))
+            }
             composerRow
             if let error = speech.lastError ?? (microphoneError.isEmpty ? nil : microphoneError) {
                 Text(error).font(.caption).foregroundStyle(Theme.paper)
-            } else if speech.isRecording {
-                Text("Original audio is being saved.").font(.caption).foregroundStyle(Theme.paper)
+            } else if !speech.isRecording,
+                      let recording = store.voiceArchive.recording(recordingID.isEmpty ? lastSavedRecordingID : recordingID) {
+                Text(recording.syncSummary).font(.caption).foregroundStyle(Theme.paper)
             }
         }
         .padding(.horizontal, 16)
@@ -131,7 +140,7 @@ struct TalkView: View {
         // One piece with the word-bar: the composer sits IN the ink frame.
         .background(Theme.ink)
         .onChange(of: speech.transcript) { _, new in
-            if speech.isRecording || !new.isEmpty {
+            if acceptingDictation {
                 draft = dictationBase.isEmpty ? new
                       : dictationBase + (new.isEmpty ? "" : " " + new)
             }
@@ -153,6 +162,7 @@ struct TalkView: View {
                 .lineLimit(1...5)
                 .focused($focused)
                 .accessibilityIdentifier("dialogue.composer")
+                .disabled(speech.isRecording || speech.isFinishing)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .foregroundStyle(Theme.ink)
@@ -178,18 +188,25 @@ struct TalkView: View {
                 .frame(width: 34, height: 34)
             }
             .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
+            .disabled(speech.isFinishing)
 
             Button {
                 cancelMicrophoneStart()
-                speech.stop()
-                store.send(draft, recordingID: recordingID)
-                draft = ""
-                recordingID = ""
+                let generation = microphoneGeneration
+                Task {
+                    await speech.finishAndStop()
+                    guard generation == microphoneGeneration, visible, scenePhase == .active else { return }
+                    if acceptingDictation { applyFinalDictation() }
+                    acceptingDictation = false
+                    lastSavedRecordingID = recordingID
+                    store.send(draft, recordingID: recordingID)
+                    draft = ""; recordingID = ""
+                }
             } label: {
                 // Hand-drawn send — paper ink on the dark band (v21).
                 InkSubmitArrow(size: 34, color: Theme.paper, seed: 23)
             }
-            .disabled(store.isStreaming || store.episodeChoiceSyncing || draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(store.isStreaming || speech.isFinishing || store.episodeChoiceSyncing || draft.trimmingCharacters(in: .whitespaces).isEmpty)
             .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
         }
     }
@@ -197,7 +214,12 @@ struct TalkView: View {
     private func toggleDictation() {
         if microphoneStarting { cancelMicrophoneStart(); return }
         if speech.isRecording {
-            speech.stop()
+            let generation = microphoneGeneration
+            Task {
+                await speech.finishAndStop()
+                guard generation == microphoneGeneration, visible, scenePhase == .active else { return }
+                applyFinalDictation(); acceptingDictation = false
+            }
             return
         }
         focused = false
@@ -211,8 +233,14 @@ struct TalkView: View {
             guard await speech.requestAuthorization() else { microphoneError = "Microphone permission is off."; return }
             guard generation == microphoneGeneration, visible, scenePhase == .active, !store.showWalk, !showRecordings else { return }
             if recordingID.isEmpty || store.voiceArchive.recording(recordingID)?.deleted == true { recordingID = UUID().uuidString }
-            do { try store.startVoiceCapture(speech, id: recordingID, walk: false); microphoneError = "" }
+            do { try store.startVoiceCapture(speech, id: recordingID, walk: false); acceptingDictation = true; microphoneError = "" }
             catch { microphoneError = "The original audio could not start recording. Your draft is kept." }
+        }
+    }
+
+    private func applyFinalDictation() {
+        if !speech.transcript.isEmpty {
+            draft = dictationBase + (dictationBase.isEmpty ? "" : " ") + speech.transcript
         }
     }
 

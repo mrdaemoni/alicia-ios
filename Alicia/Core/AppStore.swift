@@ -69,6 +69,13 @@ final class AppStore {
             messages = [Message(sender: .me, text: "Preview · I want to revisit the criteria for ending a commitment.",
                                 recordingID: VoiceArchive.previewID)]
             episodeDay = EpisodeDay.preview
+            if ProcessInfo.processInfo.arguments.contains("--voice-save-preview") {
+                pendingWalkSave = nil
+                walkRecordingID = VoiceArchive.previewID
+                walkEpisodeID = "S15E07"; walkDraft = "Preview reflection about a useful criterion."
+                walkPrompt = "Preview — what would help you decide?"
+                showWalk = true
+            }
         }
 #endif
         reader.service = service
@@ -365,11 +372,16 @@ final class AppStore {
         voicePlayer?.pause()
     }
 
-    func finishEpisodeWalk() async -> Bool {
-        if walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+    func finishEpisodeWalk(closeOnSuccess: Bool = true, audioOnly: Bool = false) async -> Bool {
+        if audioOnly, pendingWalkSave != nil { return false }
+        if audioOnly, !voiceArchive.hasAudio(walkRecordingID) {
+            episodeError = "There is no saved recording yet. Your words are still here."
+            return false
+        }
+        if (audioOnly || walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
            voiceArchive.hasAudio(walkRecordingID), pendingWalkSave == nil {
             // Audio-only is a valid saved source, not fabricated transcript text.
-            showWalk = false
+            if closeOnSuccess { showWalk = false }
             pauseEpisodeWalk()
             walkRecordingID = ""
             walkRequestID = UUID().uuidString
@@ -419,8 +431,7 @@ final class AppStore {
         UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
         thinkingMode = "idle"
         episodeError = ""
-        showWalk = false
-        selectedSection = .mind
+        if closeOnSuccess { showWalk = false; selectedSection = .mind }
         await refreshEpisodeDay()
         awaitEpisodeFrame()
         return true

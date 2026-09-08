@@ -49,6 +49,36 @@ final class ContextUITests: XCTestCase {
  func reveal(_ element:XCUIElement,app:XCUIApplication,up:Bool=true) {
   for _ in 0..<12 {if element.isHittable{return};if up {app.swipeUp()} else {app.swipeDown()}}
  }
+ func testSavedReflectionStaysVisibleWithSeparateAudioStatus() {
+  continueAfterFailure=false
+  let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-save-preview"];app.launch()
+  let finish=app.buttons["episode.finishWalk"]
+  XCTAssertTrue(finish.waitForExistence(timeout:10));XCTAssertTrue(finish.isHittable)
+  capture("walk-paused-before-save",app:app);finish.tap()
+  XCTAssertTrue(app.staticTexts["Your reflection is saved"].waitForExistence(timeout:10))
+  XCTAssertTrue(app.staticTexts["Your words reached Alicia. The original recording stays available for review."].exists)
+  XCTAssertTrue(app.staticTexts["walk.audioSaveStatus"].label.contains("saved on this phone"))
+  XCTAssertFalse(app.staticTexts["walk.audioSaveStatus"].label.contains("phone and your Mac"))
+  capture("walk-confirmed-words-audio-sync-pending",app:app)
+  XCTAssertTrue(app.buttons["DONE"].isHittable)
+ }
+ func testAudioOnlySaveDoesNotClaimWordsReachedAlicia() {
+  continueAfterFailure=false
+  let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-save-preview"];app.launch()
+  let save=app.buttons["walk.saveAudioOnly"]
+  XCTAssertTrue(save.waitForExistence(timeout:10));XCTAssertTrue(save.isHittable);save.tap()
+  XCTAssertTrue(app.staticTexts["Your recording is kept"].waitForExistence(timeout:10))
+  XCTAssertTrue(app.staticTexts["The audio is kept for review. No transcript was sent as your reflection."].exists)
+  capture("walk-audio-only-confirmation",app:app)
+ }
+ func testMicrophoneStateIsExplicitInPreview() {
+  continueAfterFailure=false
+  let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-save-preview","--episode-day-preview","--episode-microphone-on"];app.launch()
+  let mic=app.otherElements["walk.microphoneState"]
+  XCTAssertTrue(mic.waitForExistence(timeout:10))
+  XCTAssertTrue(mic.label.contains("MICROPHONE ON"))
+  capture("walk-microphone-on-preview",app:app)
+ }
  func testOriginalVoiceReviewCorrectionAndDelete() {
   continueAfterFailure=false
   let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--tab","dialogue"];app.launch()

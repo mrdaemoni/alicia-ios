@@ -38,6 +38,15 @@ struct VoiceRecording: Codable, Identifiable {
     var contextUploaded, deletionUploaded: Bool?
     var error, correction_state: String?
     var duration: Double { segments.reduce(0) { $0 + $1.duration } }
+    var syncSummary: String {
+        let uploaded = segments.filter { $0.uploaded == true }.count
+        if deleted { return deletionUploaded == true ? "Audio deleted." : "Audio deletion is pending on your Mac." }
+        if segments.isEmpty { return "Waiting for the first audio segment to finish." }
+        if uploaded == segments.count, contextUploaded == true {
+            return "Audio saved on this phone and your Mac."
+        }
+        return "Audio saved on this phone. \(uploaded) of \(segments.count) parts synced to your Mac."
+    }
     var orderedTranscripts: [VoiceTranscript] {
         transcripts.sorted { a, b in
             let lhs = voiceDate(a.recorded_at), rhs = voiceDate(b.recorded_at)

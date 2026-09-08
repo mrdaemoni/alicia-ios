@@ -4,6 +4,10 @@ import SwiftUI
 struct ListeningPresence: View {
     let isRecording: Bool
     let isStarting: Bool
+    var seconds: Double = 0
+    var level: Double = 0
+    var microphoneName: String = "Microphone"
+    var liveTextAvailable: Bool = true
     @Environment(\.scenePhase) private var scenePhase
 
     private var previewReduction: Bool {
@@ -28,8 +32,23 @@ struct ListeningPresence: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(isRecording ? "MICROPHONE ON" : isStarting ? "OPENING MICROPHONE…" : "MICROPHONE PAUSED")
                     .font(.system(size: 10, design: .monospaced).weight(.semibold)).tracking(1.2)
-                Text(isRecording ? "Your words appear below as you speak." : "Nothing is being recorded.")
+                Text(isRecording ? microphoneName : "Nothing is being recorded.")
                     .font(.callout).foregroundStyle(Theme.inkSoft)
+                if isRecording {
+                    HStack(spacing: 10) {
+                        Text(String(format: "%d:%02d recorded", Int(max(0, seconds)) / 60, Int(max(0, seconds)) % 60))
+                            .font(.system(size: 11, design: .monospaced)).monospacedDigit()
+                        HStack(alignment: .bottom, spacing: 3) {
+                            ForEach(0..<6) { step in
+                                RoundedRectangle(cornerRadius: 1)
+                                    .fill(Theme.ink.opacity(level > Double(step) / 6 ? 0.8 : 0.12))
+                                    .frame(width: 3, height: CGFloat(5 + step * 2))
+                            }
+                        }.accessibilityLabel("Microphone input level")
+                    }
+                    Text(liveTextAvailable ? "Audio is being saved on this phone." : "Live text paused. Audio is still recording.")
+                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                }
             }
         }
         .accessibilityElement(children: .combine)
