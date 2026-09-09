@@ -5,8 +5,9 @@ for Codex–Opus coordination, worktrees, file ownership, review handoffs, Git,
 and the Motion Lab promotion gate.
 
 Read `SESSION_HANDOFF.md` for the current release and known limits. This file
-carries stable architecture. Current product: **v38 (2026-09-05)**, the
-Alicia 2.0 episode/day experience. Full cross-repository context is in
+carries stable architecture. The current product is the Alicia 2.0 episode/day
+experience; this branch adds the unshipped A2-016 Mac voice processing candidate
+on the build14 baseline. Full cross-repository context is in
 `/Users/alicia/alicia/docs/ALICIA_2_0.md`; feature detail is in `docs/EPISODE_DAY.md`.
 Us and Alicia use the actually played episode and explicit human responses.
 The older orbit/cards and archetype gallery are unmounted.
@@ -30,7 +31,7 @@ Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`
    action. Questions carry This helps / Go deeper / Missed me. Connection and
    dated history remain available. The old orbit/cards are unmounted.
 2. **Dialogue** (`TalkView`) — the real shared conversation restored from
-   `/api/history`, a small current-episode header, dictation, optional voice
+   `/api/history`, a small current-episode header, reviewed voice input, optional voice
    replies, and Think aloud. The backend uses the same retrieval/model/tool
    routing boundary as Telegram. Proactive feed items do not seed the transcript.
 3. **Alicia** (`EpisodeMindView`) — her tentative reading, Hector's words,
@@ -42,12 +43,17 @@ Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`
 5. **Knowledge** (`KnowledgeView`) — the passive synthesis/notes library and
    existing pins. Studio and Knowledge retain their library roles.
 
-`WalkReflectionView` is a dedicated full-screen dictation surface. It pauses
-playback, shows the words as they arrive, persists a local draft, and saves with
-an idempotent receipt before clearing. On-device dictation pauses when the app
-leaves the foreground. Automatic screen sleep is disabled while this view is visible and active,
-including paused editing, and the prior idle setting is restored on exit.
-There is no claim of lock-screen or background recording.
+`WalkReflectionView` is a dedicated full-screen recording and review surface. It
+pauses playback and retains original microphone audio. Pause or leaving the
+foreground keeps an unfinished recording; Finish seals its complete ordered
+manifest. Foreground sync uploads the audio, and the Mac prepares a separate
+machine transcript. Hector reviews and edits it, then explicitly sends those
+words with a durable receipt. The same review is reachable from Dialogue and
+Recordings. Legacy Apple Speech code remains for existing compatibility paths;
+new Mac-mode capture needs microphone permission only. Automatic screen sleep is
+disabled while the walk is visible and active, including paused editing, and the
+prior idle setting is restored on exit. No background recording or locked-phone
+upload is promised. See `docs/MAC_VOICE_PROCESSING.md` for recovery and provenance.
 
 ## Architecture
 
@@ -94,11 +100,11 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 
 | Endpoint | For |
 |---|---|
-| `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds a voice-note URL |
+| `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds tap-to-play media. Reviewed Mac voice adds `client_request_id`, `recording_id`, machine source IDs and captured `episode_id`. |
 | `GET /api/thoughts` · `/api/tracks` · `/api/gallery` · `/api/health` | tab data |
 | `GET /api/proactive?limit=` | retained proactive feed and best-effort local notifications; never seeds Dialogue history |
 | `POST /api/react` | emoji reactions, by `message_id` or `proactive_id` |
-| `POST /api/reply` | reply to a proactive message (lands in capture/history/memory) |
+| `POST /api/reply` | reply to a proactive message; reviewed Mac voice adds the same receipt/source IDs and retains original `proactive_id` and `episode_id`, without requesting new reply audio |
 | `GET /api/greeting` | legacy greeting endpoint; not loaded by the current Us screen |
 | `GET /api/context` · `/api/context/<id>` | retained orbit/receipt API; old Us orbit is unmounted |
 | `GET /api/home` | retained home/library context; no longer the Us framing source |
@@ -110,7 +116,10 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `POST /api/events` | **presence telemetry** — batch `{events:[{kind, ref, ms, meta}]}`. Kinds: `app_open`, `screen_view`, `section_dwell`, `episode_play`, `episode_progress`, `episode_finish`, `card_view`. This is the one endpoint that reports what he *did* rather than what he deliberately tapped; without it a day spent listening reads to her as silence. Fire-and-forget — never block UI on it, and batch on background/foreground transitions. Episode playback now comes from the player via `/api/episode_day`; an audio GET is not listening evidence. |
 | `GET /api/reflections` | her morning/evening self-reflections, text + a playable reading when rendered |
 | `GET /api/mind` | on-demand reading of the current episode, corrections and explicit keeps; Sunday push paused. Current Us/Alicia use `/api/episode_day`. Missing evidence can correctly return `has_note: false`. |
-| `GET/POST /api/mode` | walk/drive state; finish accepts `text`, `episode_id`, `request_id` and acknowledges durable save |
+| `GET/POST /api/mode` | walk/drive state; finish accepts `text`, `episode_id`, `request_id` and acknowledges durable save. Reviewed Mac voice also supplies `recording_id`, `transcription_request_id`, `transcript_id`. |
+| `GET/POST /api/voice_evidence` | raw voice metadata/versions; additive `finalize` with an ordered expected segment manifest and explicit `retry_transcription`; GET includes separate optional `transcription.draft` |
+| `PUT/GET /api/voice_evidence/audio/<recording>/<segment>` | exact original CAF upload/replay, checked by byte count and SHA-256 |
+| `GET /api/voice_submission?request_id=<UUID>` | durable Dialogue/proactive voice send status; only definite404 permits reposting the identical pending request |
 | `GET /api/episode_day?day=YYYY-MM-DD` | current or historical frame, probes, reactions, corrections, explicit keeps |
 | `POST /api/episode_day` | playing/progress/finished observations; reaction, feedback, correction, learning, refresh actions |
 | `GET /api/history` | last 120 actual shared conversation turns with stable receipts and optional reply_id; no proactive feed |
@@ -152,8 +161,13 @@ ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
   `BGAppRefreshTask` (`com.alicia.app.refresh`) polls `/api/proactive` and
   posts **local** notifications for unseen messages. iOS controls the timing,
   so it's best-effort. Seen-tracking is shared with the foreground load path.
-- **Voice input** (`Core/SpeechTranscriber.swift`) — on-device SFSpeech
-  dictation straight into the Dialogue composer.
+- **Voice input** (`Core/SpeechTranscriber.swift`, `Core/VoiceEvidence.swift`,
+  `Core/VoiceProcessing.swift`) — new Walk/Dialogue input captures original audio
+  without starting Apple Speech. The Mac transcribes the finalized recording;
+  `Talk/VoiceProcessingView.swift` offers durable review, Done editing and explicit
+  Send. The independently typed Dialogue draft remains unchanged. Apple Speech
+  recognition is retained as legacy code, not the new capture requirement.
+  `docs/MAC_VOICE_PROCESSING.md` documents offline recovery and the exact receipts.
 
 ## How to build / run
 
@@ -230,12 +244,18 @@ No APNs, training, new Telegram stream or new animation family. Feature contract
 ## Original voice archive (A2-009)
 
 `Core/VoiceEvidence.swift` owns original CAF files, capture metadata, text versions,
-and the durable upload/deletion outbox. `SpeechTranscriber` restarts only on-device
-recognition while the raw sink continues; backgrounding or closing pauses recording.
+and the durable upload/deletion outbox. New Mac-mode recordings also retain capture
+order, an immutable final manifest, separate machine draft, authored review and
+send receipts. Backgrounding or closing pauses recording without finalizing it.
+The legacy Apple Speech mode can restart recognition while the raw sink continues;
+new Mac capture does not run that recognizer or depend on its permission.
 `Talk/VoiceRecordingsView.swift` offers replay, corrections, context and deletion.
 AppStore/AliciaService use GET/POST `/api/voice_evidence` and PUT/GET
 `/api/voice_evidence/audio/<recording>/<segment>`. The original stays on phone and
-private Mac until explicit deletion; no automatic training or new audio provider.
+private Mac until explicit deletion; no automatic training. Mac processing uses
+the paired backend's local transcription worker. The new machine draft never
+replaces the original or becomes a human statement until explicit reviewed Send.
+See `docs/MAC_VOICE_PROCESSING.md` for the additive service contract and limits.
 
 ## A2-010 — collaborative partner
 
