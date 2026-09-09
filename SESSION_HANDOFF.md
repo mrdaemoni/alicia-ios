@@ -1,4 +1,25 @@
-# A2-013 — morning briefing and long voice capture
+# A2-014 — preserve revised speech without duplicated clauses
+
+This candidate builds on TestFlight 1.0 (13), source 30e91c20. September 8's two
+recordings survived in full: 18.4 seconds and 202.2 seconds, 23 retained segments.
+Submitted text contained duplicated recognition clauses and uncertain words.
+The transcript buffer now replaces a provisional hypothesis whose timings are
+unresolved instead of preserving it as an earlier completed phrase. Independently
+timed earlier speech and genuinely repeated later speech remain intact.
+
+Thirty-five buffer, audio-queue and lifecycle checks pass, including 10 new
+revision regressions; iPhone 17 simulator compilation passes. The exact device
+callback sequence was not logged, so the reproduced duplication mechanism is
+not claimed as a captured device trace. Raw audio and submitted historical text
+remain unchanged. Local ASR recovery is an unconfirmed draft.
+
+Read docs/VOICE_CAPTURE.md and the shared A2-014 HANDOFF.md/RELEASE.md for exact
+source and Apple receipts. The paired backend rejects malformed local replies,
+preserves voice provenance, retrieves separately for each goal and exposes the
+morning briefing actually supplied to a new reply. Those are separate releases.
+Unattended Opus specialists remain a proposed next task, not activated here.
+
+# A2-013 — morning briefing and long voice capture (history)
 
 Current work builds on TestFlight 1.0 (12), source3932615. Us places the dated
 morning briefing above shared goals and the selected episode. Its full reading,
