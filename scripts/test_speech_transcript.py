@@ -47,6 +47,66 @@ var invalid = SpeechTranscriptBuffer()
 invalid.receive([word("kept", 0)])
 invalid.receive([Word(text:"bad",start:.nan,duration:1)])
 check(invalid.needsReview && invalid.text == "kept", "Reject invalid timestamps without erasing words")
+
+// Sept 8 production text repeats a leading phrase inside each request, already
+// in on_device text. Callback timing was not logged. These synthetic revisions
+// reproduce the proven zero-timing merge failure, not an invented device trace.
+func provisional(_ phrase: String, start: Double = 0) -> [Word] {
+    phrase.split(separator: " ").map { Word(text: String($0), start: start, duration: 0) }
+}
+func positioned(_ phrase: String, start: Double = 0.2) -> [Word] {
+    phrase.split(separator: " ").enumerated().map {
+        Word(text: String($0.element), start: start + Double($0.offset) * 0.25, duration: 0.2)
+    }
+}
+let phrase = "I like this morning briefing because it gives us a shared place to begin thinking about the questions for today"
+var short = SpeechTranscriptBuffer()
+short.receive(provisional(phrase))
+short.receive(positioned(phrase))
+check(short.text == phrase, "Timed revision must replace the unresolved phrase, not duplicate its leading words")
+short.receive(positioned(phrase + " and tomorrow"))
+check(short.text == phrase + " and tomorrow", "Later cumulative expansion must not retain the provisional copy")
+short.finishRequest(); short.finishRequest()
+check(short.text == phrase + " and tomorrow", "Final callback and repeated finish commit a revised phrase only once")
+
+var mixed = SpeechTranscriptBuffer()
+mixed.receive([word("A", 0)] + provisional("small correction"))
+mixed.receive(positioned("A small correction"))
+check(mixed.text == "A small correction", "A partly unresolved hypothesis must be replaced as a unit")
+var missingDuration = SpeechTranscriptBuffer()
+missingDuration.receive(provisional("Words with unresolved duration", start: 2))
+missingDuration.receive(positioned("Words with unresolved duration", start: 2.2))
+check(missingDuration.text == "Words with unresolved duration", "Nonzero timestamps alone cannot prove a completed earlier phrase")
+
+var earlier = SpeechTranscriptBuffer()
+earlier.receive(positioned("An earlier thought", start: 0))
+earlier.receive(provisional("The newest thought", start: 4))
+earlier.receive(positioned("The revised thought", start: 4.2))
+check(earlier.text == "An earlier thought The revised thought",
+      "Replacing an unresolved latest hypothesis must preserve independently timed earlier speech")
+
+var repeated = SpeechTranscriptBuffer()
+repeated.receive(provisional("Again and again"))
+repeated.receive(positioned("Again and again again and again"))
+check(repeated.text == "Again and again again and again", "Intentional repetition within one hypothesis survives")
+var distinct = SpeechTranscriptBuffer()
+distinct.receive(positioned("Try it again", start: 0))
+distinct.receive(positioned("Try it again", start: 5))
+check(distinct.text == "Try it again Try it again", "The same words at later acoustic positions are new speech")
+distinct.finishRequest(); distinct.receive(provisional("Try it again"))
+distinct.receive(positioned("Try it again")); distinct.finishRequest()
+check(distinct.text == "Try it again Try it again\n\nTry it again", "The same words in a new request are never deduplicated")
+
+var walk = SpeechTranscriptBuffer()
+let passages = ["The first photograph", "The empty frame", "A moving balance", "A different altitude", "The next thought"]
+for passage in passages {
+    walk.receive(provisional(passage))
+    walk.receive(positioned(passage))
+    walk.receive(positioned(passage + " opens a question"))
+    walk.finishRequest()
+}
+check(walk.text == passages.map { $0 + " opens a question" }.joined(separator: "\n\n"),
+      "A multi-request walk keeps each revised passage once, including the first and last")
 print("\(count) speech transcript checks passed")
 ''')
     binary = folder / 'test'
