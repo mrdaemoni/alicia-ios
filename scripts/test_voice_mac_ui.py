@@ -131,7 +131,15 @@ final class ContextUITests: XCTestCase {
   XCTAssertTrue(replay.waitForExistence(timeout:10));XCTAssertTrue(read.waitForExistence(timeout:10))
   XCTAssertGreaterThanOrEqual(read.frame.height,44);XCTAssertGreaterThanOrEqual(read.frame.width,44)
   XCTAssertEqual(read.label,"Read reply aloud") // SwiftUI combines the label's children for accessibility.
-  capture("reply-audio-and-explicit-recovery-reading",app:app)
+  capture("reply-original-audio-control",app:app)
+  let list=app.scrollViews.firstMatch
+  for _ in 0..<5 {
+   if read.isHittable && read.frame.maxY <= list.frame.maxY && read.frame.minY >= list.frame.minY {break}
+   list.swipeUp()
+  }
+  XCTAssertTrue(read.isHittable);XCTAssertLessThanOrEqual(read.frame.maxY,list.frame.maxY)
+  XCTAssertGreaterThanOrEqual(read.frame.minY,list.frame.minY)
+  capture("reply-explicit-recovery-reading",app:app)
   // Do not press either action: this is an inert visual check, not a media/provider request.
  }
 }
