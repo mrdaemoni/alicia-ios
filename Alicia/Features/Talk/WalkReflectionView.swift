@@ -30,7 +30,31 @@ struct WalkReflectionView: View {
     var body: some View {
         @Bindable var store = store
         VStack(alignment: .leading, spacing: 20) {
-            if didSave {
+            if let record = store.voiceArchive.recording(store.walkRecordingID), record.finalization != nil {
+                HStack {
+                    Text(record.context.episode_id).font(.system(size: 11, design: .monospaced))
+                    Spacer()
+                    Button("CLOSE") { pause(); store.showWalk = false }.frame(minHeight: 44)
+                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if !store.walkDraft.isEmpty {
+                            DisclosureGroup("Earlier typed words · kept separately") {
+                                Text(store.walkDraft).textSelection(.enabled)
+                            }.font(.caption)
+                        }
+                        VoiceProcessingView(id: record.id).id(record.id)
+                    }
+                }
+                Button("RECORD ANOTHER THOUGHT") {
+                    store.walkRecordingID = UUID().uuidString
+                    Task { await begin() }
+                }.font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
+                Button("REVIEW ORIGINAL AUDIO") { showRecording = true }.frame(minHeight: 44)
+                if record.submissionStatus?.state == "completed" {
+                    Button("DONE") { store.showWalk = false; store.selectedSection = .mind }.buttonStyle(EpisodeButtonStyle())
+                }
+            } else if didSave {
                 savedView
             } else {
             HStack {
@@ -41,18 +65,29 @@ struct WalkReflectionView: View {
             }
             ListeningPresence(isRecording: visibleRecording, isStarting: starting || restarting,
                 seconds: speech.recordedSeconds, level: speech.inputLevel,
-                microphoneName: speech.microphoneName, liveTextAvailable: speech.liveTextAvailable)
+                microphoneName: speech.microphoneName, liveTextAvailable: speech.liveTextAvailable, transcribesOnMac: true)
             InkTitle(text: speech.isFinishing ? "Keeping your last words" : visibleRecording ? "I'm listening" : "Stay with the thought", size: 30)
             if !store.walkPrompt.isEmpty {
                 Text(store.walkPrompt.strippedEmojis).font(.system(size: 21, design: .serif))
             }
             Text("Say what stayed with you, what you question, or where it meets your day.")
                 .font(.subheadline).italic().foregroundStyle(Theme.inkSoft)
+            if store.voiceArchive.recording(store.walkRecordingID)?.macProcessing == true {
+                Text("Finish to get a Mac transcript. Review it before sending.")
+                    .font(.body).foregroundStyle(Theme.inkSoft).fixedSize(horizontal: false, vertical: true)
+                if !store.walkDraft.isEmpty {
+                    DisclosureGroup("Earlier typed words · kept separately") {
+                        Text(store.walkDraft).textSelection(.enabled)
+                    }.font(.caption)
+                }
+                Spacer(minLength: 16)
+            } else {
             TextEditor(text: $store.walkDraft)
                 .font(.system(size: 20, design: .serif))
                 .disabled(listening || store.pendingWalkSave != nil)
                 .scrollContentBackground(.hidden)
                 .accessibilityLabel("Your walk reflection")
+            }
             Text(reviewingWords ? (speech.transcriptNeedsReview ? "Live text was interrupted. These words may be incomplete. Review the audio, edit the words, or save just the recording." : "Check these words before sending. Your original recording is kept separately.") : speech.lastError ?? (status.isEmpty ? "Original audio is kept on this phone and synced to your Mac." : status))
                 .font(.caption).foregroundStyle(Theme.inkSoft)
             HStack {
@@ -75,7 +110,9 @@ struct WalkReflectionView: View {
                 Task {
                     if wasListening { await finishListening() }
                     guard store.showWalk else { return }
-                    if wasListening && store.pendingWalkSave == nil { reviewingWords = true }
+                    if store.voiceArchive.recording(store.walkRecordingID)?.macProcessing == true {
+                        _ = store.finalizeVoice(store.walkRecordingID, speech: speech)
+                    } else if wasListening && store.pendingWalkSave == nil { reviewingWords = true }
                     else { await save(audioOnly: false) }
                 }
             }
@@ -83,7 +120,7 @@ struct WalkReflectionView: View {
             .disabled(store.isSavingWalk || speech.isFinishing || (!listening && !store.voiceArchive.hasAudio(store.walkRecordingID)
                 && store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             .accessibilityIdentifier("episode.finishWalk")
-            if !listening, store.pendingWalkSave == nil, store.voiceArchive.hasAudio(store.walkRecordingID) {
+            if !listening, store.pendingWalkSave == nil, store.voiceArchive.hasAudio(store.walkRecordingID), store.voiceArchive.recording(store.walkRecordingID)?.macProcessing != true {
                 Button("SAVE AUDIO ONLY") { Task { await save(audioOnly: true) } }
                     .font(.system(size: 11, design: .monospaced)).frame(minHeight: 44)
                     .accessibilityIdentifier("walk.saveAudioOnly")
@@ -98,11 +135,12 @@ struct WalkReflectionView: View {
         .task {
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") || ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
+                listening = visibleRecording
                 status = visibleRecording ? "Preview of microphone-on UI. No audio is recorded or sent." : "Preview — recording is paused. No audio or words are sent."
                 return
             }
 #endif
-            await begin()
+            if store.voiceArchive.recording(store.walkRecordingID)?.finalization == nil { await begin() }
         }
         .onAppear { keepScreenAwake() }
         .onDisappear { pause(); restoreScreenSleep() }
@@ -183,7 +221,7 @@ struct WalkReflectionView: View {
     }
 
     private func begin() async {
-        guard !listening, !starting, scenePhase == .active, store.showWalk else { return }
+        guard !listening, !starting, scenePhase == .active, store.showWalk, store.voiceArchive.recording(store.walkRecordingID)?.finalization == nil else { return }
         startGeneration += 1
         reviewingWords = false
         let generation = startGeneration
@@ -191,7 +229,7 @@ struct WalkReflectionView: View {
         defer { if generation == startGeneration { starting = false } }
         guard await store.beginWalkRecording() else { return }
         guard canStart(generation) else { store.pauseEpisodeWalk(); return }
-        let allowed = await speech.requestAuthorization()
+        let allowed = await speech.requestMicrophoneAuthorization()
         guard canStart(generation) else { store.pauseEpisodeWalk(); return }
         guard allowed else {
             status = "Microphone permission is off. You can write here, or enable it in Settings."
@@ -199,7 +237,10 @@ struct WalkReflectionView: View {
         }
         base = store.walkDraft
         do {
-            if store.walkRecordingID.isEmpty || store.voiceArchive.recording(store.walkRecordingID)?.deleted == true { store.walkRecordingID = UUID().uuidString }
+            if store.walkRecordingID.isEmpty || store.voiceArchive.recording(store.walkRecordingID)?.deleted == true
+                || (store.voiceArchive.recording(store.walkRecordingID) != nil && store.voiceArchive.recording(store.walkRecordingID)?.macProcessing != true) {
+                store.walkRecordingID = UUID().uuidString
+            }
             try store.startVoiceCapture(speech, id: store.walkRecordingID, walk: true)
             listening = true
             automaticRestarts = 0

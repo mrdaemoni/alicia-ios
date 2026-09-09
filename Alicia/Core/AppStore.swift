@@ -69,6 +69,9 @@ final class AppStore {
             messages = [Message(sender: .me, text: "Preview · I want to revisit the criteria for ending a commitment.",
                                 recordingID: VoiceArchive.previewID)]
             episodeDay = EpisodeDay.preview
+            if ProcessInfo.processInfo.arguments.contains("--voice-mac-preview") {
+                voiceArchive.seedMacPreview(state: ProcessInfo.processInfo.arguments.contains("--voice-mac-recording") ? "capturing" : ProcessInfo.processInfo.arguments.contains("--voice-mac-waiting") ? "waiting_for_audio" : "ready")
+            }
             if ProcessInfo.processInfo.arguments.contains("--voice-save-preview") {
                 pendingWalkSave = nil
                 walkRecordingID = VoiceArchive.previewID
@@ -325,8 +328,12 @@ final class AppStore {
             episode_id: episodeID, episode_title: sameEpisode ? episodeDay?.episode?.title ?? "" : episodeID,
             episode_basis: sameEpisode ? episodeDay?.episode_basis ?? "" : "",
             frame_id: sameEpisode ? episodeDay?.frame_id ?? "" : "", question_presented: walk ? walkPrompt : "",
-            playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0)
-        let sink = try voiceArchive.begin(id: id, context: context)
+            playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0,
+            proactive_id: walk ? nil : answeringAskID)
+        let review = VoiceReview(destination: walk ? "walk" : answeringAskID == nil ? "dialogue" : "proactive",
+                                 proactiveID: walk ? "" : answeringAskID ?? "",
+                                 proactiveExcerpt: walk ? "" : answeringAskExcerpt)
+        let sink = try voiceArchive.begin(id: id, context: context, review: review)
         try speech.start(sink: sink, onSegments: { [weak self] segments in
             guard let self else { return }
             self.voiceArchive.addSegments(segments, to: id)
@@ -335,12 +342,56 @@ final class AppStore {
             guard let self else { return }
             self.voiceArchive.addTranscript(text, kind: "on_device", to: id)
             Task { await self.syncVoiceArchive() }
+        }, liveTranscription: false, onCaptureError: { [weak self] error in
+            self?.voiceArchive.noteCaptureError(error, id: id)
         })
         Task { await syncVoiceArchive() }
     }
 
-    func syncVoiceArchive() async { if !isMock { await voiceArchive.sync(using: service) } }
-    func refreshVoiceArchive() async { if !isMock { await voiceArchive.refresh(using: service) } }
+    func syncVoiceArchive() async {
+        guard !isMock else { return }
+        await voiceArchive.sync(using: service)
+        await voiceArchive.advanceProcessing(using: service)
+    }
+    func refreshVoiceArchive() async {
+        guard !isMock else { return }
+        await voiceArchive.refresh(using: service)
+        await voiceArchive.advanceProcessing(using: service)
+        await reconcileVoiceReplies()
+    }
+    @discardableResult
+    func finalizeVoice(_ id: String, speech: SpeechTranscriber? = nil) -> Bool {
+        if speech?.audioCaptureFailed == true { voiceArchive.noteCaptureError("Some audio could not be written.", id: id) }
+        let sealed = voiceArchive.finalize(id)
+        if sealed { Task { await syncVoiceArchive() } }
+        return sealed
+    }
+    func retryVoiceTranscription(_ id: String) {
+        voiceArchive.retryTranscription(id)
+        Task { await refreshVoiceArchive() }
+    }
+    func sendReviewedVoice(_ id: String) async {
+        guard voiceArchive.prepareSubmission(id, voice: voiceReplies) else { return }
+        if let submission = voiceArchive.recording(id)?.submission,
+           submission.destination == "proactive", answeringAskID == submission.proactiveID {
+            cancelAnswering()
+        }
+        await syncVoiceArchive()
+        await reconcileVoiceReplies()
+        await refreshEpisodeDay()
+    }
+    private func reconcileVoiceReplies() async {
+        // Read history only when a voice receipt completed. The backend is the source of message IDs.
+        guard !isStreaming, voiceArchive.recordings.contains(where: { $0.submissionStatus?.state == "completed" }) else { return }
+        let before = messages.map(\.id)
+        if let history = await service.conversationHistory(), !isStreaming, messages.map(\.id) == before {
+            messages = history.messages.map { row in
+                Message(sender: row.role == "user" ? .me : .alicia, text: row.content,
+                        date: Self.historyDate(row.ts), replyID: row.reply_id?.isEmpty == false ? row.reply_id : nil,
+                        recordingID: row.recording_id?.isEmpty == false ? row.recording_id : nil)
+            }
+        }
+    }
     func voiceDetail(_ id: String) async -> VoiceEvidencePayload? { await service.voiceRecordings(recordingID: id) }
     func playOriginalVoice(_ id: String) async -> [URL] {
         prepareForRecording()

@@ -1,3 +1,22 @@
+# A2-016 candidate — review a Mac transcript before sending
+
+This branch builds on TestFlight build14 source8d2a764. New Walk and Dialogue
+recordings capture the microphone independently of Speech permission. Finish
+seals a durable ordered manifest, uploads the retained CAF files, and asks the
+Mac to prepare a separate machine draft. Pausing or leaving the app does not
+finish the recording. No historical recording is automatically transcribed.
+
+Walk, Dialogue and Recordings share a review surface. Edits survive restarts and
+late results. Send freezes the exact words, original episode/question/proactive
+target and machine source IDs. Dialogue and proactive replies recover through
+`/api/voice_submission`; only an explicit404 permits reposting an identical
+request after a lost response. Failed or uncertain effects are never automatically
+repeated. Existing typed chat and independent typed drafts remain available.
+
+This is an unshipped candidate. It requires the paired A2-016 backend before
+TestFlight promotion. See docs/MAC_VOICE_PROCESSING.md for the API, tests and
+remaining physical-device checks. Root owns review, integration and release.
+
 # A2-014 — preserve revised speech without duplicated clauses
 
 This candidate builds on TestFlight 1.0 (13), source 30e91c20. September 8's two

@@ -9,6 +9,7 @@ struct VoiceContext: Codable {
     var local_date, local_time, weekday, activity_basis, retention: String?
     var season, previous_season, next_season: Int?
     var source_paths: [String]?
+    var proactive_id: String?
 }
 
 struct VoiceSegment: Codable, Identifiable {
@@ -37,6 +38,18 @@ struct VoiceRecording: Codable, Identifiable {
     var deleted = false
     var contextUploaded, deletionUploaded: Bool?
     var error, correction_state: String?
+    var macProcessing: Bool?
+    var finalization: VoiceFinalization?
+    var transcription: VoiceTranscription?
+    var pendingTranscriptionRetry: VoiceTranscriptionRetry?
+    var processingError: String?
+    var processingRejected: Bool?
+    var captureError: String?
+    var review: VoiceReview?
+    var submission: VoiceSubmission?
+    var submissionStatus: VoiceSubmissionStatus?
+    var submissionRejected: Bool?
+    var submissionError: String?
     var duration: Double { segments.reduce(0) { $0 + $1.duration } }
     var syncSummary: String {
         let uploaded = segments.filter { $0.uploaded == true }.count
@@ -101,15 +114,36 @@ final class VoiceAudioSink: @unchecked Sendable {
     private var completed: [VoiceSegment] = []
     private var failure: Error?
     private var closed = false
+    private var order: [String]?
 
-    init(directory: URL) { self.directory = directory }
+    init(directory: URL, ordered: Bool = false) {
+        self.directory = directory
+        if ordered {
+            let path = directory.appendingPathComponent("capture-order.json")
+            do {
+                order = FileManager.default.fileExists(atPath: path.path)
+                    ? try JSONDecoder().decode([String].self, from: Data(contentsOf: path)) : []
+            } catch { failure = error }
+        }
+    }
+
+    var isClosed: Bool { lock.lock(); defer { lock.unlock() }; return closed }
+    var captureFailed: Bool { lock.lock(); defer { lock.unlock() }; return failure != nil }
 
     func append(_ buffer: AVAudioPCMBuffer) {
         lock.lock(); defer { lock.unlock() }
-        guard !closed, failure == nil else { return }
+        guard !closed, failure == nil, buffer.frameLength > 0 else { return }
         do {
             if file == nil {
-                let url = directory.appendingPathComponent(UUID().uuidString + ".caf")
+                let id = UUID().uuidString
+                if var next = order {
+                    next.append(id)
+                    // Persist order before writing samples: recovery never guesses from UUID or wall-clock time.
+                    try JSONEncoder().encode(next).write(to: directory.appendingPathComponent("capture-order.json"),
+                                                        options: [.atomic, .completeFileProtection])
+                    order = next
+                }
+                let url = directory.appendingPathComponent(id + ".caf")
                 started = .now
                 frames = 0
                 file = try AVAudioFile(forWriting: url, settings: buffer.format.settings)
@@ -159,6 +193,8 @@ final class VoiceArchive {
     var lastError = ""
     var syncing = false
     private var syncRequested = false
+    private(set) var processing = false
+    private var captureSinks: [String: VoiceAudioSink] = [:]
     let root: URL
 
     init(root: URL? = nil) {
@@ -193,6 +229,10 @@ final class VoiceArchive {
                             } catch { record.error = "An interrupted audio file is kept but could not be opened." }
                         }
                     }
+                    if record.macProcessing == true, !record.deleted,
+                       let order = try? captureOrder(record.id) {
+                        record.segments.sort { (order.firstIndex(of: $0.id) ?? Int.max) < (order.firstIndex(of: $1.id) ?? Int.max) }
+                    }
                     recordings.append(record)
                     try persist(record)
                 } catch { lastError = "A recording needs recovery. Its original files have been kept." }
@@ -221,12 +261,20 @@ final class VoiceArchive {
         else { recordings.insert(record, at: 0) }
     }
 
-    func begin(id: String, context: VoiceContext) throws -> VoiceAudioSink {
+    func begin(id: String, context: VoiceContext, review: VoiceReview? = nil) throws -> VoiceAudioSink {
         guard UUID(uuidString: id) != nil else { throw CocoaError(.fileWriteInvalidFileName) }
+        guard captureSinks[id]?.isClosed != false else { throw CocoaError(.fileWriteNoPermission) }
         if let old = recording(id) {
-            guard !old.deleted, old.context.episode_id == context.episode_id else { throw CocoaError(.fileWriteNoPermission) }
-        } else { try replace(VoiceRecording(id: id, context: context)) }
-        return VoiceAudioSink(directory: directory(id))
+            guard !old.deleted, old.finalization == nil, old.context.episode_id == context.episode_id,
+                  review == nil || old.macProcessing == true else { throw CocoaError(.fileWriteNoPermission) }
+        } else {
+            var record = VoiceRecording(id: id, context: context)
+            record.macProcessing = review != nil; record.review = review
+            try replace(record)
+        }
+        let sink = VoiceAudioSink(directory: directory(id), ordered: recording(id)?.macProcessing == true)
+        captureSinks[id] = sink
+        return sink
     }
 
     func addSegments(_ segments: [VoiceSegment], to id: String) {
@@ -234,7 +282,8 @@ final class VoiceArchive {
         for segment in segments where !record.segments.contains(where: { $0.id == segment.id }) {
             record.segments.append(segment)
         }
-        record.segments.sort { $0.started_at < $1.started_at }
+        if record.macProcessing != true { record.segments.sort { $0.started_at < $1.started_at } }
+        else if let order = try? captureOrder(id) { record.segments.sort { (order.firstIndex(of: $0.id) ?? Int.max) < (order.firstIndex(of: $1.id) ?? Int.max) } }
         do { try replace(record) }
         catch { lastError = "Audio is on this phone, but its index needs recovery. Please keep the app installed." }
     }
@@ -354,7 +403,8 @@ final class VoiceArchive {
                     merged.transcripts[index] = received
                 } else { merged.transcripts.append(received) }
             }
-            merged.segments.sort { voiceDate($0.started_at) < voiceDate($1.started_at) }
+            if merged.macProcessing != true { merged.segments.sort { voiceDate($0.started_at) < voiceDate($1.started_at) } }
+            if let state = remote.transcription { mergeTranscription(state, into: &merged) }
             merged.transcripts = merged.orderedTranscripts
             if remote.deleted { merged.deleted = true; merged.deletionUploaded = true }
             do {
@@ -362,6 +412,198 @@ final class VoiceArchive {
                 if merged.deleted { try purgeFiles(merged.id) }
             } catch { lastError = "Recording context could not refresh." }
         }
+    }
+
+    private func captureOrder(_ id: String) throws -> [String] {
+        try JSONDecoder().decode([String].self, from: Data(contentsOf: directory(id).appendingPathComponent("capture-order.json")))
+    }
+
+    func noteCaptureError(_ error: String, id: String) {
+        guard var record = recording(id), !record.deleted else { return }
+        record.captureError = error
+        do { try replace(record) } catch { lastError = "The recording index needs recovery. Audio files are kept." }
+    }
+
+    /// Called only after the microphone has stopped and its sink has drained.
+    @discardableResult
+    func finalize(_ id: String) -> Bool {
+        guard var record = recording(id), record.macProcessing == true, !record.deleted else { return false }
+        if record.finalization != nil { return true }
+        guard captureSinks[id]?.isClosed != false else {
+            lastError = "Pause the microphone before processing this recording."; return false
+        }
+        do {
+            guard record.captureError == nil, captureSinks[id]?.captureFailed != true else { throw CocoaError(.fileReadCorruptFile) }
+            let order = try captureOrder(id)
+            let files = try FileManager.default.contentsOfDirectory(at: directory(id), includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "caf" }.map { $0.deletingPathExtension().lastPathComponent }
+            guard !order.isEmpty, Set(order).count == order.count,
+                  Set(order) == Set(files), order.count == record.segments.count, Set(order) == Set(record.segments.map(\.id)) else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            var manifest: [VoiceManifestSegment] = []
+            for (sequence, segmentID) in order.enumerated() {
+                guard let segment = record.segments.first(where: { $0.id == segmentID }), segment.duration > 0 else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                let bytes = try Data(contentsOf: fileURL(id, segmentID))
+                guard bytes.count == segment.bytes,
+                      SHA256.hash(data: bytes).map({ String(format: "%02x", $0) }).joined() == segment.sha256 else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                manifest.append(VoiceManifestSegment(id: segmentID, sequence: sequence, sha256: segment.sha256, bytes: segment.bytes))
+            }
+            record.segments.sort { order.firstIndex(of: $0.id)! < order.firstIndex(of: $1.id)! }
+            record.finalization = VoiceFinalization(recording_id: id, request_id: UUID().uuidString,
+                ended_at: voiceTimestamp(), expected_segments: manifest)
+            record.processingError = nil
+            try replace(record)
+            return true
+        } catch {
+            lastError = "The complete recording could not be sealed. Its audio is kept; nothing has been sent."
+            return false
+        }
+    }
+
+    func editReview(_ id: String, text: String) {
+        guard var record = recording(id), record.submission == nil, record.review != nil else { return }
+        record.review?.text = text; record.review?.edited = true
+        do { try replace(record) } catch { lastError = "These edits could not be saved on this phone. Please keep this screen open." }
+    }
+
+    private func mergeTranscription(_ state: VoiceTranscription, into record: inout VoiceRecording) {
+        guard !record.deleted, let finalization = record.finalization,
+              state.recording_id == record.id, state.request_id == finalization.request_id else { return }
+        if let old = record.transcription {
+            guard (state.attempt ?? 0) >= (old.attempt ?? 0) else { return }
+            if old.state == "ready", state.state != "ready" { return }
+            if old.state == "cancelled", state.state != "cancelled" { return }
+        }
+        record.transcription = state
+        record.review?.receive(state)
+        record.processingError = nil
+    }
+
+    func retryTranscription(_ id: String) {
+        guard var record = recording(id), !record.deleted, record.submission == nil,
+              let seal = record.finalization, record.transcription?.state == "failed",
+              record.transcription?.retryable == true else { return }
+        if record.pendingTranscriptionRetry == nil {
+            record.pendingTranscriptionRetry = VoiceTranscriptionRetry(recording_id: id,
+                request_id: seal.request_id, event_id: UUID().uuidString)
+        }
+        do { try replace(record) } catch { lastError = "The retry could not be saved. Your recording is kept." }
+    }
+
+    @discardableResult
+    func prepareSubmission(_ id: String, voice: Bool) -> Bool {
+        guard var record = recording(id), !record.deleted, record.submission == nil,
+              let state = record.transcription, state.ready, let transcriptID = state.transcript_id,
+              let review = record.review else { return false }
+        let text = review.text // Exact reviewed text, never re-read after an await.
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.unicodeScalars.count <= 60000 else { return false }
+        record.submission = VoiceSubmission(requestID: UUID().uuidString, recordingID: id,
+            transcriptionRequestID: state.request_id, transcriptID: transcriptID, text: text,
+            destination: review.destination, episodeID: record.context.episode_id,
+            prompt: record.context.question_presented, proactiveID: review.proactiveID, voice: voice)
+        do { try replace(record); return true }
+        catch { lastError = "Send could not be saved on this phone. Your words are kept."; return false }
+    }
+
+    func editRejectedSubmission(_ id: String) {
+        guard var record = recording(id), record.submissionRejected == true else { return }
+        record.submission = nil; record.submissionStatus = nil
+        record.submissionRejected = nil; record.submissionError = nil
+        do { try replace(record) } catch { lastError = "The saved request could not be reopened." }
+    }
+
+    /// Serialized foreground work. Every network await re-reads deletion and exact receipt identity.
+    func advanceProcessing(using service: AliciaService) async {
+        guard !processing else { return }
+        processing = true; defer { processing = false }
+        for id in recordings.map(\.id) {
+            if Task.isCancelled { return }
+            guard let record = recording(id), !record.deleted, let seal = record.finalization,
+                  record.contextUploaded == true else { continue }
+            if record.submissionRejected == true || ["completed", "failed", "outcome_unknown"].contains(record.submissionStatus?.state ?? "") { continue }
+            if record.transcription?.ready == true, record.submission == nil { continue }
+            if ["failed", "cancelled"].contains(record.transcription?.state ?? ""), record.pendingTranscriptionRetry == nil { continue }
+            if record.transcription == nil, record.processingRejected != true {
+                let result = await service.finalizeVoice(seal)
+                guard var current = recording(id), !current.deleted, current.finalization == seal else { continue }
+                switch result {
+                case .value(let response):
+                    if response.ok, let state = response.transcription { mergeTranscription(state, into: &current) }
+                    else { current.processingError = response.error ?? "Mac processing could not start." }
+                case .rejected(let error): current.processingError = error; current.processingRejected = true
+                default: current.processingError = "Waiting to reach your Mac. Audio and review stay on this phone."
+                }
+                do { try replace(current) } catch { lastError = "Processing receipt could not be saved." }
+            }
+            if let retry = recording(id)?.pendingTranscriptionRetry {
+                let result = await service.retryVoiceTranscription(retry)
+                guard var current = recording(id), !current.deleted, current.pendingTranscriptionRetry == retry else { continue }
+                switch result {
+                case .value(let response):
+                    if response.ok, let state = response.transcription {
+                        mergeTranscription(state, into: &current); current.pendingTranscriptionRetry = nil
+                    } else { current.processingError = response.error }
+                case .rejected(let error): current.processingError = error; current.pendingTranscriptionRetry = nil
+                default: break
+                }
+                do { try replace(current) } catch { lastError = "Processing retry receipt could not be saved." }
+            }
+            if let payload = await service.voiceRecordings(recordingID: id),
+               let remote = payload.recordings.first(where: { $0.id == id }), var current = recording(id), !current.deleted {
+                if remote.deleted { acknowledgeDeletion(id); continue }
+                if let state = remote.transcription { mergeTranscription(state, into: &current) }
+                do { try replace(current) } catch { lastError = "The Mac draft could not be saved on this phone." }
+            }
+            await advanceSubmission(id, using: service)
+        }
+    }
+
+    private func advanceSubmission(_ id: String, using service: AliciaService) async {
+        guard var record = recording(id), !record.deleted, var submission = record.submission,
+              record.submissionRejected != true,
+              !["completed", "failed", "outcome_unknown"].contains(record.submissionStatus?.state ?? "") else { return }
+        var shouldPost = !submission.attempted
+        if submission.attempted && submission.destination != "walk" {
+            let result = await service.voiceSubmissionStatus(submission.requestID)
+            guard recording(id)?.deleted == false, recording(id)?.submission == submission else { return }
+            switch result {
+            case .notFound: shouldPost = true // The only proof that reserve never happened.
+            case .value(let status): acceptSubmission(status, id: id, requestID: submission.requestID); return
+            default: return // Auth, server and transport failures never trigger a replay.
+            }
+        } else if submission.destination == "walk" { shouldPost = true } // Existing exact /api/mode receipt.
+        guard shouldPost else { return }
+        record = recording(id) ?? record
+        submission.attempted = true; record.submission = submission
+        do { try replace(record) } catch { lastError = "The send receipt could not be saved. Nothing was sent."; return }
+        let result = await service.submitVoice(submission)
+        guard var current = recording(id), !current.deleted, current.submission == submission else { return }
+        switch result {
+        case .value(let status): acceptSubmission(status, id: id, requestID: submission.requestID)
+        case .rejected(let error):
+            current.submissionError = error; current.submissionRejected = true
+            do { try replace(current) } catch { lastError = "The rejected-send receipt could not be saved." }
+        default:
+            current.submissionError = "Waiting for a saved reply. Your exact send is kept; reconnect to check its receipt."
+            do { try replace(current) } catch { lastError = "The pending-send status could not be saved." }
+        }
+    }
+
+    private func acceptSubmission(_ status: VoiceSubmissionStatus, id: String, requestID: String) {
+        guard status.request_id == requestID, var record = recording(id), !record.deleted,
+              let submission = record.submission, submission.requestID == requestID else { return }
+        record.submissionStatus = status; record.submissionError = status.error
+        if status.state == "completed", !record.transcripts.contains(where: { $0.id == requestID }) {
+            // The backend's completed receipt means these words were submitted, not merely recognized.
+            record.transcripts.append(VoiceTranscript(id: requestID, text: submission.text, kind: "submitted",
+                recorded_at: voiceTimestamp(), uploaded: true))
+        }
+        do { try replace(record) } catch { lastError = "The saved reply receipt could not be kept. It will be checked again." }
     }
 
     func playbackFiles(_ id: String, using service: AliciaService) async -> [URL] {
@@ -384,6 +626,34 @@ final class VoiceArchive {
     }
 
 #if DEBUG
+    func seedMacPreview(state: String) {
+        guard var record = recording(Self.previewID) else { return }
+        record.macProcessing = true; record.transcripts = []
+        record.context.source = ProcessInfo.processInfo.arguments.contains("--voice-save-preview") ? "ios_walk" : "ios_dialogue"
+        if state == "ready" {
+            record.contextUploaded = true
+            for index in record.segments.indices { record.segments[index].uploaded = true }
+        }
+        record.review = VoiceReview(destination: ProcessInfo.processInfo.arguments.contains("--voice-save-preview") ? "walk" : "dialogue")
+        if state == "capturing" {
+            record.finalization = nil; record.transcription = nil
+            do { try replace(record) } catch { lastError = "Preview could not be saved." }
+            return
+        }
+        record.finalization = VoiceFinalization(recording_id: record.id, request_id: "90100000-0000-4000-8000-000000000002",
+            ended_at: "2026-09-05T15:04:01.000Z", expected_segments: record.segments.enumerated().map {
+                VoiceManifestSegment(id: $0.element.id, sequence: $0.offset, sha256: $0.element.sha256, bytes: $0.element.bytes)
+            })
+        let transcriptID = "90100000-0000-4000-8000-000000000003"
+        let text = "Preview Mac transcript: peace time urgency means acting before a crisis, while there is still room to choose. I want a concrete example from today."
+        record.transcription = VoiceTranscription(request_id: record.finalization!.request_id, recording_id: record.id,
+            state: state, attempt: 1, transcript_id: state == "ready" ? transcriptID : nil,
+            retryable: false, recorded_seconds: record.duration, processed_seconds: state == "ready" ? record.duration : 0,
+            model: "Preview local Whisper", language: "en",
+            draft: state == "ready" ? VoiceMachineDraft(id: transcriptID, text: text, kind: "mac_whisper") : nil)
+        record.review?.receive(record.transcription!)
+        do { try replace(record) } catch { lastError = "Preview could not be saved." }
+    }
     static let previewID = "90100000-0000-4000-8000-000000000001"
     func seedPreview() {
         let id = Self.previewID
