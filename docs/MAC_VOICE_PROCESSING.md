@@ -53,8 +53,10 @@ remain device checks, not simulator claims.
 - GET `/api/voice_submission?request_id=...` returns the saved result. The phone
   persists attempted before POST and checks status after a lost response. Only a
   definite404 permits an identical repost. Auth/transport/5xx cannot do so. Failed
-  and outcome_unknown stop automatic execution. A definite400/409 exposes an
-  explicit edit action that creates a new request on the next Send.
+  and outcome_unknown stop automatic execution. A definite400/409 or a confirmed
+  failed receipt exposes an explicit edit action that preserves reviewed words
+  and creates a new request on the next Send. An outcome_unknown receipt cannot
+  be reopened.
 
 A completed receipt records the submitted voice version locally using the same
 request UUID, marked uploaded, and refreshes shared history. It does not enqueue

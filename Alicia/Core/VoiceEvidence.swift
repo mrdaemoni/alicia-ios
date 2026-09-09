@@ -50,6 +50,10 @@ struct VoiceRecording: Codable, Identifiable {
     var submissionStatus: VoiceSubmissionStatus?
     var submissionRejected: Bool?
     var submissionError: String?
+    var canReopenSubmission: Bool {
+        !deleted && submission != nil && submissionStatus?.state != "outcome_unknown"
+            && (submissionRejected == true || submissionStatus?.state == "failed")
+    }
     var duration: Double { segments.reduce(0) { $0 + $1.duration } }
     var syncSummary: String {
         let uploaded = segments.filter { $0.uploaded == true }.count
@@ -511,7 +515,7 @@ final class VoiceArchive {
     }
 
     func editRejectedSubmission(_ id: String) {
-        guard var record = recording(id), record.submissionRejected == true else { return }
+        guard var record = recording(id), record.canReopenSubmission else { return }
         record.submission = nil; record.submissionStatus = nil
         record.submissionRejected = nil; record.submissionError = nil
         do { try replace(record) } catch { lastError = "The saved request could not be reopened." }

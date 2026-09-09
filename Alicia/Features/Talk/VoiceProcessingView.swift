@@ -95,8 +95,8 @@ struct VoiceProcessingView: View {
                     } else if record.submission != nil {
                         Text("Checking the saved send receipt. Your exact words are kept here.").font(.callout)
                     }
-                    if record.submissionRejected == true {
-                        Button("EDIT AFTER REJECTION") { store.voiceArchive.editRejectedSubmission(id) }.frame(minHeight: 44)
+                    if record.canReopenSubmission {
+                        Button(record.submissionStatus?.state == "failed" ? "EDIT & TRY AGAIN" : "EDIT AFTER REJECTION") { store.voiceArchive.editRejectedSubmission(id) }.frame(minHeight: 44)
                     }
                     if record.transcription?.state == "failed", record.transcription?.retryable == true {
                         Button(record.pendingTranscriptionRetry == nil ? "RETRY MAC TRANSCRIPTION" : "RETRY WAITING TO SYNC") {

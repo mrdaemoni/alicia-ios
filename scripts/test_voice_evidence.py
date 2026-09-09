@@ -254,6 +254,45 @@ final class VoiceEvidenceTests:XCTestCase {
   a.editRejectedSubmission(id);a.editReview(id,text:"New exact text")
   XCTAssertTrue(a.prepareSubmission(id,voice:false));XCTAssertNotEqual(a.recording(id)?.submission?.requestID,original)
  }
+
+ @MainActor func testDefiniteFailedStatusCanReopenExactWordsWithNewReceiptOnlyExplicitly()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id,destination:"proactive")
+  a.editReview(id,text:"My reviewed words, kept exactly.")
+  XCTAssertTrue(a.prepareSubmission(id,voice:false));await a.advanceProcessing(using:f)
+  let original=a.recording(id)!.submission!
+  f.statusResult = .value(VoiceSubmissionStatus(request_id:original.requestID,state:"failed",error:"The original prompt is unavailable."))
+  await a.advanceProcessing(using:f);await a.advanceProcessing(using:f)
+  XCTAssertEqual(f.sends.count,1,"A definite failure must still not retry automatically")
+  XCTAssertTrue(a.recording(id)!.canReopenSubmission)
+  XCTAssertEqual(a.recording(id)?.submissionError,"The original prompt is unavailable.")
+  let restored=VoiceArchive(root:a.root)
+  restored.editRejectedSubmission(id)
+  XCTAssertEqual(restored.recording(id)?.review?.text,original.text)
+  XCTAssertNil(restored.recording(id)?.submission);XCTAssertNil(restored.recording(id)?.submissionStatus)
+  XCTAssertTrue(restored.prepareSubmission(id,voice:false))
+  let next=restored.recording(id)!.submission!
+  XCTAssertNotEqual(next.requestID,original.requestID)
+  XCTAssertEqual(next.text,original.text);XCTAssertEqual(next.proactiveID,original.proactiveID)
+  XCTAssertEqual(next.episodeID,original.episodeID);XCTAssertEqual(next.transcriptID,original.transcriptID)
+ }
+ @MainActor func testUnknownOutcomeNeverReopensOrRotatesPendingSend()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id)
+  a.editReview(id,text:"Keep these exact uncertain words")
+  XCTAssertTrue(a.prepareSubmission(id,voice:false));await a.advanceProcessing(using:f)
+  let original=a.recording(id)!.submission!
+  f.statusResult = .value(VoiceSubmissionStatus(request_id:original.requestID,state:"outcome_unknown",error:"Effects are uncertain."))
+  await a.advanceProcessing(using:f)
+  let restored=VoiceArchive(root:a.root)
+  XCTAssertFalse(restored.recording(id)!.canReopenSubmission)
+  restored.editRejectedSubmission(id);restored.editReview(id,text:"Must not replace uncertain send")
+  XCTAssertEqual(restored.recording(id)?.submission,original)
+  XCTAssertEqual(restored.recording(id)?.review?.text,original.text)
+  XCTAssertFalse(restored.prepareSubmission(id,voice:false))
+  await restored.advanceProcessing(using:f)
+  XCTAssertEqual(f.sends.count,1)
+  var contradictory=restored.recording(id)!;contradictory.submissionRejected=true
+  XCTAssertFalse(contradictory.canReopenSubmission,"Unknown effects win over an old rejection flag")
+ }
  func testStatusHTTPClassificationAndOpenProvenance()throws {
   let data=Data(#"{"error":"invalid"}"#.utf8)
   for code in [400,409] {if case .rejected = decodeVoiceResponse(VoiceSubmissionStatus.self,data:data,status:code) {} else {XCTFail("Expected definite rejection")}}
