@@ -54,6 +54,12 @@ struct VoiceRecording: Codable, Identifiable {
         !deleted && submission != nil && submissionStatus?.state != "outcome_unknown"
             && (submissionRejected == true || submissionStatus?.state == "failed")
     }
+    func canResumeDialogue(episodeID: String, proactiveID: String) -> Bool {
+        !deleted && macProcessing == true && finalization == nil
+            && context.episode_id == episodeID
+            && review?.destination == (proactiveID.isEmpty ? "dialogue" : "proactive")
+            && review?.proactiveID == proactiveID
+    }
     var duration: Double { segments.reduce(0) { $0 + $1.duration } }
     var syncSummary: String {
         let uploaded = segments.filter { $0.uploaded == true }.count
@@ -490,8 +496,7 @@ final class VoiceArchive {
 
     func retryTranscription(_ id: String) {
         guard var record = recording(id), !record.deleted, record.submission == nil,
-              let seal = record.finalization, record.transcription?.state == "failed",
-              record.transcription?.retryable == true else { return }
+              let seal = record.finalization, record.transcription?.canRetryExplicitly == true else { return }
         if record.pendingTranscriptionRetry == nil {
             record.pendingTranscriptionRetry = VoiceTranscriptionRetry(recording_id: id,
                 request_id: seal.request_id, event_id: UUID().uuidString)

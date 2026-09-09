@@ -56,6 +56,10 @@ struct VoiceTranscription: Codable, Equatable {
     var recorded_seconds, processed_seconds: Double?
     var model, language: String?
     var draft: VoiceMachineDraft?
+    /// A bounded automatic retry budget does not remove the user's explicit retry choice.
+    var canRetryExplicitly: Bool {
+        state == "failed" && (retryable == true || error_code == "attempts_exhausted")
+    }
     var ready: Bool {
         state == "ready" && draft?.kind == "mac_whisper"
             && !(draft?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)

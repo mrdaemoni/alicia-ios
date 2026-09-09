@@ -222,10 +222,9 @@ struct TalkView: View {
             defer { if generation == microphoneGeneration { microphoneStarting = false } }
             guard await speech.requestMicrophoneAuthorization() else { microphoneError = "Microphone permission is off."; return }
             guard generation == microphoneGeneration, visible, scenePhase == .active, !store.showWalk, !showRecordings else { return }
-            if recordingID.isEmpty || store.voiceArchive.recording(recordingID)?.deleted == true
-                || store.voiceArchive.recording(recordingID)?.finalization != nil
-                || (store.voiceArchive.recording(recordingID) != nil && store.voiceArchive.recording(recordingID)?.macProcessing != true)
-                || (store.voiceArchive.recording(recordingID)?.review?.proactiveID ?? "") != (store.answeringAskID ?? "") {
+            if store.voiceArchive.recording(recordingID)?.canResumeDialogue(
+                episodeID: store.episodeDay?.episode?.id ?? "", proactiveID: store.answeringAskID ?? "") != true {
+                // A new conversation frame starts new audio. The paused original stays in Recordings.
                 recordingID = UUID().uuidString
             }
             do { try store.startVoiceCapture(speech, id: recordingID, walk: false); microphoneError = "" }

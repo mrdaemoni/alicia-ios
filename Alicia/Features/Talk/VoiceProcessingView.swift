@@ -98,7 +98,7 @@ struct VoiceProcessingView: View {
                     if record.canReopenSubmission {
                         Button(record.submissionStatus?.state == "failed" ? "EDIT & TRY AGAIN" : "EDIT AFTER REJECTION") { store.voiceArchive.editRejectedSubmission(id) }.frame(minHeight: 44)
                     }
-                    if record.transcription?.state == "failed", record.transcription?.retryable == true {
+                    if record.transcription?.canRetryExplicitly == true {
                         Button(record.pendingTranscriptionRetry == nil ? "RETRY MAC TRANSCRIPTION" : "RETRY WAITING TO SYNC") {
                             store.retryVoiceTranscription(id)
                         }.frame(minHeight: 44)

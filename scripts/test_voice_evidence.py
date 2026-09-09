@@ -293,6 +293,45 @@ final class VoiceEvidenceTests:XCTestCase {
   var contradictory=restored.recording(id)!;contradictory.submissionRejected=true
   XCTAssertFalse(contradictory.canReopenSubmission,"Unknown effects win over an old rejection flag")
  }
+
+ @MainActor func testExhaustedAutomaticAttemptsRequireExplicitStableRetry()async throws {
+  let a=archive(),id=UUID().uuidString;_ = try macCapture(a,id:id);XCTAssertTrue(a.finalize(id))
+  var remote=a.recording(id)!
+  remote.transcription=VoiceTranscription(request_id:remote.finalization!.request_id,recording_id:id,state:"failed",attempt:3,
+   error_code:"attempts_exhausted",error:"Automatic attempts exhausted",retryable:false)
+  let f=FakeService();f.payload=VoiceEvidencePayload(recordings:[remote]);await a.sync(using:f)
+  await a.advanceProcessing(using:f);await a.advanceProcessing(using:f)
+  XCTAssertTrue(f.retries.isEmpty,"Exhausted automatic attempts must not reset themselves")
+  XCTAssertTrue(a.recording(id)!.transcription!.canRetryExplicitly)
+  a.retryTranscription(id);let event=a.recording(id)!.pendingTranscriptionRetry!
+  a.retryTranscription(id);XCTAssertEqual(a.recording(id)?.pendingTranscriptionRetry,event)
+  await a.advanceProcessing(using:f)
+  let restored=VoiceArchive(root:a.root);restored.retryTranscription(id)
+  await restored.advanceProcessing(using:f)
+  XCTAssertEqual(f.retries,[event,event],"Lost response and relaunch retain one explicit retry identity")
+  XCTAssertEqual(restored.recording(id)?.finalization,a.recording(id)?.finalization)
+  var permanent=remote.transcription!;permanent.error_code="invalid_manifest"
+  XCTAssertFalse(permanent.canRetryExplicitly,"Other permanent failures remain non-retryable")
+ }
+
+ @MainActor func testPausedDialogueStartsNewAudioAfterEpisodeOrTargetChanges()throws {
+  let a=archive(),oldID=UUID().uuidString;_ = try macCapture(a,id:oldID)
+  let original=a.recording(oldID)!,hashes=original.segments.map(\.sha256)
+  XCTAssertTrue(original.canResumeDialogue(episodeID:"S15E07",proactiveID:""))
+  XCTAssertFalse(original.canResumeDialogue(episodeID:"S15E08",proactiveID:""))
+  XCTAssertFalse(original.canResumeDialogue(episodeID:"S15E07",proactiveID:"another-ask"))
+  let currentEpisode="S15E08"
+  let nextID=original.canResumeDialogue(episodeID:currentEpisode,proactiveID:"") ? oldID : UUID().uuidString
+  var nextContext=context(nextID);nextContext.episode_id=currentEpisode
+  let sink=try a.begin(id:nextID,context:nextContext,review:VoiceReview(destination:"dialogue"))
+  sink.append(buffer());a.addSegments(sink.drain(close:true).segments,to:nextID)
+  XCTAssertNotEqual(nextID,oldID)
+  XCTAssertEqual(a.recording(oldID)?.context.episode_id,"S15E07")
+  XCTAssertEqual(a.recording(oldID)?.segments.map(\.sha256),hashes)
+  XCTAssertNil(a.recording(oldID)?.finalization)
+  XCTAssertEqual(a.recording(nextID)?.context.episode_id,"S15E08")
+  XCTAssertTrue(a.hasAudio(oldID));XCTAssertTrue(a.hasAudio(nextID))
+ }
  func testStatusHTTPClassificationAndOpenProvenance()throws {
   let data=Data(#"{"error":"invalid"}"#.utf8)
   for code in [400,409] {if case .rejected = decodeVoiceResponse(VoiceSubmissionStatus.self,data:data,status:code) {} else {XCTFail("Expected definite rejection")}}

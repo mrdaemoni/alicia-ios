@@ -9,7 +9,9 @@ Walk's Pause and app interruptions retain an unfinished recording. Finish drains
 the sink before freezing an ordered segment manifest. Dialogue's recording button
 finishes into the same review surface; interrupted Dialogue recordings can resume
 or finish from the composer/Recordings. A new recording cannot extend a sealed
-one. Earlier build recordings remain inspectable and are not automatically sealed.
+one. Changing the Dialogue episode or proactive target starts a new recording;
+the earlier paused original remains in Recordings. Earlier build recordings remain
+inspectable and are not automatically sealed.
 
 Each recording directory contains original CAFs, an atomic `capture-order.json`,
 and `recording.json`. Segment order is written before samples so recovery never
@@ -39,7 +41,9 @@ remain device checks, not simulator claims.
   ended_at, capture_status=finished, ordered expected_segments
   `{id,sequence,sha256,bytes}`, language_hint=auto.
 - Same endpoint action `retry_transcription`, original seal request_id and a new
-  durable event_id. An uncertain retry keeps that exact event.
+  durable event_id. An uncertain retry keeps that exact event. The user can
+  explicitly retry attempts_exhausted even though its automatic retryable flag
+  is false; other non-retryable failures stay blocked.
 - Existing GET `/api/voice_evidence` adds optional transcription; state is
   waiting_for_audio, queued, transcribing, ready, failed or cancelled.
 - Walk sends reviewed text through the existing exact `/api/mode` receipt with
