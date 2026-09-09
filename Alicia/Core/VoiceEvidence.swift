@@ -606,13 +606,24 @@ final class VoiceArchive {
     private func acceptSubmission(_ status: VoiceSubmissionStatus, id: String, requestID: String) {
         guard status.request_id == requestID, var record = recording(id), !record.deleted,
               let submission = record.submission, submission.requestID == requestID else { return }
-        record.submissionStatus = status; record.submissionError = status.error
+        record.submissionStatus = status.retainingVoiceMedia(from: record.submissionStatus)
+        record.submissionError = status.error
         if status.state == "completed", !record.transcripts.contains(where: { $0.id == requestID }) {
             // The backend's completed receipt means these words were submitted, not merely recognized.
             record.transcripts.append(VoiceTranscript(id: requestID, text: submission.text, kind: "submitted",
                 recorded_at: voiceTimestamp(), uploaded: true))
         }
         do { try replace(record) } catch { lastError = "The saved reply receipt could not be kept. It will be checked again." }
+    }
+
+    /// Reply IDs, rather than the current recording/episode, bind playback to shared history.
+    func voiceReplyStatus(_ replyID: String?) -> VoiceSubmissionStatus? {
+        guard let replyID, !replyID.isEmpty else { return nil }
+        return recordings.first { record in
+            guard let submission = record.submission, let status = record.submissionStatus else { return false }
+            return submission.destination == "dialogue" && submission.voice && status.state == "completed"
+                && status.request_id == submission.requestID && status.reply_id == replyID
+        }?.submissionStatus
     }
 
     func playbackFiles(_ id: String, using service: AliciaService) async -> [URL] {

@@ -124,6 +124,16 @@ final class ContextUITests: XCTestCase {
   XCTAssertFalse(app.textViews["voice.macDraft"].exists)
   capture("walk-waiting-upload-reduced-motion",app:app)
  }
+ func testRecoveredReplyOffersExplicitPlaybackWithoutAutoplay() {
+  continueAfterFailure=false
+  let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-reply-media-preview","--tab","dialogue","--reduce-motion-preview"];app.launch()
+  let replay=app.buttons["Play voice note"],read=app.buttons["Read reply aloud"]
+  XCTAssertTrue(replay.waitForExistence(timeout:10));XCTAssertTrue(read.waitForExistence(timeout:10))
+  XCTAssertGreaterThanOrEqual(read.frame.height,44);XCTAssertGreaterThanOrEqual(read.frame.width,44)
+  XCTAssertTrue(app.staticTexts["READ"].exists)
+  capture("reply-audio-and-explicit-recovery-reading",app:app)
+  // Do not press either action: this is an inert visual check, not a media/provider request.
+ }
 }
 ''' )
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')

@@ -68,6 +68,15 @@ an independent legacy transcript mutation. Deleted recordings reject late machin
 results and pending local sends. Existing original audio replay, explicit later
 corrections, short Alicia replies and model-comparison feedback remain available.
 
+When Voice Replies was selected for a Dialogue send, its SSE audio path is kept
+only after the matching saved request/reply receipt confirms completion. The
+relative path is stored locally with that receipt, resolved using the current
+service configuration, and restored onto history by reply_id. Later status
+responses without media retain the same reply's known audio. Nothing autoplays.
+If the original audio event was lost, that confirmed reply offers an explicit
+Read aloud action through the existing reader; this does not resend the chat or
+repeat its tools. Proactive answers and Walk saves do not request new voice replies.
+
 ## Validation and integration
 
 The temporary unit target in `scripts/test_voice_evidence.py` compiles the actual

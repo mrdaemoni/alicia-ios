@@ -160,17 +160,24 @@ struct LiveAliciaService: AliciaService {
                 return decodeVoiceResponse(VoiceSubmissionStatus.self, data: data, status: status)
             }
             guard status == 200 else { return .unavailable }
+            var streamedReply = VoiceReplyStreamReceipt()
             if submission.destination == "dialogue" {
                 for try await line in bytes.lines {
                     if Task.isCancelled { return .unavailable }
-                    if voiceStreamFinished(line) { break }
+                    if streamedReply.receive(line) { break }
                 }
             } else {
                 for try await _ in bytes { if Task.isCancelled { return .unavailable } }
             }
-            return await voiceSubmissionStatus(submission.requestID)
+            let saved = await voiceSubmissionStatus(submission.requestID)
+            if case .value(let receipt) = saved, submission.destination == "dialogue", submission.voice {
+                return .value(streamedReply.confirmed(receipt, requestID: submission.requestID))
+            }
+            return saved
         } catch { return .unavailable }
     }
+
+    func voiceReplyURL(_ path: String) -> URL? { mediaURL(path) }
 
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? {
         await post("/api/episode_day", body: body)

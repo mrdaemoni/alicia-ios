@@ -72,6 +72,12 @@ final class AppStore {
             if ProcessInfo.processInfo.arguments.contains("--voice-mac-preview") {
                 voiceArchive.seedMacPreview(state: ProcessInfo.processInfo.arguments.contains("--voice-mac-recording") ? "capturing" : ProcessInfo.processInfo.arguments.contains("--voice-mac-waiting") ? "waiting_for_audio" : "ready")
             }
+            if ProcessInfo.processInfo.arguments.contains("--voice-reply-media-preview") {
+                messages.append(Message(sender: .alicia, text: "Preview · Start with one criterion you can use today.",
+                    replyID: "preview-saved-audio", voiceURL: URL(fileURLWithPath: "/inert-preview-only.wav")))
+                messages.append(Message(sender: .alicia, text: "Preview · The saved reply is here even when its original audio did not reach the phone.",
+                    replyID: "preview-recovered-reply", canReadVoiceReply: true))
+            }
             if ProcessInfo.processInfo.arguments.contains("--voice-save-preview") {
                 pendingWalkSave = nil
                 walkRecordingID = VoiceArchive.previewID
@@ -385,12 +391,19 @@ final class AppStore {
         guard !isStreaming, voiceArchive.recordings.contains(where: { $0.submissionStatus?.state == "completed" }) else { return }
         let before = messages.map(\.id)
         if let history = await service.conversationHistory(), !isStreaming, messages.map(\.id) == before {
-            messages = history.messages.map { row in
-                Message(sender: row.role == "user" ? .me : .alicia, text: row.content,
-                        date: Self.historyDate(row.ts), replyID: row.reply_id?.isEmpty == false ? row.reply_id : nil,
-                        recordingID: row.recording_id?.isEmpty == false ? row.recording_id : nil)
-            }
+            messages = history.messages.map(historyMessage)
         }
+    }
+    private func historyMessage(_ row: ConversationHistory.Turn) -> Message {
+        let replyID = row.reply_id?.isEmpty == false ? row.reply_id : nil
+        let savedVoice = row.role == "assistant" ? voiceArchive.voiceReplyStatus(replyID) : nil
+        let existingURL = row.role == "assistant" && replyID != nil
+            ? messages.first(where: { $0.sender == .alicia && $0.replyID == replyID })?.voiceURL : nil
+        return Message(sender: row.role == "user" ? .me : .alicia, text: row.content,
+            date: Self.historyDate(row.ts), messageID: savedVoice?.message_id, replyID: replyID,
+            recordingID: row.recording_id?.isEmpty == false ? row.recording_id : nil,
+            voiceURL: savedVoice?.voice_path.flatMap(service.voiceReplyURL) ?? existingURL,
+            canReadVoiceReply: savedVoice != nil)
     }
     func voiceDetail(_ id: String) async -> VoiceEvidencePayload? { await service.voiceRecordings(recordingID: id) }
     func playOriginalVoice(_ id: String) async -> [URL] {
@@ -706,10 +719,7 @@ final class AppStore {
         async let pls = service.playlists()
         if let fresh = await day { acceptEpisodeDay(fresh) }
         if let transcript = await history, !isStreaming, messages.map(\.id) == messagesAtStart {
-            messages = transcript.messages.map { row in
-                Message(sender: row.role == "user" ? .me : .alicia, text: row.content,
-                        date: Self.historyDate(row.ts), replyID: row.reply_id, recordingID: row.recording_id)
-            }
+            messages = transcript.messages.map(historyMessage)
         }
         Task { await flushPlaybackOutbox() }
         // Keep-last-known: nil means the fetch FAILED (network/auth/decode)

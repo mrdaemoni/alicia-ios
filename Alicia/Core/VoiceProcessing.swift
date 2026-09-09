@@ -108,9 +108,20 @@ struct VoiceSubmissionStatus: Codable, Equatable {
     var reply_id, text: String?
     var message_id: Int?
     var error: String?
+    /// Client-retained media from this request's stream, after its saved receipt agrees.
+    var voice_path: String?
+
+    func retainingVoiceMedia(from previous: VoiceSubmissionStatus?) -> VoiceSubmissionStatus {
+        var result = self
+        guard state == "completed" else { result.voice_path = nil; return result }
+        if voice_path == nil, let previous, previous.state == "completed",
+           request_id == previous.request_id, let reply_id, !reply_id.isEmpty,
+           reply_id == previous.reply_id { result.voice_path = previous.voice_path }
+        return result
+    }
 }
 extension VoiceSubmissionStatus {
-    enum CodingKeys: String, CodingKey { case request_id, state, reply_id, text, message_id, error }
+    enum CodingKeys: String, CodingKey { case request_id, state, reply_id, text, message_id, error, voice_path }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         request_id = try c.decode(String.self, forKey: .request_id)
@@ -118,9 +129,38 @@ extension VoiceSubmissionStatus {
         reply_id = try c.decodeIfPresent(String.self, forKey: .reply_id)
         text = try c.decodeIfPresent(String.self, forKey: .text)
         error = try c.decodeIfPresent(String.self, forKey: .error)
+        voice_path = try c.decodeIfPresent(String.self, forKey: .voice_path)
         if let value = try? c.decode(Int.self, forKey: .message_id) { message_id = value }
         else if let raw = try? c.decode(String.self, forKey: .message_id) { message_id = Int(raw) }
         else { message_id = nil }
+    }
+}
+
+/// A stream belongs to one POST. Audio is usable only once that POST has a matching saved reply.
+struct VoiceReplyStreamReceipt {
+    private var voicePath: String?
+    private var replyID: String?
+    private var conflictingReply = false
+
+    mutating func receive(_ line: String) -> Bool {
+        guard let event = voiceStreamEvent(line) else { return false }
+        if let id = event["reply_id"] as? String, !id.isEmpty {
+            if let replyID, replyID != id { conflictingReply = true }
+            replyID = id
+        }
+        if let path = event["voice"] as? String, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            voicePath = path
+        }
+        return voiceStreamFinished(line)
+    }
+
+    func confirmed(_ status: VoiceSubmissionStatus, requestID: String) -> VoiceSubmissionStatus {
+        var result = status
+        guard status.request_id == requestID, status.state == "completed",
+              let savedReply = status.reply_id, !savedReply.isEmpty,
+              !conflictingReply, replyID == nil || replyID == savedReply else { return result }
+        result.voice_path = voicePath
+        return result
     }
 }
 enum VoiceTransport<T> {
@@ -139,8 +179,12 @@ func decodeVoiceResponse<T: Decodable>(_ type: T.Type, data: Data, status: Int, 
 
 /// A terminal stream frame only ends transport waiting. The saved receipt still decides completion.
 func voiceStreamFinished(_ line: String) -> Bool {
+    guard let event = voiceStreamEvent(line) else { return false }
+    return event["done"] as? Bool == true || !(event["error"] as? String ?? "").isEmpty
+}
+private func voiceStreamEvent(_ line: String) -> [String: Any]? {
     guard line.hasPrefix("data:"),
           let data = line.dropFirst(5).trimmingCharacters(in: .whitespaces).data(using: .utf8),
-          let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-    return event["done"] as? Bool == true || !(event["error"] as? String ?? "").isEmpty
+          let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+    return event
 }

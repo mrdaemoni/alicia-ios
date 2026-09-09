@@ -371,6 +371,20 @@ struct MessageBubble: View {
                                  seed: message.text.count, ringed: true)
                 }
                 .accessibilityLabel("Play voice note")
+                .frame(minWidth: 44, minHeight: 44)
+            } else if !isMe, message.canReadVoiceReply, !message.text.isEmpty {
+                Button {
+                    store.readAloud(Readable(title: "", body: message.text, kind: "dialogue",
+                        stableID: message.replyID.map { "voice-reply:" + $0 }))
+                } label: {
+                    VStack(spacing: 4) {
+                        InkPlayPause(playing: false, size: 24, color: Theme.accentSoft,
+                                     seed: message.text.count, ringed: true)
+                        Text("READ").font(.system(size: 9, design: .monospaced))
+                    }.frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("Read reply aloud")
+                .accessibilityHint("The original reply audio was not recovered. Read these saved words aloud.")
             }
         }
         .padding(.horizontal, 14)

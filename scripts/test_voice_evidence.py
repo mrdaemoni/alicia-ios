@@ -36,6 +36,19 @@ tree.write(scheme,encoding='utf-8',xml_declaration=True)
 folder=work/'VoiceEvidenceTests';folder.mkdir()
 (folder/'VoiceEvidence.swift').symlink_to(root/'Alicia/Core/VoiceEvidence.swift')
 (folder/'VoiceProcessing.swift').symlink_to(root/'Alicia/Core/VoiceProcessing.swift')
+# Exercise the actual shared history mapper, with inert dependencies instead of AppStore.init/load.
+app_source=(root/'Alicia/Core/AppStore.swift').read_text()
+history_method=app_source.split('    private func historyMessage(',1)[1].split('\n    }',1)[0]
+message_source=(root/'Alicia/Core/Models.swift').read_text().split('struct Message:',1)[1].split('\n}\n',1)[0]
+history_source=(root/'Alicia/Core/EpisodeDay.swift').read_text().split('struct ConversationHistory:',1)[1].split('\n}\n',1)[0]
+(folder/'HistoryRestoreHarness.swift').write_text('import Foundation\nstruct Message:'+message_source+'\n}\nstruct ConversationHistory:'+history_source+'\n}\n'+'''
+@MainActor final class HistoryRestoreHarness {
+ let voiceArchive:VoiceArchive
+ let service:any AliciaService
+ var messages:[Message]=[]
+ init(_ archive:VoiceArchive, _ service:any AliciaService) {voiceArchive=archive;self.service=service}
+ static func historyDate(_ raw:String)->Date {.distantPast}
+ func historyMessage('''+history_method+'\n    }\n}\n')
 (folder/'VoiceEvidenceTests.swift').write_text(r'''
 import XCTest
 import Foundation
@@ -46,6 +59,7 @@ protocol AliciaService {
  func retryVoiceTranscription(_ retry:VoiceTranscriptionRetry) async -> VoiceTransport<VoiceProcessingResponse>
  func voiceSubmissionStatus(_ requestID:String) async -> VoiceTransport<VoiceSubmissionStatus>
  func submitVoice(_ submission:VoiceSubmission) async -> VoiceTransport<VoiceSubmissionStatus>
+ func voiceReplyURL(_ path:String) -> URL?
  func voiceAction(_ body:[String:Any]) async -> VoiceEvidenceResult?
  func voiceRecordings(recordingID:String) async -> VoiceEvidencePayload?
  func uploadVoice(recordingID:String,segment:VoiceSegment,file:URL) async -> VoiceEvidenceResult?
@@ -74,6 +88,7 @@ protocol AliciaService {
  }
  func retryVoiceTranscription(_ retry:VoiceTranscriptionRetry) async -> VoiceTransport<VoiceProcessingResponse> {retries.append(retry);return retryResult}
  func voiceSubmissionStatus(_ requestID:String) async -> VoiceTransport<VoiceSubmissionStatus> {statusReads.append(requestID);return statusResult}
+ func voiceReplyURL(_ path:String) -> URL? { URL(string:path,relativeTo:URL(string:"https://fixture.invalid")!) }
  func submitVoice(_ submission:VoiceSubmission) async -> VoiceTransport<VoiceSubmissionStatus> {
   sends.append(submission)
   if suspendSubmit {return await withCheckedContinuation {submitWaiter=$0}}
@@ -381,6 +396,77 @@ final class VoiceEvidenceTests:XCTestCase {
   XCTAssertFalse(voiceStreamFinished(#"data: {"t":"done"}"#))
   XCTAssertFalse(voiceStreamFinished(#"data: {"done":false}"#))
   XCTAssertFalse(voiceStreamFinished(": keep-alive"))
+ }
+ func testStreamVoiceNeedsAnExactCompletedReceipt() {
+  var stream=VoiceReplyStreamReceipt()
+  XCTAssertFalse(stream.receive(#"data: {"reply_id":"reply-a"}"#))
+  XCTAssertFalse(stream.receive(#"data: {"voice":"/api/voice/saved.wav"}"#))
+  XCTAssertTrue(stream.receive(#"data: {"done":true,"message_id":"42","reply_id":"reply-a"}"#))
+  let complete=VoiceSubmissionStatus(request_id:"request-a",state:"completed",reply_id:"reply-a")
+  XCTAssertEqual(stream.confirmed(complete,requestID:"request-a").voice_path,"/api/voice/saved.wav")
+  XCTAssertNil(stream.confirmed(complete,requestID:"request-b").voice_path)
+  XCTAssertNil(stream.confirmed(VoiceSubmissionStatus(request_id:"request-a",state:"processing",reply_id:"reply-a"),requestID:"request-a").voice_path)
+  XCTAssertNil(stream.confirmed(VoiceSubmissionStatus(request_id:"request-a",state:"completed",reply_id:"reply-b"),requestID:"request-a").voice_path)
+  XCTAssertNil(stream.confirmed(VoiceSubmissionStatus(request_id:"request-a",state:"completed"),requestID:"request-a").voice_path)
+ }
+ func testStreamDoesNotTransferMediaAcrossConflictingReplyIDs() {
+  var stream=VoiceReplyStreamReceipt()
+  _=stream.receive(#"data: {"reply_id":"first"}"#)
+  _=stream.receive(#"data: {"voice":"/api/voice/first.wav"}"#)
+  _=stream.receive(#"data: {"done":true,"reply_id":"second"}"#)
+  XCTAssertNil(stream.confirmed(VoiceSubmissionStatus(request_id:"request",state:"completed",reply_id:"second"),requestID:"request").voice_path)
+  var noMedia=VoiceReplyStreamReceipt()
+  for line in [": keep-alive", "data: malformed", #"data: {"t":"voice"}"#, #"data: {"voice":" "}"#] {_=noMedia.receive(line)}
+  XCTAssertNil(noMedia.confirmed(VoiceSubmissionStatus(request_id:"request",state:"completed",reply_id:"reply"),requestID:"request").voice_path)
+ }
+ func testStatusWithoutMediaKeepsOnlyItsExactConfirmedReplyAudio()throws {
+  let previous=VoiceSubmissionStatus(request_id:"request",state:"completed",reply_id:"reply",voice_path:"/api/voice/retained.wav")
+  let restored=try JSONDecoder().decode(VoiceSubmissionStatus.self,from:JSONEncoder().encode(previous))
+  let fresh=VoiceSubmissionStatus(request_id:"request",state:"completed",reply_id:"reply")
+  XCTAssertEqual(fresh.retainingVoiceMedia(from:restored).voice_path,previous.voice_path)
+  XCTAssertNil(VoiceSubmissionStatus(request_id:"other",state:"completed",reply_id:"reply").retainingVoiceMedia(from:restored).voice_path)
+  XCTAssertNil(VoiceSubmissionStatus(request_id:"request",state:"completed",reply_id:"other").retainingVoiceMedia(from:restored).voice_path)
+  XCTAssertNil(VoiceSubmissionStatus(request_id:"request",state:"processing",reply_id:"reply",voice_path:"premature").retainingVoiceMedia(from:restored).voice_path)
+ }
+ @MainActor func testConfirmedMediaPersistsAndRestoresExactHistoryReply()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id)
+  XCTAssertTrue(a.prepareSubmission(id,voice:true))
+  let request=a.recording(id)!.submission!.requestID
+  f.submitResult = .value(VoiceSubmissionStatus(request_id:request,state:"completed",reply_id:"exact-reply",message_id:42,voice_path:"/api/voice/saved.wav"))
+  await a.advanceProcessing(using:f)
+  let restored=VoiceArchive(root:a.root),harness=HistoryRestoreHarness(restored,f)
+  let turn=ConversationHistory.Turn(id:"history-row",ts:"",role:"assistant",content:"The saved answer",source:"ios",reply_id:"exact-reply",recording_id:id)
+  let message=harness.historyMessage(turn)
+  XCTAssertEqual(message.voiceURL?.absoluteString,"https://fixture.invalid/api/voice/saved.wav")
+  XCTAssertEqual(message.messageID,42);XCTAssertEqual(message.replyID,"exact-reply")
+  XCTAssertEqual(message.text,"The saved answer")
+  var unrelated=turn;unrelated.reply_id="different-reply"
+  XCTAssertNil(harness.historyMessage(unrelated).voiceURL)
+  XCTAssertFalse(harness.historyMessage(unrelated).canReadVoiceReply)
+  var user=turn;user.role="user"
+  XCTAssertNil(harness.historyMessage(user).voiceURL);XCTAssertFalse(harness.historyMessage(user).canReadVoiceReply)
+  await restored.advanceProcessing(using:f);XCTAssertEqual(f.sends.count,1,"Restoring playback never reexecutes the chat")
+ }
+ @MainActor func testLostMediaRestoresExplicitReadAloudOnlyForRequestedVoice()async throws {
+  for wantsVoice in [true,false] {
+   let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id)
+   XCTAssertTrue(a.prepareSubmission(id,voice:wantsVoice))
+   let request=a.recording(id)!.submission!.requestID
+   f.submitResult = .value(VoiceSubmissionStatus(request_id:request,state:"completed",reply_id:"reply",text:"Saved answer"))
+   await a.advanceProcessing(using:f)
+   let h=HistoryRestoreHarness(VoiceArchive(root:a.root),f)
+   let row=ConversationHistory.Turn(id:"history-row",ts:"",role:"assistant",content:"Saved answer",source:"ios",reply_id:"reply",recording_id:id)
+   let message=h.historyMessage(row)
+   XCTAssertNil(message.voiceURL);XCTAssertEqual(message.canReadVoiceReply,wantsVoice)
+   XCTAssertEqual(message.text,"Saved answer")
+  }
+ }
+ @MainActor func testHistoryRefreshKeepsExistingTypedStreamMediaOnlyForItsReply() {
+  let h=HistoryRestoreHarness(archive(),FakeService()),url=URL(string:"https://fixture.invalid/voice.wav")!
+  h.messages=[Message(sender:.alicia,text:"Typed reply",replyID:"typed-reply",voiceURL:url)]
+  var row=ConversationHistory.Turn(id:"row",ts:"",role:"assistant",content:"Typed reply",source:"ios",reply_id:"typed-reply")
+  XCTAssertEqual(h.historyMessage(row).voiceURL,url)
+  row.reply_id=nil;XCTAssertNil(h.historyMessage(row).voiceURL)
  }
  @MainActor func testSaveStatusSeparatesPhoneAndMacReceipts()async throws {
   let a=archive(),id=UUID().uuidString
