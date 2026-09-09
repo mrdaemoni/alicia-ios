@@ -168,12 +168,17 @@ print("9 PCM handoff checks passed")
         return speech[start:end].replace('private func', 'func')
 
     methods = '\n'.join(method(name) for name in [
+        'func requestMicrophoneAuthorization() async',
         'private func beginRecognitionFinalization(',
         'private func drainAudio()',
         'func finishAndStop() async',
         'private func awaitFinalRecognition('])
     main.write_text(r'''
 import Foundation
+enum AVAudioApplication {
+    static var allowed = true
+    static func requestRecordPermission() async -> Bool { allowed }
+}
 struct Sink { func drain() -> (segments: [Int], error: String?) { ([], nil) } }
 final class Relay {
     var hasBufferedAudio = false
@@ -192,6 +197,7 @@ final class Engine {
     var sink: Sink? = Sink()
     let relay = Relay(), engine = Engine()
     var isRecording = true, isFinishing = false, hasTap = true
+    var liveTranscription = true, audioCaptureFailed = false, authorized = false
     var liveTextAvailable = true, transcriptNeedsReview = false
     var recordedSeconds = 0.0, inputLevel = 0.0
     var recognitionStarted = ProcessInfo.processInfo.systemUptime
@@ -236,7 +242,18 @@ final class Engine {
     await queued.finishAndStop()
     precondition(queued.startCount == 1 && queued.transcriptNeedsReview,
                  "Finishing during handoff submits queued audio to one final bounded request")
-    print("7 recognition lifecycle checks passed")
+    let mac = Probe(); mac.liveTranscription = false
+    await mac.finishAndStop()
+    precondition(mac.stopCount == 1 && mac.startCount == 0 && !mac.transcriptNeedsReview,
+                 "Capture-only Mac finish never waits for a speech callback or invents incomplete live text")
+    let permission = Probe()
+    AVAudioApplication.allowed = true
+    let allowed = await permission.requestMicrophoneAuthorization()
+    precondition(allowed, "Mac capture needs only microphone permission")
+    AVAudioApplication.allowed = false
+    let denied = await permission.requestMicrophoneAuthorization()
+    precondition(!denied && !permission.authorized, "Denied microphone cannot claim authorization")
+    print("10 recognition lifecycle and microphone permission checks passed")
  }
 }
 ''')

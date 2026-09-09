@@ -1,5 +1,16 @@
 # Voice capture, revisions and save feedback
 
+## A2-016 candidate — Mac transcription
+
+New recordings use capture-only mode. Speech recognition permission and live
+on-device text are no longer prerequisites. The phone keeps the original CAF
+segments and their capture order. Finish seals those exact parts; pause,
+interruption and backgrounding leave an unfinished recording. The Mac produces
+a separate draft for explicit review/send. See [MAC_VOICE_PROCESSING.md](MAC_VOICE_PROCESSING.md).
+
+The following sections describe the shipped build14 baseline and its history.
+The A2-016 branch has not been uploaded to TestFlight by this implementation task.
+
 ## September 8 field audit — A2-014
 
 Both retained recordings are complete: 18.4 and 202.2 seconds across 23 CAF segments,

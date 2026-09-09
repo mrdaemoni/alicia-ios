@@ -8,6 +8,7 @@ struct ListeningPresence: View {
     var level: Double = 0
     var microphoneName: String = "Microphone"
     var liveTextAvailable: Bool = true
+    var transcribesOnMac = false
     @Environment(\.scenePhase) private var scenePhase
 
     private var previewReduction: Bool {
@@ -46,8 +47,9 @@ struct ListeningPresence: View {
                             }
                         }.accessibilityLabel("Microphone input level")
                     }
-                    Text(liveTextAvailable ? "Audio is being saved on this phone." : "Live text paused. Audio is still recording.")
+                    Text(transcribesOnMac ? "Your Mac transcribes after Finish." : liveTextAvailable ? "Audio is being saved on this phone." : "Live text paused. Audio is still recording.")
                         .font(.caption).foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

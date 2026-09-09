@@ -55,6 +55,11 @@ protocol AliciaService {
     func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse?
     func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource?
 
+    func finalizeVoice(_ finalization: VoiceFinalization) async -> VoiceTransport<VoiceProcessingResponse>
+    func retryVoiceTranscription(_ retry: VoiceTranscriptionRetry) async -> VoiceTransport<VoiceProcessingResponse>
+    func voiceSubmissionStatus(_ requestID: String) async -> VoiceTransport<VoiceSubmissionStatus>
+    func submitVoice(_ submission: VoiceSubmission) async -> VoiceTransport<VoiceSubmissionStatus>
+    func voiceReplyURL(_ path: String) -> URL?
     func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult?
     func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload?
     func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult?
@@ -189,6 +194,11 @@ extension AliciaService {
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
         await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt)
     }
+    func finalizeVoice(_ finalization: VoiceFinalization) async -> VoiceTransport<VoiceProcessingResponse> { .unavailable }
+    func retryVoiceTranscription(_ retry: VoiceTranscriptionRetry) async -> VoiceTransport<VoiceProcessingResponse> { .unavailable }
+    func voiceSubmissionStatus(_ requestID: String) async -> VoiceTransport<VoiceSubmissionStatus> { .unavailable }
+    func submitVoice(_ submission: VoiceSubmission) async -> VoiceTransport<VoiceSubmissionStatus> { .unavailable }
+    func voiceReplyURL(_ path: String) -> URL? { nil }
     func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult? { nil }
     func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload? { nil }
     func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult? { nil }

@@ -102,6 +102,8 @@ final class SpeechTranscriber {
     var liveTextAvailable = false
     var transcriptNeedsReview = false
     private var speechAuthorized = false
+    private var liveTranscription = true
+    var audioCaptureFailed = false
     private var hasTap = false
     private var generation = 0
     private var recognitionGeneration = 0
@@ -120,6 +122,12 @@ final class SpeechTranscriber {
     private var interruption: NSObjectProtocol?
     private var deliverSegments: (([VoiceSegment]) -> Void)?
     private var deliverTranscript: ((String) -> Void)?
+    private var deliverCaptureError: ((String) -> Void)?
+
+    func requestMicrophoneAuthorization() async -> Bool {
+        authorized = await AVAudioApplication.requestRecordPermission()
+        return authorized
+    }
 
     func requestAuthorization() async -> Bool {
         let status = await withCheckedContinuation { cont in
@@ -131,10 +139,11 @@ final class SpeechTranscriber {
     }
 
     func start(sink: VoiceAudioSink, onSegments: @escaping ([VoiceSegment]) -> Void,
-               onTranscript: @escaping (String) -> Void) throws {
+               onTranscript: @escaping (String) -> Void, liveTranscription: Bool = true, onCaptureError: ((String) -> Void)? = nil) throws {
         stop()
         self.sink = sink
-        deliverSegments = onSegments; deliverTranscript = onTranscript
+        self.liveTranscription = liveTranscription; audioCaptureFailed = false
+        deliverSegments = onSegments; deliverTranscript = onTranscript; deliverCaptureError = onCaptureError
         transcript = ""; words = SpeechTranscriptBuffer(); failures = 0; lastError = nil; isFinishing = false
         recordedSeconds = 0; inputLevel = 0; liveTextAvailable = false
         transcriptNeedsReview = false; retryAt = 0; relay.reset()
@@ -173,7 +182,7 @@ final class SpeechTranscriber {
     }
 
     private func startRecognition() {
-        guard isRecording else { return }
+        guard isRecording, liveTranscription else { return }
         guard speechAuthorized, let recognizer, recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
             liveTextAvailable = false; transcriptNeedsReview = true
             relay.set(nil)
@@ -262,6 +271,7 @@ final class SpeechTranscriber {
         let result = sink.drain()
         if !result.segments.isEmpty { deliverSegments?(result.segments) }
         if result.error != nil {
+            audioCaptureFailed = true
             lastError = "Recording stopped because the audio file could not be written. Earlier audio is kept."
             stop()
         }
@@ -269,6 +279,7 @@ final class SpeechTranscriber {
 
     func finishAndStop() async {
         guard isRecording, !isFinishing else { return }
+        if !liveTranscription { stop(); return }
         let stamp = generation
         isFinishing = true
         timer?.invalidate(); timer = nil
@@ -320,10 +331,11 @@ final class SpeechTranscriber {
         if let sink {
             let result = sink.drain(close: true)
             if !result.segments.isEmpty { deliverSegments?(result.segments) }
-            if result.error != nil { lastError = "Some audio could not be finalized. Earlier files are kept." }
+            if result.error != nil { audioCaptureFailed = true; lastError = "Some audio could not be finalized. Earlier files are kept." }
         }
+        if audioCaptureFailed { deliverCaptureError?(lastError ?? "Some audio could not be written.") }
         if wasActive, !transcript.isEmpty { deliverTranscript?(transcript) }
-        sink = nil; deliverSegments = nil; deliverTranscript = nil
+        sink = nil; deliverSegments = nil; deliverTranscript = nil; deliverCaptureError = nil
         isRecording = false
         isFinishing = false
         if wasActive { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }

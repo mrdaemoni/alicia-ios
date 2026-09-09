@@ -26,6 +26,10 @@ struct VoiceRecordingsView: View {
                                         .font(.system(size: 20, design: .serif))
                                     Text(voiceDateLabel(record.context) + " · " + (record.context.source == "ios_walk" ? "Walk" : "Dialogue"))
                                         .font(.caption).foregroundStyle(Theme.inkSoft)
+                                    if record.macProcessing == true, record.submissionStatus?.state != "completed", !record.deleted {
+                                        Text(record.finalization == nil ? "Paused recording · finish when ready" : record.transcription?.ready == true ? "Mac transcript · ready to review" : "Mac transcription pending")
+                                            .font(.caption).foregroundStyle(Theme.ink)
+                                    }
                                     Text(record.deleted ? "Audio deleted · words kept" : "\(Int(record.duration / 60))m \(Int(record.duration) % 60)s recorded")
                                         .font(.caption)
                                 }.padding(.vertical, 8)
@@ -149,6 +153,7 @@ private struct VoiceRecordingDetail: View {
                     }
                     .font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
 
+                    VoiceProcessingView(id: id).id(id)
                     DisclosureGroup("Original on-device transcript") {
                         let original = record.orderedTranscripts.filter { $0.kind == "on_device" }
                         if original.isEmpty { Text("No live transcript was captured. The recording is the source.") }
@@ -158,6 +163,7 @@ private struct VoiceRecordingDetail: View {
                         Text("LATEST WORDS").font(.system(size: 10, design: .monospaced)).tracking(1)
                         Text(record.latestWords).font(.system(size: 20, design: .serif)).textSelection(.enabled)
                     }
+                    if record.macProcessing != true || record.submissionStatus?.state == "completed" || record.transcripts.contains(where: { $0.kind == "submitted" }) {
                     Text("Correct the transcript").font(.system(size: 21, design: .serif))
                     Text("Replay your voice, then write what the transcript missed. Saving adds a correction; the original stays visible.")
                         .font(.caption).foregroundStyle(Theme.inkSoft)
@@ -181,6 +187,7 @@ private struct VoiceRecordingDetail: View {
                     }
                     .font(.system(size: 11, design: .monospaced)).frame(minHeight: 44)
                     .disabled(savingCorrection || correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || correction.count > 60000)
+                    }
                     if record.orderedTranscripts.contains(where: { $0.kind == "correction" }) {
                         Text(record.correction_state == "linked_to_episode" ? "Your correction is linked to the episode reflection." : "Correction retained. Awaiting its message link or episode refresh; tap Sync to retry.")
                             .font(.caption).foregroundStyle(Theme.inkSoft)

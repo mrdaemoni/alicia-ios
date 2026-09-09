@@ -15,6 +15,8 @@ struct Message: Identifiable, Hashable {
     var reaction: String? = nil
     /// TTS voice note of this reply, when voice replies are on.
     var voiceURL: URL? = nil
+    /// A confirmed voice reply recovered without its original streamed media.
+    var canReadVoiceReply = false
     /// Non-nil for proactive messages pulled from her circulation feed
     /// (e.g. "morning · ariadne") — rendered as a small caption.
     var proactiveLabel: String? = nil

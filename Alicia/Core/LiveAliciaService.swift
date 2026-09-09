@@ -112,6 +112,73 @@ struct LiveAliciaService: AliciaService {
         } catch { return nil }
     }
 
+    private func voiceRequest<T: Decodable>(_ type: T.Type, path: String, body: Data? = nil,
+                                             allowNotFound: Bool = false) async -> VoiceTransport<T> {
+        do {
+            var req = request(path, method: body == nil ? "GET" : "POST", body: body)
+            req.timeoutInterval = 120
+            let (data, response) = try await URLSession.shared.data(for: req)
+            return decodeVoiceResponse(type, data: data, status: (response as? HTTPURLResponse)?.statusCode ?? 0,
+                                       allowNotFound: allowNotFound)
+        } catch { return .unavailable }
+    }
+    func finalizeVoice(_ finalization: VoiceFinalization) async -> VoiceTransport<VoiceProcessingResponse> {
+        guard let body = try? JSONEncoder().encode(finalization) else { return .unavailable }
+        return await voiceRequest(VoiceProcessingResponse.self, path: "/api/voice_evidence", body: body)
+    }
+    func retryVoiceTranscription(_ retry: VoiceTranscriptionRetry) async -> VoiceTransport<VoiceProcessingResponse> {
+        guard let body = try? JSONEncoder().encode(retry) else { return .unavailable }
+        return await voiceRequest(VoiceProcessingResponse.self, path: "/api/voice_evidence", body: body)
+    }
+    func voiceSubmissionStatus(_ requestID: String) async -> VoiceTransport<VoiceSubmissionStatus> {
+        guard UUID(uuidString: requestID) != nil else { return .rejected("Invalid send receipt.") }
+        return await voiceRequest(VoiceSubmissionStatus.self, path: "/api/voice_submission?request_id=" + requestID,
+                                  allowNotFound: true)
+    }
+    func submitVoice(_ submission: VoiceSubmission) async -> VoiceTransport<VoiceSubmissionStatus> {
+        guard let body = try? JSONSerialization.data(withJSONObject: submission.body) else { return .unavailable }
+        if submission.destination == "walk" {
+            let result = await voiceRequest(WalkReceipt.self, path: "/api/mode", body: body)
+            switch result {
+            case .value(let receipt):
+                return receipt.ok ? .value(VoiceSubmissionStatus(request_id: submission.requestID, state: "completed"))
+                    : .rejected(receipt.message ?? "The walk was not accepted. Your words are kept.")
+            case .rejected(let error): return .rejected(error)
+            default: return .unavailable
+            }
+        }
+        // Drain the SSE/JSON response without treating a partial token as a saved reply.
+        // The durable status endpoint supplies the exact completed public answer.
+        do {
+            var req = request(submission.destination == "proactive" ? "/api/reply" : "/api/chat", method: "POST", body: body)
+            req.timeoutInterval = 180
+            let (bytes, response) = try await URLSession.shared.bytes(for: req)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 400 || status == 409 {
+                var data = Data()
+                for try await byte in bytes { if data.count < 65536 { data.append(byte) } }
+                return decodeVoiceResponse(VoiceSubmissionStatus.self, data: data, status: status)
+            }
+            guard status == 200 else { return .unavailable }
+            var streamedReply = VoiceReplyStreamReceipt()
+            if submission.destination == "dialogue" {
+                for try await line in bytes.lines {
+                    if Task.isCancelled { return .unavailable }
+                    if streamedReply.receive(line) { break }
+                }
+            } else {
+                for try await _ in bytes { if Task.isCancelled { return .unavailable } }
+            }
+            let saved = await voiceSubmissionStatus(submission.requestID)
+            if case .value(let receipt) = saved, submission.destination == "dialogue", submission.voice {
+                return .value(streamedReply.confirmed(receipt, requestID: submission.requestID))
+            }
+            return saved
+        } catch { return .unavailable }
+    }
+
+    func voiceReplyURL(_ path: String) -> URL? { mediaURL(path) }
+
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? {
         await post("/api/episode_day", body: body)
     }
