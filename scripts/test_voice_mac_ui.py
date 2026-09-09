@@ -130,7 +130,7 @@ final class ContextUITests: XCTestCase {
   let replay=app.buttons["Play voice note"],read=app.buttons["Read reply aloud"]
   XCTAssertTrue(replay.waitForExistence(timeout:10));XCTAssertTrue(read.waitForExistence(timeout:10))
   XCTAssertGreaterThanOrEqual(read.frame.height,44);XCTAssertGreaterThanOrEqual(read.frame.width,44)
-  XCTAssertTrue(app.staticTexts["READ"].exists)
+  XCTAssertEqual(read.label,"Read reply aloud") // SwiftUI combines the label's children for accessibility.
   capture("reply-audio-and-explicit-recovery-reading",app:app)
   // Do not press either action: this is an inert visual check, not a media/provider request.
  }
@@ -138,4 +138,6 @@ final class ContextUITests: XCTestCase {
 ''' )
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
 result=pathlib.Path(os.environ.get('ALICIA_TEST_EVIDENCE_DIR',str(work)))/'voice-mac-ui.xcresult'
-subprocess.run(['xcodebuild','-project',str(project),'-scheme','Alicia','-destination','platform=iOS Simulator,id=F36E7803-4EEE-47D1-8D8A-7C930515EB27','-derivedDataPath',str(work/'DerivedData'),'-resultBundlePath',str(result),'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','test'],env=env,check=True)
+only=os.environ.get('ALICIA_UI_TEST_FILTER')
+filters=['-only-testing:ContextUITests/ContextUITests/'+only] if only else []
+subprocess.run(['xcodebuild','-project',str(project),'-scheme','Alicia','-destination','platform=iOS Simulator,id=F36E7803-4EEE-47D1-8D8A-7C930515EB27','-derivedDataPath',str(work/'DerivedData'),'-resultBundlePath',str(result),'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','test']+filters,env=env,check=True)
