@@ -1,4 +1,25 @@
-# Long voice capture and save feedback — A2-013
+# Voice capture, revisions and save feedback
+
+## September 8 field audit — A2-014
+
+Both retained recordings are complete: 18.4 and 202.2 seconds across 23 CAF segments,
+with matching bytes/hashes and successful decoding. There is no observed upload
+truncation. Some submitted clauses repeat, and some words are uncertain. Full
+local ASR recovery is review evidence, not an automatic human correction.
+
+SpeechTranscriptBuffer replaces the latest hypothesis as a unit while its
+segment timings remain unresolved. A later timed revision no longer causes the
+same provisional words to be kept as a completed prefix. Earlier independently
+timed words and actual repeated speech still survive. Recognition request
+boundaries, retained raw audio and explicit-save semantics are unchanged.
+
+Verification: 35 buffer/queue/lifecycle cases, including 10 new revision cases,
+and iPhone 17 simulator compilation. Device hypothesis timing was not logged;
+the deterministic reproduction explains a possible duplication path rather
+than proving the exact callback sequence on Hector's phone. Physical recognition
+quality and interruption behavior still require real use.
+
+## Existing capture and receipt behavior — A2-013
 
 The microphone surface shows whether capture is on, the actual route name,
 audio seconds and level. Live text and retained original audio have separate
