@@ -199,8 +199,8 @@ struct CollaborationView: View {
                 else if target.resultID != nil {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
-                            Text("The work has moved forward").font(.title2)
-                            Text("This conversation refers to an earlier passage. Return to the goal to review its current work.")
+                            Text("Your original passage").font(.title2)
+                            Text("This passage is unavailable in the current work. Return to Together to refresh the goal. Your conversation still refers to the original below.")
                             if let original = target.originalQuote {
                                 Text(original).textSelection(.enabled)
                                 LocalReviewButton(title: "The original passage", text: original)

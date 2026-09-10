@@ -6,8 +6,9 @@ and the Motion Lab promotion gate.
 
 Read `SESSION_HANDOFF.md` for the current release and known limits. This file
 carries stable architecture. The current product is the Alicia 2.0 episode/day
-experience; this branch adds the unshipped A2-016 Mac voice processing candidate
-on the build14 baseline. Full cross-repository context is in
+experience; this branch adds A2-033 shared work review on released source
+207279e / TestFlight 15, including Mac voice processing. Read `docs/WORK_REVIEW.md`;
+the shared task RELEASE.md records actual deployment and upload. Full cross-repository context is in
 `/Users/alicia/alicia/docs/ALICIA_2_0.md`; feature detail is in `docs/EPISODE_DAY.md`.
 Us and Alicia use the actually played episode and explicit human responses.
 The older orbit/cards and archetype gallery are unmounted.

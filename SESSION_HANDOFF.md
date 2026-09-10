@@ -1,3 +1,9 @@
+## September 10 — A2-033 shared work review (implementation)
+
+Current task: `/Users/alicia/Documents/Alicia-development/tasks/A2-033/` and paired backend A2-032. Read `docs/WORK_REVIEW.md`. Goal tabs and honest review/outcome progress, exact section feedback and inline answer/edit drafts, top connection actions, explicit Dialogue passage context, and Studio/goal links share the existing collaboration transport. Base is latest released207279e/TestFlight15; this entry alone is not release evidence. Preserve original generated text and Hector's distinct words, immutable offline saves, and explicit outcome authority. Release status and Apple receipts belong in the shared task RELEASE.md after verification.
+
+Earlier candidate and release entries below are historical. Use the shared A2-033 RELEASE.md for current release evidence.
+
 # A2-016 candidate — review a Mac transcript before sending
 
 This branch builds on TestFlight build14 source8d2a764. New Walk and Dialogue
@@ -282,7 +288,3 @@ iOS neither generates a result nor claims a scheduled notification was delivered
 No release, live input, microphone call, model request or send is part of the iOS
 fixture checks. docs/COLLABORATION.md and shared A2-010 evidence describe the
 current candidate. Preserve the existing voice archive and comparison consent.
-
-## September 10 — A2-033 shared work review (implementation)
-
-Current task: `/Users/alicia/Documents/Alicia-development/tasks/A2-033/` and paired backend A2-032. Read `docs/WORK_REVIEW.md`. Goal tabs and honest review/outcome progress, exact section feedback and inline answer/edit drafts, top connection actions, explicit Dialogue passage context, and Studio/goal links share the existing collaboration transport. Base is latest released207279e/TestFlight15; this entry alone is not release evidence. Preserve original generated text and Hector's distinct words, immutable offline saves, and explicit outcome authority. Release status and Apple receipts belong in the shared task RELEASE.md after verification.

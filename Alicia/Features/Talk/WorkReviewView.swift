@@ -99,7 +99,7 @@ struct WorkReviewContent: View {
                 Text("FOR · " + goal.title).font(.caption.monospaced())
             }
             if !available {
-                Text("A newer version is ready. This original and any draft stay here; open the latest work from Together to review it.")
+                Text("This passage is unavailable in the current work. Its original text and your draft stay here. Return to Together to refresh the goal.")
                     .font(.callout).foregroundStyle(Theme.rose)
             }
             if let progress = result.review_progress { WorkReviewMeter(progress: progress) }
@@ -311,7 +311,7 @@ private struct WorkReviewEditor: View {
             }
             .toolbar { ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("Done") { writing = false }.font(.callout).accessibilityLabel("Done writing")
+                Button("OK") { writing = false }.font(.callout).accessibilityLabel("Done writing")
             } }
     }
     private func persist() {
