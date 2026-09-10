@@ -41,9 +41,23 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
  @MainActor static func main() async throws {
   if CommandLine.arguments.count > 1 {
    let bytes = try Data(contentsOf:URL(fileURLWithPath:CommandLine.arguments[1]))
-   let actual = try JSONDecoder().decode(CollaborationState.self,from:bytes)
-   precondition(!actual.goals.isEmpty && !actual.connections.isEmpty && !actual.agreements.isEmpty)
-   print("Actual backend fixture decoded: goals, connections, agreements, signals, followup")
+   let object = try JSONSerialization.jsonObject(with:bytes) as? [String:Any]
+   if let resultObject = object?["result"] {
+    let data = try JSONSerialization.data(withJSONObject:resultObject)
+    let result = try JSONDecoder().decode(CollaborationState.Result.self,from:data)
+    let sections = result.review_sections ?? []
+    precondition(!sections.isEmpty && sections.map(\.text).joined() == result.body)
+    precondition(Set(sections.map(\.id)).count == sections.count && result.review_progress?.total == sections.count)
+    for section in sections {
+     let change=section.mutation(resultID:result.id,verdict:"answer",text:"Isolated test only")
+     precondition(change.result_id == result.id && change.content_hash == section.content_hash && change.section_id == section.id)
+    }
+    print("Actual artifact decoded losslessly: \(sections.count) sections, \(result.body.count) characters; no feedback sent")
+   } else {
+    let actual = try JSONDecoder().decode(CollaborationState.self,from:bytes)
+    precondition(!actual.goals.isEmpty && !actual.connections.isEmpty && !actual.agreements.isEmpty)
+    print("Actual backend fixture decoded: goals, connections, agreements, signals, followup")
+   }
   }
   let suite="collaboration-check-"+UUID().uuidString
   let defaults=UserDefaults(suiteName:suite)!
