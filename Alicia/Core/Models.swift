@@ -26,6 +26,7 @@ struct Message: Identifiable, Hashable {
     /// True when this is one of her explicit asks — Dialogue gives it a
     /// full bubble and an "answer her" affordance (v23).
     var isAsk: Bool = false
+    var workContext: WorkDialogueContext? = nil
 }
 
 /// One event in a streamed chat reply.

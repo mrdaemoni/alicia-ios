@@ -111,6 +111,9 @@ struct StudioView: View {
             .navigationDestination(for: Track.self) { track in
                 EpisodeDetailView(track: track)
             }
+            .navigationDestination(item: $store.workEpisode) { track in
+                EpisodeDetailView(track: track, playOnArrival: false)
+            }
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlistID: playlist.id)
             }
@@ -166,6 +169,7 @@ struct StudioView: View {
 struct EpisodeDetailView: View {
     @Environment(AppStore.self) private var store
     let track: Track
+    var playOnArrival = true
     @State private var notes: AttributedString?
     /// The shownotes as they arrived — the reader speaks the markdown, not
     /// the restyled AttributedString.
@@ -240,6 +244,17 @@ struct EpisodeDetailView: View {
                     .frame(height: 44)
                     .frame(maxWidth: .infinity)
 
+                let relatedGoalIDs = Set((store.collaboration.state?.results ?? []).filter {
+                    $0.evidence.contains { $0.episode_id == track.label }
+                }.compactMap(\.goal_id) + (store.collaboration.state?.connections ?? []).filter {
+                    $0.evidence.contains { $0.episode_id == track.label }
+                }.map(\.goal_id))
+                ForEach((store.collaboration.state?.goals ?? []).filter { relatedGoalIDs.contains($0.id) }) { goal in
+                    Button("Explore with our goal · " + goal.title) {
+                        store.collaboration.route = CollaborationRoute(goalID: goal.id)
+                    }.font(.callout).frame(minHeight: 44)
+                        .accessibilityIdentifier("workReview.studioGoal." + goal.id)
+                }
                 if loading {
                     ProgressView("Fetching shownotes…")
                         .frame(maxWidth: .infinity)
@@ -287,7 +302,7 @@ struct EpisodeDetailView: View {
         .task {
             if !choseOnArrival {
                 choseOnArrival = true
-                store.play(track)
+                if playOnArrival { store.play(track) }
             }
             let md = await store.episodeNotes(for: track)
             notesMarkdown = md

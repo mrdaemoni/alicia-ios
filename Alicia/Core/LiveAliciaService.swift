@@ -274,15 +274,22 @@ struct LiveAliciaService: AliciaService {
     }
 
     func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: recordingID, workContext: nil)
+    }
+
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?) -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in
             let task = Task {
                 do {
-                    let body = try JSONSerialization.data(
-                        withJSONObject: ["text": prompt, "voice": voice, "recording_id": recordingID])
+                    var payload: [String: Any] = ["text": prompt, "voice": voice, "recording_id": recordingID]
+                    if let workContext { payload["work_context"] = workContext.wire }
+                    let body = try JSONSerialization.data(withJSONObject: payload)
                     let (bytes, resp) = try await URLSession.shared.bytes(
                         for: request("/api/chat", method: "POST", body: body))
                     guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-                        continuation.yield(.token("(Alicia is unreachable right now — check the backend and your connection.)"))
+                        continuation.yield(.token(workContext != nil && (resp as? HTTPURLResponse)?.statusCode == 400
+                            ? "This passage could not be confirmed. Your message was not sent to a model. Open the current work in Together, then try again."
+                            : "(Alicia is unreachable right now — check the backend and your connection.)"))
                         continuation.yield(.done(messageID: nil))
                         continuation.finish()
                         return

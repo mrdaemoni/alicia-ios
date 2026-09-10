@@ -41,9 +41,23 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
  @MainActor static func main() async throws {
   if CommandLine.arguments.count > 1 {
    let bytes = try Data(contentsOf:URL(fileURLWithPath:CommandLine.arguments[1]))
-   let actual = try JSONDecoder().decode(CollaborationState.self,from:bytes)
-   precondition(!actual.goals.isEmpty && !actual.connections.isEmpty && !actual.agreements.isEmpty)
-   print("Actual backend fixture decoded: goals, connections, agreements, signals, followup")
+   let object = try JSONSerialization.jsonObject(with:bytes) as? [String:Any]
+   if let resultObject = object?["result"] {
+    let data = try JSONSerialization.data(withJSONObject:resultObject)
+    let result = try JSONDecoder().decode(CollaborationState.Result.self,from:data)
+    let sections = result.review_sections ?? []
+    precondition(!sections.isEmpty && sections.map(\.text).joined() == result.body)
+    precondition(Set(sections.map(\.id)).count == sections.count && result.review_progress?.total == sections.count)
+    for section in sections {
+     let change=section.mutation(resultID:result.id,verdict:"answer",text:"Isolated test only")
+     precondition(change.result_id == result.id && change.content_hash == section.content_hash && change.section_id == section.id)
+    }
+    print("Actual artifact decoded losslessly: \(sections.count) sections, \(result.body.count) characters; no feedback sent")
+   } else {
+    let actual = try JSONDecoder().decode(CollaborationState.self,from:bytes)
+    precondition(!actual.goals.isEmpty && !actual.connections.isEmpty && !actual.agreements.isEmpty)
+    print("Actual backend fixture decoded: goals, connections, agreements, signals, followup")
+   }
   }
   let suite="collaboration-check-"+UUID().uuidString
   let defaults=UserDefaults(suiteName:suite)!
@@ -75,6 +89,31 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
   precondition(restored.draft("commit.connection")==nil && restored.draft("goal.new")?["text"]=="Another unsent idea")
   restored.saveDraft(["text":"stale view callback","request_id":wire.event_id],name:"commit.connection")
   precondition(restored.draft("commit.connection")==nil)
+  let section = WorkReviewSection(id:"q7",title:"Q7",kind:"question",text:"The exact question?\n",content_hash:"hash",review:.empty)
+  let answer = section.mutation(resultID:"result",verdict:"answer",text:"My entire answer",revision:4)
+  precondition(answer.body["result_id"] as? String == "result" && answer.body["section_id"] as? String == "q7")
+  precondition(answer.body["content_hash"] as? String == "hash" && answer.expected_revision == 4)
+  let roundTripAnswer = try JSONDecoder().decode(CollaborationMutation.self,from:JSONEncoder().encode(answer))
+  precondition(roundTripAnswer == answer)
+  restored.saveDraft(["text":"My entire answer", "mode":"answer", "revision":"4"],name:"work.result.q7.answer")
+  restored.saveDraft(["text":"A distinct edit", "mode":"edit", "revision":"4"],name:"work.result.q7.edit")
+  fake.result = nil
+  _ = await restored.submit(answer,draftName:"work.result.q7.answer")
+  let restart = CollaborationStore(service:fake,defaults:defaults,notifications:false)
+  precondition(restart.pending == [answer] && restart.draft("work.result.q7.answer")?["text"] == "My entire answer")
+  fake.result = .init(ok:true,state:state(11)); await restart.retry()
+  precondition(restart.draft("work.result.q7.answer") == nil && restart.draft("work.result.q7.edit")?["text"] == "A distinct edit")
+  await restored.retry()
+  let target = WorkDialogueContext(goal_id:"goal",result_id:"result",section_id:"q7",content_hash:"hash",goalTitle:"Enough",sectionTitle:"Q7",quote:"Original question")
+  restart.rememberDialogueContext(target,replyID:"saved-reply")
+  precondition(CollaborationStore(service:fake,defaults:defaults,notifications:false).dialogueContext(for:"saved-reply") == target)
+  restart.dialogueContext = target
+  precondition(target.wire["quote"] == nil && target.wire.count == 4)
+  let reopened = CollaborationStore(service:fake,defaults:defaults,notifications:false)
+  precondition(reopened.dialogueContext == target)
+  reopened.dialogueContext = nil
+  precondition(CollaborationStore(service:fake,defaults:defaults,notifications:false).dialogueContext == nil)
+  precondition(WorkReviewProgress(total:3,reviewed:1,questions:1,answered:0).remaining == 2)
   let oldResult=Data(#"{"id":"r","agreement_id":"a","title":"Draft","body":"Prepared","status":"prepared","evidence":[],"created_at":"now"}"#.utf8)
   precondition(try JSONDecoder().decode(CollaborationState.Result.self,from:oldResult).goal_id==nil)
   fake.result = .init(ok:false,error:"stale target",state:state(11))
