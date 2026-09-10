@@ -403,7 +403,8 @@ final class AppStore {
             date: Self.historyDate(row.ts), messageID: savedVoice?.message_id, replyID: replyID,
             recordingID: row.recording_id?.isEmpty == false ? row.recording_id : nil,
             voiceURL: savedVoice?.voice_path.flatMap(service.voiceReplyURL) ?? existingURL,
-            canReadVoiceReply: savedVoice != nil)
+            canReadVoiceReply: savedVoice != nil,
+            workContext: collaboration.dialogueContext(for: replyID))
     }
     func voiceDetail(_ id: String) async -> VoiceEvidencePayload? { await service.voiceRecordings(recordingID: id) }
     func playOriginalVoice(_ id: String) async -> [URL] {
@@ -1027,6 +1028,7 @@ final class AppStore {
     }
     /// Programmatic tab switching (Dialogue chips → Alicia tab).
     var selectedSection: AppSection = .us
+    var workEpisode: Track?
 
     /// True from the moment a reply is asked for until the stream ends.
     /// Dialogue's presence reads this to show her *thinking* — the one place
@@ -1062,6 +1064,7 @@ final class AppStore {
 
     func beginAnswering(_ message: Message) {
         guard let pid = message.proactiveID else { return }
+        collaboration.dialogueContext = nil
         answeringAskID = pid
         answeringAskExcerpt = String(
             message.text.strippedLeadingEmoji.prefix(70))
@@ -1096,20 +1099,23 @@ final class AppStore {
             }
             return
         }
-        messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID))
+        let workContext = collaboration.dialogueContext
+        messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID, workContext: workContext))
         let idx = messages.count
-        messages.append(Message(sender: .alicia, text: ""))
+        messages.append(Message(sender: .alicia, text: "", workContext: workContext))
         isStreaming = true
         Task {
             do {
                 // `defer` rather than a trailing assignment: a thrown or cancelled
                 // stream must not leave her looking permanently mid-thought.
                 defer { isStreaming = false }
-                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID) {
+                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID, workContext: workContext) {
                     guard messages.indices.contains(idx) else { break }
                     switch event {
                     case .token(let t):   messages[idx].text += t
-                    case .details(let id): messages[idx].replyID = id
+                    case .details(let id):
+                        messages[idx].replyID = id
+                        if let workContext { collaboration.rememberDialogueContext(workContext, replyID: id) }
                     case .voice(let url): messages[idx].voiceURL = url
                     case .done(let mid):  messages[idx].messageID = mid
                     }

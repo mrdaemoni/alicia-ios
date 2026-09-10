@@ -50,6 +50,8 @@ struct CollaborationView: View {
     @State private var openTarget = false
     @State private var openNewGoal = false
     @State private var openedGoalEditor = false
+    @State private var selectedGoalID = ""
+    @State private var targetResult: CollaborationState.Result?
     @State private var signal = ""
     @State private var signalRequestID = ""
     @FocusState private var writing: Bool
@@ -75,29 +77,23 @@ struct CollaborationView: View {
                             NavigationLink("Add goal") { CollaborationEditor(kind: .goal(nil)) }
                                 .accessibilityIdentifier("collaboration.newGoal")
                         }
-                        Text("Keep several goals active together. Each has its own attention and outcome.")
-                            .font(.caption).foregroundStyle(Theme.inkSoft)
-                        ForEach(state.activeGoals + state.goals.filter { $0.status != "active" }) { goal in
-                            VStack(alignment: .leading, spacing: 9) {
-                                Text(goal.title.strippedEmojis).font(.title2)
-                                Text(goal.outcome.strippedEmojis)
-                                Text("Your goal · " + goal.status + " · " + goal.priority + " attention").font(.caption).foregroundStyle(Theme.inkSoft)
-                                NavigationLink("Edit goal or change direction") { CollaborationEditor(kind: .goal(goal)) }
-                                    .accessibilityIdentifier("collaboration.editGoal." + goal.id)
-                                ForEach(state.results.filter { $0.agreement_id.isEmpty && $0.goal_id == goal.id }) { result in
-                                    NavigationLink { CollaborationResultView(result: result) } label: {
-                                        VStack(alignment: .leading, spacing: 6) {
-                                            Text(result.title.strippedEmojis).font(.headline)
-                                            Text(result.status == "blocked" ? "Blocked · your input may help" : "Prepared by Alicia · awaiting your review").font(.caption)
-                                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                    }.accessibilityIdentifier("collaboration.result." + result.id)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                WorkReviewChoice(title: "All goals", selected: selectedGoalID.isEmpty) { selectedGoalID = "" }
+                                    .accessibilityIdentifier("workReview.goal.all")
+                                ForEach(state.activeGoals) { goal in
+                                    WorkReviewChoice(title: goal.title.strippedEmojis, selected: selectedGoalID == goal.id, compact: true) { selectedGoalID = goal.id }
+                                        .accessibilityIdentifier("workReview.goal." + goal.id)
                                 }
-                            }.id(goal.id)
+                            }
+                        }.accessibilityIdentifier("workReview.goalTabs")
+                        ForEach(visibleGoals(state)) { goal in
+                            goalCard(goal, state: state)
                         }
                         if !state.connections.isEmpty {
                             Divider()
                             Text("Connections to consider").font(.title2)
-                            ForEach(state.connections.filter { $0.status != "dismissed" || $0.id == target.connectionID }) { connection in
+                            ForEach(state.connections.filter { (selectedGoalID.isEmpty || $0.goal_id == selectedGoalID) && ($0.status != "dismissed" || $0.id == target.connectionID) }) { connection in
                                 NavigationLink { CollaborationConnectionView(id: connection.id) } label: {
                                     VStack(alignment: .leading, spacing: 7) {
                                         Text(connection.title.strippedEmojis).font(.headline)
@@ -109,7 +105,7 @@ struct CollaborationView: View {
                         }
                         if !state.agreements.isEmpty {
                             Divider(); Text("What we agreed").font(.title2)
-                            ForEach(state.agreements) { agreement in
+                            ForEach(state.agreements.filter { selectedGoalID.isEmpty || $0.goal_id == selectedGoalID }) { agreement in
                                 NavigationLink { CollaborationAgreementView(id: agreement.id) } label: {
                                     VStack(alignment: .leading, spacing: 7) {
                                         Text(agreement.action.strippedEmojis).font(.headline)
@@ -171,9 +167,11 @@ struct CollaborationView: View {
                 }.padding(22)
             }
             .task {
+                if !viewed { selectedGoalID = target.goalID }
                 signal = shared.draft("signal")?["text"] ?? ""
                 signalRequestID = shared.draft("signal")?["request_id"] ?? ""
                 await shared.load()
+                if targetResult == nil { targetResult = shared.state?.results.first { $0.id == target.resultID } }
                 if target.newGoal == true, !openedGoalEditor {
                     openedGoalEditor = true
                     openNewGoal = true
@@ -181,7 +179,7 @@ struct CollaborationView: View {
                 let id = !target.agreementID.isEmpty ? target.agreementID : !target.connectionID.isEmpty ? target.connectionID : target.goalID
                 if !id.isEmpty { scroll.scrollTo(id, anchor: .top) }
                 if !viewed {
-                    if shared.state?.agreements.contains(where: { $0.id == target.agreementID }) == true || shared.state?.connections.contains(where: { $0.id == target.connectionID }) == true { openTarget = true }
+                    if target.resultID != nil || shared.state?.agreements.contains(where: { $0.id == target.agreementID }) == true || shared.state?.connections.contains(where: { $0.id == target.connectionID }) == true { openTarget = true }
                     else { await shared.viewed(target); viewed = true }
                 }
             }
@@ -195,7 +193,22 @@ struct CollaborationView: View {
         .navigationDestination(isPresented: $openNewGoal) { CollaborationEditor(kind: .goal(nil)) }
         .navigationDestination(isPresented: $openTarget) {
             Group {
-                if !target.agreementID.isEmpty { CollaborationAgreementView(id: target.agreementID) }
+                if let result = targetResult {
+                    CollaborationResultView(result: result, sectionID: target.sectionID)
+                }
+                else if target.resultID != nil {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            Text("The work has moved forward").font(.title2)
+                            Text("This conversation refers to an earlier passage. Return to the goal to review its current work.")
+                            if let original = target.originalQuote {
+                                Text(original).textSelection(.enabled)
+                                LocalReviewButton(title: "The original passage", text: original)
+                            }
+                        }.padding(22)
+                    }.background(Theme.paper).navigationTitle("Original context")
+                }
+                else if !target.agreementID.isEmpty { CollaborationAgreementView(id: target.agreementID) }
                 else { CollaborationConnectionView(id: target.connectionID) }
             }.task { if !viewed { await shared.viewed(target); viewed = true } }
         }
@@ -203,6 +216,29 @@ struct CollaborationView: View {
         .scrollDismissesKeyboard(.interactively)
         .buttonStyle(CollaborationButtonStyle())
     }
+    private func visibleGoals(_ state: CollaborationState) -> [CollaborationState.Goal] {
+        let ordered = state.activeGoals + state.goals.filter { $0.status != "active" }
+        return ordered.filter { selectedGoalID.isEmpty || $0.id == selectedGoalID }
+    }
+    private func goalCard(_ goal: CollaborationState.Goal, state: CollaborationState) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(goal.title.strippedEmojis).font(.title2)
+            Text(goal.outcome.strippedEmojis)
+            Text("Your goal · " + goal.status + " · " + goal.priority + " attention").font(.caption).foregroundStyle(Theme.inkSoft)
+            NavigationLink("Edit goal or change direction") { CollaborationEditor(kind: .goal(goal)) }
+                .accessibilityIdentifier("collaboration.editGoal." + goal.id)
+            GoalWorkProgress(goal: goal, state: state)
+            ForEach(state.results.filter { $0.agreement_id.isEmpty && $0.goal_id == goal.id }) { result in
+                NavigationLink { CollaborationResultView(result: result) } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(result.title.strippedEmojis).font(.headline)
+                        Text(result.status == "blocked" ? "Blocked · your input may help" : "Prepared by Alicia · awaiting your review").font(.caption)
+                    }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }.accessibilityIdentifier("collaboration.result." + result.id)
+            }
+        }.id(goal.id)
+    }
+
 }
 
 private struct CollaborationConnectionView: View {
@@ -213,6 +249,14 @@ private struct CollaborationConnectionView: View {
             VStack(alignment: .leading, spacing: 20) {
                 if let connection = store.collaboration.state?.connections.first(where: { $0.id == id }) {
                     Text(connection.title.strippedEmojis).font(.title)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { connectionActions(connection) }
+                        VStack(alignment: .leading, spacing: 8) { connectionActions(connection) }
+                    }
+                    Text("Using a connection keeps it in view. Commit only when you choose an action.")
+                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                    CollaborationSaveStatus()
+
                     Text(connection.claim.strippedEmojis).font(.title3)
                     Text(connection.why_now.strippedEmojis)
                     LocalReviewButton(title: connection.title, text: connection.claim + "\n" + connection.why_now)
@@ -225,17 +269,19 @@ private struct CollaborationConnectionView: View {
                             }
                         }.padding(.top, 12)
                     }
-                    Text("Using a connection keeps it in view. Only your explicit agreement creates a commitment.").font(.caption)
-                    ForEach([("Use this", "use"), ("Clarify this", "clarify"), ("Dismiss this", "dismiss")], id: \.1) { label, verdict in
-                        Button(label) { Task { await store.collaboration.submit(CollaborationMutation(action: "connection", expected_revision: connection.revision, connection_id: id, verdict: verdict)) } }
-                            .disabled(!store.collaboration.canEdit).accessibilityIdentifier("collaboration." + verdict)
-                    }
                     NavigationLink("Consider a commitment") { CollaborationEditor(kind: .commit(connection)) }
                         .accessibilityIdentifier("collaboration.commitEditor")
                     CollaborationSaveStatus()
                 } else { Text("This connection is unavailable. Refresh shared focus to try again.") }
             }.padding(22)
         }.background(Theme.paper).navigationTitle("The connection").buttonStyle(CollaborationButtonStyle())
+    }
+    @ViewBuilder private func connectionActions(_ connection: CollaborationState.Connection) -> some View {
+        ForEach([("Use this", "use"), ("Clarify", "clarify"), ("Dismiss", "dismiss")], id: \.1) { label, verdict in
+            WorkReviewChoice(title: label, selected: (verdict == "use" && connection.status == "used") || (verdict == "dismiss" && connection.status == "dismissed")) {
+                Task { await store.collaboration.submit(CollaborationMutation(action: "connection", expected_revision: connection.revision, connection_id: id, verdict: verdict)) }
+            }.disabled(!store.collaboration.canEdit).accessibilityIdentifier("collaboration." + verdict)
+        }
     }
 }
 
@@ -255,13 +301,9 @@ private struct CollaborationAgreementView: View {
                     NavigationLink("Update outcome or change course") { CollaborationEditor(kind: .agreement(agreement)) }
                         .accessibilityIdentifier("collaboration.outcomeEditor")
                     ForEach(store.collaboration.state?.results.filter { $0.agreement_id == id } ?? []) { result in
-                        Divider(); Text(result.title).font(.title2)
-                        Text(result.status == "blocked" ? "Blocked · your input may help" : "Prepared by Alicia · awaiting your review").font(.caption)
-                        Text(result.body).textSelection(.enabled)
-                        LocalReviewButton(title: result.title, text: result.body)
-                        ForEach(result.evidence) { evidence in
-                            NavigationLink(evidence.title) { CollaborationEvidenceView(evidence: evidence, resultID: result.id) }
-                        }
+                        Divider()
+                        WorkReviewContent(result: result)
+
                     }
                 }
                 CollaborationSaveStatus()
@@ -270,25 +312,7 @@ private struct CollaborationAgreementView: View {
     }
 }
 
-private struct CollaborationResultView: View {
-    let result: CollaborationState.Result
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text(result.title.strippedEmojis).font(.title2)
-                Text(result.status == "blocked" ? "Blocked · your input may help" : "Prepared by Alicia · awaiting your review").font(.caption)
-                Text("Prepared toward your saved goal. This is work to inspect, not an agreed action or a verified outcome.").font(.callout)
-                Text(result.body.strippedEmojis).textSelection(.enabled)
-                LocalReviewButton(title: result.title, text: result.body)
-                ForEach(result.evidence) { evidence in
-                    NavigationLink(evidence.title) { CollaborationEvidenceView(evidence: evidence, resultID: result.id) }
-                }
-            }.padding(22)
-        }.background(Theme.paper).navigationTitle("Prepared work").buttonStyle(CollaborationButtonStyle())
-    }
-}
-
-private struct CollaborationEvidenceView: View {
+struct CollaborationEvidenceView: View {
     @Environment(AppStore.self) private var store
     let evidence: CollaborationState.Evidence
     var connectionID = ""
@@ -305,6 +329,14 @@ private struct CollaborationEvidenceView: View {
                 Text(evidence.path).font(.caption).textSelection(.enabled)
                 if evidence.line_start > 0 { Text("Captured lines \(evidence.line_start)–\(evidence.line_end)").font(.caption) }
                 if !evidence.episode_id.isEmpty { Text(evidence.episode_id).font(.caption) }
+                if let track = store.tracks.first(where: { $0.label == evidence.episode_id }), !evidence.episode_id.isEmpty {
+                    Button("Open episode in Studio") {
+                        store.collaboration.route = nil
+                        store.selectedSection = .studio
+                        store.workEpisode = track
+                    }.frame(minHeight: 44).accessibilityIdentifier("workReview.openStudio")
+                }
+
                 if !evidence.recording_id.isEmpty {
                     NavigationLink("Review original voice") { VoiceRecordingsView(recordingID: evidence.recording_id) }
                 }
@@ -437,7 +469,7 @@ private struct CollaborationEditor: View {
     }
 }
 
-private struct LocalReviewButton: View {
+struct LocalReviewButton: View {
     @Environment(AppStore.self) private var store
     let title, text: String
     private var item: Readable { Readable(title: title, body: text, kind: "collaboration_review") }
@@ -454,7 +486,7 @@ private struct LocalReviewButton: View {
         }.font(.callout)
     }
 }
-private struct CollaborationSaveStatus: View {
+struct CollaborationSaveStatus: View {
     @Environment(AppStore.self) private var store
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

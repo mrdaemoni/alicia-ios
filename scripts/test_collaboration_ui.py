@@ -120,7 +120,7 @@ final class ContextUITests: XCTestCase {
   XCTAssertTrue(app.staticTexts["Stopped on this phone. Any pending server change stays queued below."].waitForExistence(timeout:10));capture("stop-purposeful-returns",app:app)
  }
  func testExactTarget(){let app=launch(["--collaboration-target-preview"]);XCTAssertTrue(app.navigationBars["The connection"].waitForExistence(timeout:20));capture("exact-notification-target",app:app)}
- func testDirectGoalWork(){let app=launch();let open=app.buttons["collaboration.open"];XCTAssertTrue(open.waitForExistence(timeout:15));open.tap();let work=app.buttons["collaboration.result.preview-goal-result"];XCTAssertTrue(work.waitForExistence(timeout:10));reveal(work,app:app);work.tap();XCTAssertTrue(app.staticTexts["Prepared toward your saved goal. This is work to inspect, not an agreed action or a verified outcome."].waitForExistence(timeout:10));capture("prepared-toward-goal-without-agreement",app:app)}
+ func testDirectGoalWork(){let app=launch();let open=app.buttons["collaboration.open"];XCTAssertTrue(open.waitForExistence(timeout:15));open.tap();let work=app.buttons["collaboration.result.preview-goal-result"];XCTAssertTrue(work.waitForExistence(timeout:10));reveal(work,app:app);work.tap();XCTAssertTrue(app.staticTexts["Mark what matters, or answer in your own words."].waitForExistence(timeout:10));capture("prepared-toward-goal-without-agreement",app:app)}
  func testContextPendingKeepsExactWords(){
   let app=launch(["--collaboration-save-delay-preview"]);let open=app.buttons["collaboration.open"];XCTAssertTrue(open.waitForExistence(timeout:15));open.tap()
   let context=app.buttons["Your context right now"];reveal(context,app:app);context.tap()

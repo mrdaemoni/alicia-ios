@@ -30,6 +30,10 @@ struct CollaborationState: Codable {
         var evidence: [Evidence]
         var created_at: String
         var goal_id: String?
+        var project_id: String?
+        var project_revision: Int?
+        var review_sections: [WorkReviewSection]?
+        var review_progress: WorkReviewProgress?
     }
     struct Signal: Codable, Identifiable {
         var id, kind, title, value, source, observed_at, notice: String
@@ -52,6 +56,12 @@ struct CollaborationState: Codable {
     var followups_enabled, telegram_returns_enabled: Bool
     var followup: Followup?
 
+    func goal(for result: Result) -> Goal? {
+        let goalID = result.goal_id?.isEmpty == false ? result.goal_id
+            : agreements.first(where: { $0.id == result.agreement_id })?.goal_id
+        return goals.first { $0.id == goalID }
+    }
+
     /// Priorities affect presentation without hiding other active goals.
     var activeGoals: [Goal] {
         let rank = ["more": 0, "normal": 1, "less": 2]
@@ -72,6 +82,7 @@ struct CollaborationMutation: Codable, Equatable {
     var action_text, owner, review_condition, review_at: String?
     var followups_enabled, telegram_returns_enabled: Bool?
     var candidate_id: String?
+    var result_id, section_id, content_hash: String?
     var body: [String: Any] {
         guard let data = try? JSONEncoder().encode(self),
               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
@@ -102,6 +113,43 @@ struct CollaborationRoute: Identifiable, Codable, Sendable {
     var connectionID = ""
     var agreementID = ""
     var newGoal: Bool?
+    var resultID: String?
+    var sectionID: String?
+    var originalQuote: String?
+}
+
+struct WorkReviewProgress: Codable, Equatable {
+    var total, reviewed, questions, answered: Int
+    var remaining: Int { max(0, total - reviewed) }
+}
+
+struct WorkReviewSection: Codable, Identifiable, Equatable {
+    struct Review: Codable, Equatable {
+        var revision: Int
+        var stance: String
+        var salient, hidden: Bool
+        var edited_text, answer, comment: String
+        static let empty = Review(revision: 0, stance: "unreviewed", salient: false,
+                                  hidden: false, edited_text: "", answer: "", comment: "")
+    }
+    var id, title, kind, text, content_hash: String
+    var review: Review
+
+    func mutation(resultID: String, verdict: String, text: String? = nil,
+                  revision: Int? = nil) -> CollaborationMutation {
+        CollaborationMutation(action: "work_review", expected_revision: revision ?? review.revision,
+            verdict: verdict, text: text, result_id: resultID, section_id: id, content_hash: content_hash)
+    }
+}
+
+/// The visible passage travels with a typed conversation. Only identifiers cross
+/// the API; the server resolves its own frozen quote before model or tool work.
+struct WorkDialogueContext: Codable, Equatable, Hashable, Sendable {
+    var goal_id, result_id, section_id, content_hash: String
+    var goalTitle, sectionTitle, quote: String
+    var wire: [String: String] {
+        ["goal_id": goal_id, "result_id": result_id, "section_id": section_id, "content_hash": content_hash]
+    }
 }
 
 enum CollaborationReturnPreferences {
@@ -129,6 +177,9 @@ final class CollaborationStore {
     private(set) var lastConfirmedID = ""
     var error = ""
     var route: CollaborationRoute?
+    var dialogueContext: WorkDialogueContext? {
+        didSet { defaults.set(try? JSONEncoder().encode(dialogueContext), forKey: key + "dialogueContext") }
+    }
     private let service: AliciaService
     private let defaults: UserDefaults
     private let key = "alicia.collaboration."
@@ -141,8 +192,22 @@ final class CollaborationStore {
         CollaborationReturnPreferences.migrateLegacyStop(in: defaults)
         if let data = defaults.data(forKey: key + "pending") { pending = (try? JSONDecoder().decode([CollaborationMutation].self, from: data)) ?? [] }
         if let data = defaults.data(forKey: key + "state") { state = try? JSONDecoder().decode(CollaborationState.self, from: data) }
+        if let data = defaults.data(forKey: key + "dialogueContext") { dialogueContext = try? JSONDecoder().decode(WorkDialogueContext.self, from: data) }
     }
     func draft(_ name: String) -> [String: String]? { defaults.dictionary(forKey: key + "draft." + name) as? [String: String] }
+    func rememberDialogueContext(_ context: WorkDialogueContext, replyID: String) {
+        var links = dialogueLinks()
+        links[replyID] = context
+        defaults.set(try? JSONEncoder().encode(links), forKey: key + "dialogueLinks")
+    }
+    func dialogueContext(for replyID: String?) -> WorkDialogueContext? {
+        guard let replyID else { return nil }
+        return dialogueLinks()[replyID]
+    }
+    private func dialogueLinks() -> [String: WorkDialogueContext] {
+        guard let data = defaults.data(forKey: key + "dialogueLinks") else { return [:] }
+        return (try? JSONDecoder().decode([String: WorkDialogueContext].self, from: data)) ?? [:]
+    }
     func clearDraft(_ name: String) { defaults.removeObject(forKey: key + "draft." + name) }
     func saveDraft(_ value: [String: String], name: String) {
         if let eventID = value["request_id"], (defaults.stringArray(forKey: key + "confirmed") ?? []).contains(eventID) {

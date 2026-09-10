@@ -71,6 +71,12 @@ struct TalkView: View {
                 LazyVStack(spacing: 12) {
                     ForEach(store.messages) { message in
                         MessageBubble(message: message, inspect: { inspectedMessage = $0 }).id(message.id)
+                        if let context = message.workContext {
+                            Button("RETURN TO · " + context.goalTitle) {
+                                cancelMicrophoneStart(); speech.stop(); focused = false
+                                store.collaboration.route = CollaborationRoute(goalID: context.goal_id, resultID: context.result_id, sectionID: context.section_id, originalQuote: context.quote)
+                            }.font(.caption.monospaced()).frame(minHeight: 44)
+                        }
                         if let id = message.recordingID {
                             Button("REVIEW ORIGINAL RECORDING") { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = id; showRecordings = true }
                                 .font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
@@ -97,6 +103,24 @@ struct TalkView: View {
         VStack(spacing: 6) {
             // v23: answering one of her asks — the send routes to her
             // capture loops, and this strip says so.
+            if let context = store.collaboration.dialogueContext {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top) {
+                        Button {
+                            cancelMicrophoneStart(); speech.stop(); focused = false
+                            store.collaboration.route = CollaborationRoute(goalID: context.goal_id, resultID: context.result_id, sectionID: context.section_id, originalQuote: context.quote)
+                        } label: {
+                            Text("ABOUT · " + context.goalTitle).font(.caption.monospaced()).multilineTextAlignment(.leading)
+                        }.frame(minHeight: 44).accessibilityIdentifier("workReview.dialogueContext")
+                        Spacer()
+                        Button("Clear") { store.collaboration.dialogueContext = nil }.frame(minHeight: 44)
+                            .accessibilityIdentifier("workReview.clearContext")
+                    }
+                    Text(context.quote).font(.caption).lineLimit(2)
+                    Text("Type or use keyboard dictation to discuss this passage.")
+                        .font(.caption).foregroundStyle(Theme.paper.opacity(0.7))
+                }.foregroundStyle(Theme.paper).padding(.horizontal, 4)
+            }
             if store.answeringAskID != nil {
                 HStack(spacing: 7) {
                     InkChevron(pointing: .right, size: 10,
@@ -185,7 +209,7 @@ struct TalkView: View {
                 .frame(width: 44, height: 44)
             }
             .accessibilityLabel(speech.isRecording ? "Finish recording and transcribe on Mac" : "Record voice for Mac transcription")
-            .disabled(speech.isFinishing)
+            .disabled(speech.isFinishing || store.collaboration.dialogueContext != nil)
 
             Button {
                 // Typed chat remains independent. A recording can never fall through this path.

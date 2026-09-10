@@ -65,6 +65,7 @@ protocol AliciaService {
     func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult?
     func downloadVoice(recordingID: String, segmentID: String) async -> Data?
     func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent>
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?) -> AsyncStream<ChatEvent>
     func contextEnrichment(replyID: String) async -> ContextEnrichment?
     func changeContext(_ change: ContextChange) async -> ContextChangeResult?
     func contextSource(replyID: String, itemID: String) async -> ContextSource?
@@ -206,6 +207,22 @@ extension AliciaService {
     func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent> {
         stream(prompt, voice: voice)
     }
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?) -> AsyncStream<ChatEvent> {
+        guard let workContext else { return stream(prompt, voice: voice, recordingID: recordingID) }
+        return AsyncStream { continuation in
+            #if DEBUG
+            if self is MockAliciaService {
+                continuation.yield(.token("Preview · We are discussing \(workContext.sectionTitle) for \(workContext.goalTitle). No live message was sent."))
+            } else {
+                continuation.yield(.token("This service cannot carry the selected passage. Your goal context has been kept; reconnect before sending."))
+            }
+            #else
+            continuation.yield(.token("This service cannot carry the selected passage. Reconnect before sending."))
+            #endif
+            continuation.yield(.done(messageID: nil)); continuation.finish()
+        }
+    }
+
 }
 
 struct TimelineDay: Decodable, Hashable, Identifiable {
@@ -352,6 +369,12 @@ struct MockAliciaService: AliciaService {
     func reflections() async -> [Reflection]? { SampleData.reflections }
     func thoughts() async -> [Thought]? { SampleData.thoughts }
     func tracks() async -> [Track]? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--work-review-preview") {
+            return [Track(title: "Preview · Sculpture and subtraction", mood: "Consider", duration: 300,
+                symbol: "", season: 15, episode: 3, label: "S15E03", collection: "S15", collectionTitle: "Season 15")]
+        }
+#endif
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
             return [Track(title: "Preview · Endings Chosen", mood: "Fixture", duration: 1300, symbol: "", season: 15, episode: 7, label: "S15E07", collection: "S15", collectionTitle: "Preview episodes"),
