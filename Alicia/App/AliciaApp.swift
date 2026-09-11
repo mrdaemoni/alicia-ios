@@ -41,7 +41,10 @@ struct AliciaApp: App {
         WindowGroup {
             Group {
 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") {
+                if ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") && ProcessInfo.processInfo.arguments.contains("--reading-bar-preview") {
+                    VStack { Spacer(); ReadingBar() }.background(Theme.paper)
+                        .task { store.reader.prepareReadingPreview() }
+                } else if ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") {
                     ImmersiveReadingView(previewReduceMotion: ProcessInfo.processInfo.arguments.contains("--reading-reduce-motion"))
                         .task {
                         store.reader.prepareReadingPreview(unavailable: ProcessInfo.processInfo.arguments.contains("--reading-unavailable"))

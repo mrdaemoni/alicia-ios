@@ -6,7 +6,7 @@ yields to a manual drag. The Follow voice control restores following. Reduce
 Motion uses immediate positioning. This ports interaction behavior; it does not
 embed the website or introduce a third-party runtime.
 
-Listen opens this reader. The global reading bar's title reopens it later.
+Listen opens this reader. The global reading bar's quiet **Read along** affordance reopens it later.
 Original podcasts and prepared morning briefings keep their original recordings.
 Dialogue voice replies use the same reader. Together's review actions now ask for
 natural server narration; no AVSpeechSynthesizer or device voice remains.

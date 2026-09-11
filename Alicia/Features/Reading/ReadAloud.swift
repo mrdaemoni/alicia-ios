@@ -210,10 +210,15 @@ struct ReadingBar: View {
                                 .tracking(1.5)
                                 .foregroundStyle(Theme.paper.opacity(0.6))
                         }
+                        Text("READ ALONG")
+                            .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                            .tracking(1.2).underline().foregroundStyle(Theme.paper.opacity(0.85))
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { showReader = true }
+                    .accessibilityElement(children: .combine)
                     .accessibilityAddTraits(.isButton)
+                    .accessibilityIdentifier("reading.open")
                     .accessibilityHint("Open immersive reading")
                     Spacer(minLength: 4)
                     Button { reader.cycleRate() } label: {
