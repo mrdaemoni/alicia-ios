@@ -40,7 +40,44 @@ ET.SubElement(entry,'BuildableReference',refattrs)
 test=ET.SubElement(tree.find('.//Testables'),'TestableReference',dict(skipped='NO'));ET.SubElement(test,'BuildableReference',refattrs)
 tree.write(scheme,encoding='utf-8',xml_declaration=True)
 (work/'ContextUITests').mkdir()
-(work/'ContextUITests/ContextUITests.swift').write_text('import XCTest\nfinal class ReadingUITests: XCTestCase {\n func launch(_ extra:[String]=[]) -> XCUIApplication {\n  continueAfterFailure=false\n  let app=XCUIApplication();app.launchArguments=["--immersive-reading-preview"]+extra;app.launch()\n  XCTAssertTrue(app.buttons["reading.play"].waitForExistence(timeout:15));return app\n }\n func capture(_ name:String,_ app:XCUIApplication) {let shot=XCTAttachment(screenshot:app.screenshot());shot.name=name;shot.lifetime = .keepAlways;add(shot)}\n func testGlobalReadAlongAffordance() {\n  continueAfterFailure=false\n  let app=XCUIApplication();app.launchArguments=["--immersive-reading-preview","--reading-bar-preview"];app.launch()\n  let open=app.buttons["reading.open"];XCTAssertTrue(open.waitForExistence(timeout:15));XCTAssertTrue(open.label.contains("READ ALONG"))\n  capture("global-read-along",app);open.tap()\n  XCTAssertTrue(app.buttons["reading.play"].waitForExistence(timeout:10))\n  XCTAssertEqual(app.buttons["reading.play"].label,"Listen")\n }\n func testMeasuredReadingAndManualScroll() {\n  let app=launch();XCTAssertEqual(app.buttons["reading.play"].label,"Listen")\n  XCTAssertTrue(app.staticTexts["Tap a word to listen from there."].exists)\n  capture("measured-reading",app)\n  app.swipeUp();XCTAssertTrue(app.buttons["Follow voice"].exists)\n  app.buttons["Follow voice"].tap();XCTAssertTrue(app.buttons["Following"].exists)\n  capture("reading-end",app)\n }\n func testUnavailableVoiceIsNotSpeaking() {\n  let app=launch(["--reading-unavailable"])\n  XCTAssertTrue(app.staticTexts["reading.failure"].exists)\n  XCTAssertEqual(app.buttons["reading.play"].label,"Retry voice")\n  capture("unavailable-natural-voice",app)\n }\n func testReduceMotionReading() {\n  let app=launch(["--reading-reduce-motion"])\n  XCTAssertTrue(app.buttons["Following"].exists)\n  capture("reading-reduce-motion",app)\n }\n}\n')
+(work/'ContextUITests/ContextUITests.swift').write_text(r'''
+import XCTest
+final class ReadingUITests: XCTestCase {
+ func launch(_ extra:[String]=[]) -> XCUIApplication {
+  continueAfterFailure=false
+  let app=XCUIApplication();app.launchArguments=["--immersive-reading-preview"]+extra;app.launch()
+  XCTAssertTrue(app.buttons["reading.play"].waitForExistence(timeout:15));return app
+ }
+ func capture(_ name:String,_ app:XCUIApplication) {let shot=XCTAttachment(screenshot:app.screenshot());shot.name=name;shot.lifetime = .keepAlways;add(shot)}
+ func testGlobalReadAlongAffordance() {
+  continueAfterFailure=false
+  let app=XCUIApplication();app.launchArguments=["--immersive-reading-preview","--reading-bar-preview"];app.launch()
+  let open=app.buttons["reading.open"];XCTAssertTrue(open.waitForExistence(timeout:15));XCTAssertTrue(open.label.contains("READ ALONG"))
+  capture("global-read-along",app);open.tap()
+  XCTAssertTrue(app.buttons["reading.play"].waitForExistence(timeout:10))
+  XCTAssertEqual(app.buttons["reading.play"].label,"Listen")
+ }
+ func testMeasuredReadingAndManualScroll() {
+  let app=launch();XCTAssertEqual(app.buttons["reading.play"].label,"Listen")
+  XCTAssertTrue(app.staticTexts["Tap a word to listen from there."].exists)
+  capture("measured-reading",app)
+  app.swipeUp();XCTAssertTrue(app.buttons["Follow voice"].exists)
+  app.buttons["Follow voice"].tap();XCTAssertTrue(app.buttons["Following"].exists)
+  capture("reading-end",app)
+ }
+ func testUnavailableVoiceIsNotSpeaking() {
+  let app=launch(["--reading-unavailable"])
+  XCTAssertTrue(app.staticTexts["reading.failure"].exists)
+  XCTAssertEqual(app.buttons["reading.play"].label,"Retry voice")
+  capture("unavailable-natural-voice",app)
+ }
+ func testReduceMotionReading() {
+  let app=launch(["--reading-reduce-motion"])
+  XCTAssertTrue(app.buttons["Following"].exists)
+  capture("reading-reduce-motion",app)
+ }
+}
+''')
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
 result=pathlib.Path(os.environ.get('ALICIA_TEST_EVIDENCE_DIR',str(work)))/('reading-ui-'+work.name+'.xcresult')
 subprocess.run(['xcodebuild','-project',str(project),'-scheme','Alicia','-destination','platform=iOS Simulator,name=iPhone 17','-derivedDataPath',str(work/'DerivedData'),'-resultBundlePath',str(result),'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','test'],env=env,check=True)
