@@ -203,7 +203,7 @@ struct CollaborationView: View {
                             Text("This passage is unavailable in the current work. Return to Together to refresh the goal. Your conversation still refers to the original below.")
                             if let original = target.originalQuote {
                                 Text(original).textSelection(.enabled)
-                                LocalReviewButton(title: "The original passage", text: original)
+                                NaturalReviewButton(title: "The original passage", text: original)
                             }
                         }.padding(22)
                     }.background(Theme.paper).navigationTitle("Original context")
@@ -259,7 +259,7 @@ private struct CollaborationConnectionView: View {
 
                     Text(connection.claim.strippedEmojis).font(.title3)
                     Text(connection.why_now.strippedEmojis)
-                    LocalReviewButton(title: connection.title, text: connection.claim + "\n" + connection.why_now)
+                    NaturalReviewButton(title: connection.title, text: connection.claim + "\n" + connection.why_now)
                     if !connection.question.isEmpty { Text(connection.question.strippedEmojis).font(.title3).italic() }
                     DisclosureGroup("Evidence and your words") {
                         VStack(alignment: .leading, spacing: 18) {
@@ -297,7 +297,7 @@ private struct CollaborationAgreementView: View {
                     Text("Return when: " + agreement.review_condition)
                     if let time = agreement.review_at { Text(time).font(.caption) }
                     if !agreement.outcome.isEmpty { Text("Your reported outcome").font(.headline); Text(agreement.outcome) }
-                    LocalReviewButton(title: "Our agreement", text: agreement.action + "\n" + agreement.review_condition)
+                    NaturalReviewButton(title: "Our agreement", text: agreement.action + "\n" + agreement.review_condition)
                     NavigationLink("Update outcome or change course") { CollaborationEditor(kind: .agreement(agreement)) }
                         .accessibilityIdentifier("collaboration.outcomeEditor")
                     ForEach(store.collaboration.state?.results.filter { $0.agreement_id == id } ?? []) { result in
@@ -325,7 +325,7 @@ struct CollaborationEvidenceView: View {
                 Text(evidence.title).font(.title2)
                 Text(evidence.kind.replacingOccurrences(of: "_", with: " ") + " · " + evidence.relation).font(.caption)
                 Text(evidence.excerpt).textSelection(.enabled)
-                LocalReviewButton(title: evidence.title, text: evidence.excerpt)
+                NaturalReviewButton(title: evidence.title, text: evidence.excerpt)
                 Text(evidence.path).font(.caption).textSelection(.enabled)
                 if evidence.line_start > 0 { Text("Captured lines \(evidence.line_start)–\(evidence.line_end)").font(.caption) }
                 if !evidence.episode_id.isEmpty { Text(evidence.episode_id).font(.caption) }
@@ -348,7 +348,7 @@ struct CollaborationEvidenceView: View {
                         }
                     }
                 }
-                if let source { Text(source.notice).font(.caption); Text(source.text).textSelection(.enabled); LocalReviewButton(title: source.title, text: source.text) }
+                if let source { Text(source.notice).font(.caption); Text(source.text).textSelection(.enabled); NaturalReviewButton(title: source.title, text: source.text) }
                 if !error.isEmpty { Text(error).font(.caption) }
             }.padding(22)
         }.background(Theme.paper).navigationTitle("Evidence").buttonStyle(CollaborationButtonStyle())
@@ -469,23 +469,15 @@ private struct CollaborationEditor: View {
     }
 }
 
-struct LocalReviewButton: View {
+struct NaturalReviewButton: View {
     @Environment(AppStore.self) private var store
     let title, text: String
     private var item: Readable { Readable(title: title, body: text, kind: "collaboration_review") }
-    private var isCurrent: Bool { store.reader.current == item && store.reader.voice == .device }
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button(isCurrent ? store.reader.isSpeaking ? "Pause reading · device voice" : "Resume reading · device voice" : "Read aloud · device voice") {
-                if !isCurrent { store.prepareForRecording() }
-                store.reader.readLocally(item)
-            }
-            if store.reader.current?.kind == "collaboration_review" {
-                Button("Stop reading") { store.reader.stop() }
-            }
-        }.font(.callout)
+        ListenLine(item: item, label: "READ ALOUD")
     }
 }
+
 struct CollaborationSaveStatus: View {
     @Environment(AppStore.self) private var store
     var body: some View {

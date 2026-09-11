@@ -35,7 +35,7 @@ Evidence opens captured passages, source identity and line references, with a
 separate current-file read. Voice references open the existing original-recording
 review, not a generated recreation. Time, entry point and acoustic/context
 observations do not establish Hector's feelings; he can add explicit current
-context. Local read-aloud is labelled device voice and does not render a new
+context. Natural read-aloud uses the shared immersive reader and may prepare a new
 cloud audio file. Existing Dialogue provider comparisons and training consent
 remain unchanged.
 

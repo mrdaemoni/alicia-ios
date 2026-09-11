@@ -39,6 +39,7 @@ struct ListenLine: View {
     var label: String = "LISTEN"
     var tint: Color = Theme.accent
 
+    @State private var showReader = false
     private var isCurrent: Bool { store.reader.current?.id == item.id }
     private var isReading: Bool { isCurrent && store.reader.isSpeaking }
     private var isPreparing: Bool { isCurrent && store.reader.isPreparing }
@@ -47,7 +48,8 @@ struct ListenLine: View {
     /// pre-rendered, so the word has to admit that rather than sit there
     /// looking like a tap that missed.
     private var word: String {
-        if isPreparing { return "WARMING UP" }
+        if isCurrent && store.reader.failure != nil { return "RETRY VOICE" }
+        if isPreparing { return "PREPARING" }
         if isReading { return "READING" }
         if isCurrent { return "PAUSED" }
         return label
@@ -56,6 +58,7 @@ struct ListenLine: View {
     var body: some View {
         Button {
             store.readAloud(item)
+            showReader = true
         } label: {
             HStack(spacing: 6) {
                 if isReading {
@@ -76,6 +79,7 @@ struct ListenLine: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isReading ? "Pause reading" : "Read this to me")
+        .sheet(isPresented: $showReader) { ImmersiveReadingView() }
     }
 }
 
@@ -161,23 +165,23 @@ struct HeldSynthesisCard: View {
 /// player in: one slab, one edge, no floating card.
 struct ReadingBar: View {
     @Environment(AppStore.self) private var store
+    @State private var showReader = false
 
     private var rateLabel: String {
         store.reader.rate == 1.0 ? "1×" :
         store.reader.rate == 1.5 ? "1.5×" : "2×"
     }
 
-    /// What she's doing, said plainly. The stand-in is never dressed up as
-    /// her — if you're hearing the phone, the bar tells you so.
+    /// Preparation and failures stay visible even within a playlist.
     private var status: String {
         let reader = store.reader
+        if reader.failure != nil { return "VOICE UNAVAILABLE · RETRY" }
         // In a queue, where-am-I matters more than which-engine — that's the
         // line he reads at a red light.
         if let name = reader.playlistName, reader.queueItems.count > 1 {
             let place = "\(name.uppercased()) · \(reader.queuePosition + 1)/\(reader.queueItems.count)"
             return reader.isPreparing ? place + " · WARMING UP" : place
         }
-        if reader.voice == .device { return "STAND-IN VOICE · SHE'S OFFLINE" }
         if reader.isPreparing { return "HER VOICE · WARMING UP" }
         if reader.isStreaming { return "HER VOICE · STILL ARRIVING" }
         return "HER VOICE"
@@ -207,6 +211,10 @@ struct ReadingBar: View {
                                 .foregroundStyle(Theme.paper.opacity(0.6))
                         }
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { showReader = true }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint("Open immersive reading")
                     Spacer(minLength: 4)
                     Button { reader.cycleRate() } label: {
                         Text(rateLabel)
@@ -275,6 +283,7 @@ struct ReadingBar: View {
                     Theme.paper.opacity(0.13).frame(height: 0.7)
                 }
             }
+            .sheet(isPresented: $showReader) { ImmersiveReadingView() }
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }

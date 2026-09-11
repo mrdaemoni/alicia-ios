@@ -111,7 +111,8 @@ __WALK__
 '''.replace('__CHOICE__',choice).replace('__WALK__',walk).replace('__FLUSH__',flush)
 with tempfile.TemporaryDirectory(prefix='alicia-episode-checks-') as tmp:
     code=Path(tmp)/'Checks.swift';binary=Path(tmp)/'checks'
-    code.write_text(models+program)
+    receipt = (root/'Alicia/Core/EpisodeContinuation.swift').read_text().split('/// Continuation')[0]
+    code.write_text(receipt+models+program)
     env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
     subprocess.run(['xcrun','swiftc','-parse-as-library',str(code),'-o',str(binary)],env=env,check=True)
     subprocess.run([str(binary)],check=True)

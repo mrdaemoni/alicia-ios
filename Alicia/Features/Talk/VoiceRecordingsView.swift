@@ -154,6 +154,7 @@ private struct VoiceRecordingDetail: View {
                     .font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
 
                     VoiceProcessingView(id: id).id(id)
+                    if !record.deleted { VoiceEnrichmentView(recordingID: id) }
                     DisclosureGroup("Original on-device transcript") {
                         let original = record.orderedTranscripts.filter { $0.kind == "on_device" }
                         if original.isEmpty { Text("No live transcript was captured. The recording is the source.") }

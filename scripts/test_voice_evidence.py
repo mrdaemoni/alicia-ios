@@ -34,6 +34,7 @@ ET.SubElement(entry,'BuildableReference',attrs)
 test=ET.SubElement(tree.find('.//Testables'),'TestableReference',dict(skipped='NO'));ET.SubElement(test,'BuildableReference',attrs)
 tree.write(scheme,encoding='utf-8',xml_declaration=True)
 folder=work/'VoiceEvidenceTests';folder.mkdir()
+(folder/'VoiceEnrichment.swift').symlink_to(root/'Alicia/Core/VoiceEnrichment.swift')
 (folder/'VoiceEvidence.swift').symlink_to(root/'Alicia/Core/VoiceEvidence.swift')
 (folder/'VoiceProcessing.swift').symlink_to(root/'Alicia/Core/VoiceProcessing.swift')
 # Exercise the actual shared history mapper, with inert dependencies instead of AppStore.init/load.
@@ -125,6 +126,19 @@ final class VoiceEvidenceTests:XCTestCase {
   let f=FakeService();f.payload=VoiceEvidencePayload(recordings:[remote])
   await a.sync(using:f);await a.advanceProcessing(using:f)
   return f
+ }
+ @MainActor func testLegacyVoiceRecordWithoutEnrichmentDecodes() throws {
+  let a=archive(),id=UUID().uuidString
+  _ = try macCapture(a,id:id)
+  let original = a.recording(id)!
+  let data = try JSONEncoder().encode(original)
+  var object = try JSONSerialization.jsonObject(with:data) as! [String:Any]
+  object.removeValue(forKey:"enrichment")
+  let restored = try JSONDecoder().decode(VoiceRecording.self,from:JSONSerialization.data(withJSONObject:object))
+  XCTAssertNil(restored.enrichment)
+  XCTAssertEqual(restored.id,id)
+  XCTAssertEqual(restored.segments.count,original.segments.count)
+  XCTAssertTrue(restored.transcripts.isEmpty)
  }
  @MainActor func testMacPauseDoesNotSealAndCompleteOrderedManifestSurvivesRestart()throws {
   let a=archive(),id=UUID().uuidString

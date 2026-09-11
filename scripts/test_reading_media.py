@@ -21,7 +21,7 @@ def method(name):
 methods = '\n'.join(method(name) for name in [
     'func toggle()', 'private func locate(', 'private func rebuildQueue(',
     'private func updateMediaState(', 'private func mediaDidFail(',
-    'private func retryMedia()', 'private func extend('])
+    'private func retryMedia()', 'private func extend(', 'func seekToNarration('])
 
 # Keep the fake IO separate; only the production methods above decide state.
 harness = r'''
@@ -72,6 +72,8 @@ final class Synth {
     var indexOfItem: [ObjectIdentifier: Int] = [:]
     var pollTask: Task<Void, Never>?
     var requested: [String] = []
+    var seekFractions: [Double] = []
+    func seek(to fraction: Double) { seekFractions.append(fraction) }
     var episodeStopped: ((Bool) -> Void)?
     var appendShouldFail = false
     func activateAudioSession() {}
@@ -97,6 +99,16 @@ final class Synth {
  @MainActor static func main() {
     var count = 0
     func check(_ ok: Bool, _ message: String) { precondition(ok, message); count += 1 }
+    let seek = Probe()
+    seek.seekToNarration(seconds: 12)
+    check(seek.seekFractions == [0.4], "Measured word seeks across chunk boundaries")
+    seek.seekToNarration(seconds: 90)
+    check(seek.seekFractions.last == 1, "Seek clamps to rendered audio")
+    seek.seekToNarration(seconds: -2)
+    check(seek.seekFractions.last == 0, "Negative seek lands at the beginning")
+    let beforeInvalid = seek.seekFractions.count
+    seek.seekToNarration(seconds: .nan)
+    check(seek.seekFractions.count == beforeInvalid, "Non-finite timestamps do not reach the player")
     let startup = Probe()
     startup.updateMediaState(generation: 1)
     check(startup.isSpeaking && startup.isLoadingMedia, "Startup intent remains loading before the first player callback")
@@ -141,9 +153,13 @@ final class Synth {
     var stopped: [Bool] = []; episode.episodeStopped = { stopped.append($0) }
     episode.mediaDidFail(generation: 1); episode.mediaDidFail(generation: 1)
     check(stopped == [false], "Episode failure closes observation once, never claims completion")
-    let device = Probe(); device.voice = .device; device.queue.status = .failed
-    device.updateMediaState(generation: 1)
-    check(device.isSpeaking && device.failure == nil, "Inactive media observations cannot interrupt the device voice")
+    let unavailable = Probe(); unavailable.failure = "Offline"; unavailable.isSpeaking = false
+    unavailable.toggle()
+    check(unavailable.requested == ["morning:fixture"] && unavailable.isPreparing && !unavailable.isSpeaking,
+          "Unavailable narration retries the server without fabricating playback")
+    let preparing = Probe(); preparing.chunks = []; preparing.isSpeaking = false; preparing.isPreparing = true
+    preparing.toggle()
+    check(!preparing.isSpeaking && preparing.queue.playCount == 0, "Preparing cannot pretend audio is playing")
     let stale = Probe(); stale.queue.status = .failed; stale.updateMediaState(generation: 0)
     check(stale.isSpeaking && stale.failure == nil, "Previous-generation status callbacks are ignored")
 

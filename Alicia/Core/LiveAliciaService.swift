@@ -518,7 +518,7 @@ struct LiveAliciaService: AliciaService {
         (await fetch("/api/syntheses", as: [SynthesisDTO].self) ?? []).map {
             FeaturedSynthesis(title: $0.title, excerpt: $0.excerpt,
                               body: $0.body, date: $0.date,
-                              speechChunks: speechChunks($0.speech?.chunks),
+                              speechChunks: speechChunks($0.speech?.chunks, spokenText: $0.speech?.spoken_text, timingStatus: $0.speech?.timing_status),
                               speechDuration: $0.speech?.duration ?? 0)
         }
     }
@@ -687,9 +687,15 @@ struct LiveAliciaService: AliciaService {
     private struct ChunkDTO: Decodable {
         var url: String?
         var duration: Double?
+        var text: String?
+        var cues: [NarrationCue]?
+        var timing_status: String?
+        var speech_backend: String?
     }
 
     private struct SpeechDTO: Decodable {
+        var spoken_text: String?
+        var timing_status: String?
         var chunks: [ChunkDTO]?
         var duration: Double?
     }
@@ -703,7 +709,7 @@ struct LiveAliciaService: AliciaService {
         guard let f: FeaturedDTO = await fetchOne("/api/featured") else { return nil }
         return FeaturedSynthesis(title: f.title, excerpt: f.excerpt,
                                  body: f.body, date: f.date,
-                                 speechChunks: speechChunks(f.speech?.chunks),
+                                 speechChunks: speechChunks(f.speech?.chunks, spokenText: f.speech?.spoken_text, timingStatus: f.speech?.timing_status),
                                  speechDuration: f.speech?.duration ?? 0)
     }
 
@@ -712,6 +718,12 @@ struct LiveAliciaService: AliciaService {
     func morningBriefing() async -> MorningBriefing? {
         guard var briefing: MorningBriefing = await fetchOne("/api/morning_briefing") else { return nil }
         if !briefing.audio_url.isEmpty { briefing.audio_url = mediaURL(briefing.audio_url)?.absoluteString ?? "" }
+        briefing.speechChunks = (briefing.speech?.chunks ?? []).compactMap { chunk in
+            guard let url = mediaURL(chunk.url) else { return nil }
+            return SpeechChunk(url: url, duration: chunk.duration ?? 0, text: chunk.text ?? "",
+                cues: chunk.cues ?? [], timingStatus: chunk.timing_status ?? briefing.speech?.timing_status ?? "unavailable",
+                spokenText: briefing.speech?.spoken_text ?? "", speechBackend: chunk.speech_backend ?? briefing.speech?.speech_backend ?? "")
+        }
         return briefing
     }
 
@@ -739,7 +751,7 @@ struct LiveAliciaService: AliciaService {
                               body: i.body ?? "",
                               source: i.source ?? "",
                               duration: i.duration ?? 0,
-                              speechChunks: speechChunks(i.speech?.chunks))
+                              speechChunks: speechChunks(i.speech?.chunks, spokenText: i.speech?.spoken_text, timingStatus: i.speech?.timing_status))
             },
             duration: dto.duration ?? 0,
             ready: dto.ready ?? 0)
@@ -779,15 +791,19 @@ struct LiveAliciaService: AliciaService {
     // MARK: read aloud
 
     private struct SpeakDTO: Decodable {
+        var spoken_text: String?
+        var timing_status: String?
+        var speech_backend: String?
         var status: String
         var chunks: [ChunkDTO]?
         var duration: Double?
     }
 
-    private func speechChunks(_ dtos: [ChunkDTO]?) -> [SpeechChunk] {
+    private func speechChunks(_ dtos: [ChunkDTO]?, spokenText: String? = nil, timingStatus: String? = nil) -> [SpeechChunk] {
         (dtos ?? []).compactMap { c in
             guard let url = mediaURL(c.url ?? "") else { return nil }
-            return SpeechChunk(url: url, duration: c.duration ?? 0)
+            return SpeechChunk(url: url, duration: c.duration ?? 0, text: c.text ?? "",
+                cues: c.cues ?? [], timingStatus: c.timing_status ?? timingStatus ?? "unavailable", spokenText: spokenText ?? "", speechBackend: c.speech_backend ?? "")
         }
     }
 
@@ -845,6 +861,8 @@ struct LiveAliciaService: AliciaService {
     /// reflections list down with it — one missing reading must not cost the
     /// journal.
     private struct ReflectionSpeechDTO: Decodable {
+        var spoken_text: String?
+        var timing_status: String?
         var status: String?; var chunks: [ChunkDTO]?; var duration: Double?
     }
     private struct ReflectionDTO: Decodable {
@@ -863,7 +881,7 @@ struct LiveAliciaService: AliciaService {
             // present is playable start to finish; a tap falls back to
             // /api/speak when it is not.
             if let sp = r.speech, sp.status == "ready" {
-                let chunks = speechChunks(sp.chunks)
+                let chunks = speechChunks(sp.chunks, spokenText: sp.spoken_text, timingStatus: sp.timing_status)
                 if !chunks.isEmpty {
                     status = .ready(chunks: chunks, duration: sp.duration ?? 0)
                 }
@@ -877,14 +895,20 @@ struct LiveAliciaService: AliciaService {
     func requestSpeech(text: String, kind: String) async -> SpeechStatus {
         do {
             let body = try JSONSerialization.data(
-                withJSONObject: ["text": text, "kind": kind])
+                withJSONObject: ["text": text, "kind": kind, "required_backend": "gemini"])
             let (data, resp) = try await URLSession.shared.data(
                 for: request("/api/speak", method: "POST", body: body))
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
                 return .unavailable
             }
             let dto = try JSONDecoder().decode(SpeakDTO.self, from: data)
-            let chunks = speechChunks(dto.chunks)
+            let chunks = speechChunks(dto.chunks).map { chunk in
+                var copy = chunk
+                copy.spokenText = dto.spoken_text ?? ""
+                if copy.timingStatus == "unavailable" { copy.timingStatus = dto.timing_status ?? "unavailable" }
+                if copy.speechBackend.isEmpty { copy.speechBackend = dto.speech_backend ?? "" }
+                return copy
+            }
             switch dto.status {
             case "ready":
                 guard !chunks.isEmpty else { return .failed }
@@ -902,6 +926,27 @@ struct LiveAliciaService: AliciaService {
         } catch {
             return .unavailable
         }
+    }
+
+    func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus {
+        do {
+            let body = prepare ? try JSONSerialization.data(withJSONObject: ["episode_id": episodeID]) : nil
+            let escaped = episodeID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let path = prepare ? "/api/episode_reading" : "/api/episode_reading?episode_id=" + escaped
+            let (data, response) = try await URLSession.shared.data(for: request(path, method: prepare ? "POST" : "GET", body: body))
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return .unavailable }
+            let dto = try JSONDecoder().decode(SpeakDTO.self, from: data)
+            if dto.status == "rendering" || dto.status == "pending" { return .rendering }
+            guard dto.status == "ready", let text = dto.spoken_text, !text.isEmpty else { return .failed }
+            let chunks = speechChunks(dto.chunks).map { chunk in
+                var copy = chunk; copy.spokenText = text
+                copy.timingStatus = dto.timing_status ?? copy.timingStatus
+                copy.speechBackend = dto.speech_backend ?? "prerecorded"
+                return copy
+            }
+            guard !chunks.isEmpty else { return .failed }
+            return .ready(chunks: chunks, duration: dto.duration ?? 0)
+        } catch { return .unavailable }
     }
 
     private struct GreetingDTO: Decodable { var greeting: String }

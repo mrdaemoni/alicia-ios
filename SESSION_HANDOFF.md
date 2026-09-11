@@ -1,3 +1,12 @@
+## A2-037 — natural immersive reading and voice interpretation review
+
+Current branch adds [IMMERSIVE_READING.md](docs/IMMERSIVE_READING.md): shared
+natural narration with exact text and measured cues, an honest unavailable/retry
+state, next episode from observed playback in Us/Studio, and A2-036's reviewable
+voice findings. Device read-aloud is removed. Podcast read-along uses a labelled
+machine transcript from the original audio, never shownotes as a script. Backend
+A2-036/A2-038 deploy first; task RELEASE.md owns actual shipping status.
+
 ## September 10 — A2-033 shared work review (implementation)
 
 Current task: `/Users/alicia/Documents/Alicia-development/tasks/A2-033/` and paired backend A2-032. Read `docs/WORK_REVIEW.md`. Goal tabs and honest review/outcome progress, exact section feedback and inline answer/edit drafts, top connection actions, explicit Dialogue passage context, and Studio/goal links share the existing collaboration transport. Base is latest released207279e/TestFlight15; this entry alone is not release evidence. Preserve original generated text and Hector's distinct words, immutable offline saves, and explicit outcome authority. Release status and Apple receipts belong in the shared task RELEASE.md after verification.

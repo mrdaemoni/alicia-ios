@@ -32,8 +32,7 @@ final class AppStore {
     /// words, and it must never reach the real home-screen widget.
     let isMock: Bool
 
-    /// Reads any page aloud (device voice instantly, her voice when the
-    /// backend has rendered it). Shares the audio session with the podcast
+    /// Reads any page in her prepared natural voice. Shares the audio session with the podcast
     /// player, so the two hand off rather than talk over each other.
     let reader = SpeechReader()
     let collaboration: CollaborationStore
@@ -117,6 +116,21 @@ final class AppStore {
         reader.read(item)
     }
 
+    /// Preparing text does not pause the episode or count as listening.
+    func prepareEpisodeReading(_ track: Track, prepare: Bool) async -> SpeechStatus {
+        guard let label = track.label else { return .unavailable }
+        return await service.episodeReading(episodeID: label, prepare: prepare)
+    }
+    func readAlongWithEpisode(_ track: Track, chunks: [SpeechChunk], duration: Double) {
+        let position = nowPlaying?.label == track.label ? progress * track.duration : 0
+        let text = chunks.first?.spokenText ?? ""
+        guard !text.isEmpty else { return }
+        readAloud(Readable(title: track.title, body: text, kind: "episode", speechChunks: chunks,
+            speechDuration: duration, episodeID: track.label, stableID: "episode-reading:" + (track.label ?? track.title),
+            textSource: "machine_audio_transcript"))
+        if position > 0 { reader.seekToNarration(seconds: position) }
+    }
+
     // MARK: the episode and the day
     var episodeDay: EpisodeDay?
     var episodeError = ""
@@ -137,6 +151,14 @@ final class AppStore {
     }
     var isSavingWalk = false
     private var framePoll: Task<Void, Never>?
+    private var lastObservedPlayback: EpisodePlaybackReceipt? = {
+        guard let data = UserDefaults.standard.data(forKey: "alicia.lastObservedPlayback") else { return nil }
+        return try? JSONDecoder().decode(EpisodePlaybackReceipt.self, from: data)
+    }()
+    var nextEpisodeTrack: Track? {
+        guard let latest = EpisodeContinuation.latest(local: lastObservedPlayback, server: episodeDay?.latest_playback) else { return nil }
+        return EpisodeContinuation.next(after: latest.episode_id, tracks: tracks)
+    }
     private var playbackLabel = ""
     private var playbackPosition: Double = 0
     private var playbackClock: TimeInterval = 0
@@ -406,6 +428,9 @@ final class AppStore {
             canReadVoiceReply: savedVoice != nil,
             workContext: collaboration.dialogueContext(for: replyID))
     }
+    func voiceEnrichmentFeedback(_ feedback: VoiceEnrichmentFeedback) async -> VoiceEvidenceResult? {
+        await service.voiceAction(feedback.body)
+    }
     func voiceDetail(_ id: String) async -> VoiceEvidencePayload? { await service.voiceRecordings(recordingID: id) }
     func playOriginalVoice(_ id: String) async -> [URL] {
         prepareForRecording()
@@ -520,6 +545,13 @@ final class AppStore {
         playbackPosition = position
         if elapsed > 0, elapsed < 3, advanced > 0, advanced <= elapsed * max(1, rate) + 1 {
             playbackAccumulated += elapsed
+            if lastObservedPlayback?.episode_id != label || Date.now.timeIntervalSince(lastObservedPlayback?.date ?? .distantPast) >= 15 {
+                let receipt = EpisodePlaybackReceipt(episode_id: label, observed_at: ISO8601DateFormatter().string(from: .now))
+                lastObservedPlayback = receipt
+                if let data = try? JSONEncoder().encode(receipt) {
+                    UserDefaults.standard.set(data, forKey: "alicia.lastObservedPlayback")
+                }
+            }
         }
         if playbackAccumulated >= 15 {
             enqueuePlayback("progress", label: label, position: position,
@@ -609,7 +641,7 @@ final class AppStore {
     func toggleMorningBriefing(_ briefing: MorningBriefing) {
         guard briefing.hasPlayableAudio, let url = URL(string: briefing.audio_url) else { return }
         readAloud(Readable(title: briefing.title, body: briefing.text, kind: "note",
-            speechChunks: [SpeechChunk(url: url, duration: briefing.duration)],
+            speechChunks: briefing.speechChunks.isEmpty ? [SpeechChunk(url: url, duration: briefing.duration)] : briefing.speechChunks,
             speechDuration: briefing.duration, stableID: "morning:" + briefing.id))
     }
 
