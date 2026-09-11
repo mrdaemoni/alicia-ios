@@ -1232,13 +1232,13 @@ final class AppStore {
 
     func play(_ track: Track, chooseTopic: Bool = true) {
         if chooseTopic { chooseEpisode(track) }
-        // An episode starting ends a reading outright — unlike the reverse,
-        // there's no position worth keeping once you've chosen the podcast.
-        reader.stop()
+        let readingPosition = takePlaybackFromReader(for: track)
         // Re-tapping the current track (e.g. opening its detail page)
         // must not restart it from zero.
-        if nowPlaying?.id == track.id, player != nil {
-            if !isPlaying { isPlaying = true; player?.play() }
+        if (nowPlaying?.id == track.id || (track.label != nil && nowPlaying?.label == track.label)), player != nil {
+            if let readingPosition { seekStudio(to: readingPosition, track: track) }
+            if !isPlaying { isPlaying = true; player?.play(); player?.rate = playbackRate }
+            publishNowPlaying()
             return
         }
         flushEpisodePlayback()
@@ -1246,16 +1246,32 @@ final class AppStore {
         nowPlaying = track
         isPlaying = true
         if let f = track.fileName, f.hasPrefix("http"), let url = URL(string: f) {
-            startPlayer(url: url)
+            startPlayer(url: url, at: readingPosition ?? 0)
         } else {
             stopPlayer()
             startTicker()
         }
     }
 
+    private func takePlaybackFromReader(for track: Track) -> Double? {
+        guard reader.isActive else { return nil }
+        let sameEpisode = track.label != nil && reader.current?.episodeID == track.label
+        let position = sameEpisode && reader.elapsed.isFinite ? reader.elapsed : nil
+        reader.stop()
+        return position
+    }
+
+    private func seekStudio(to seconds: Double, track: Track) {
+        guard track.duration > 0, seconds.isFinite else { return }
+        let target = max(0, min(seconds, track.duration))
+        progress = target / track.duration
+        player?.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+    }
+
     func togglePlay() {
-        guard nowPlaying != nil else { return }
-        if !isPlaying, let track = nowPlaying { chooseEpisode(track) }
+        guard let track = nowPlaying else { return }
+        if let readingPosition = takePlaybackFromReader(for: track) { seekStudio(to: readingPosition, track: track) }
+        if !isPlaying { chooseEpisode(track) }
         if isPlaying { flushEpisodePlayback() }
         isPlaying.toggle()
         if let player {
@@ -1304,7 +1320,7 @@ final class AppStore {
         updateNowPlayingElapsed(target)
     }
 
-    private func startPlayer(url: URL) {
+    private func startPlayer(url: URL, at startPosition: Double = 0) {
         ticker?.cancel()
         stopPlayer()
         isScrubbing = false   // a scrub abandoned mid-switch froze the bar
@@ -1323,7 +1339,7 @@ final class AppStore {
             object: item, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.isPlaying else { return }
+                guard let self, self.player === p, self.isPlaying, !self.reader.isActive else { return }
                 // Nudge playback back into motion once the buffer refills.
                 self.player?.playImmediately(atRate: self.playbackRate)
             }
@@ -1333,7 +1349,8 @@ final class AppStore {
             queue: .main
         ) { [weak self] time in
             MainActor.assumeIsolated {
-                guard let self, let d = self.nowPlaying?.duration, d > 0 else { return }
+                guard let self, self.player === p, !self.reader.isActive,
+                      let d = self.nowPlaying?.duration, d > 0 else { return }
                 guard !self.isScrubbing else { return }   // finger owns the bar
                 self.progress = min(1, time.seconds / d)
                 self.updateNowPlayingElapsed(time.seconds)
@@ -1347,10 +1364,12 @@ final class AppStore {
             object: item, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.flushEpisodePlayback(ended: true)
-                self?.next(chooseTopic: false)
+                guard let self, self.player === p, self.isPlaying, !self.reader.isActive else { return }
+                self.flushEpisodePlayback(ended: true)
+                self.next(chooseTopic: false)
             }
         }
+        if startPosition > 0, let track = nowPlaying { seekStudio(to: startPosition, track: track) }
         p.play()
         p.rate = playbackRate
         configureRemoteCommandsOnce()

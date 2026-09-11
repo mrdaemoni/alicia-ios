@@ -16,10 +16,13 @@ let original=VoiceEnrichmentFeedback(recording_id:"fixture-recording",analysis_i
 let saved=try JSONEncoder().encode(original)
 let restored=try JSONDecoder().decode(VoiceEnrichmentFeedback.self,from:saved)
 precondition(restored.request_id == original.request_id && restored.text == original.text)
+let newer=VoiceEnrichmentFeedback(recording_id:"fixture-recording",analysis_id:"analysis-v2",item_id:"insight-1",verdict:"right",text:"Different context")
+precondition(newer.storageKey != restored.storageKey)
+precondition(restored.body["analysis_id"] as? String == "analysis-v1" && restored.body["text"] as? String == original.text)
 precondition(restored.body["analysis_id"] as? String == "analysis-v1")
 precondition(restored.body["item_id"] as? String == "insight-1")
 precondition(restored.body["action"] as? String == "enrichment_feedback")
-print("9 enrichment contract and immutable retry checks passed")
+print("11 enrichment contract and immutable retry checks passed")
 '''
 with tempfile.TemporaryDirectory() as d:
  p=Path(d)/'test.swift';p.write_text(source)

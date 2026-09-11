@@ -6,6 +6,7 @@ struct VoiceEnrichmentView: View {
     @State private var enrichment: VoiceEnrichment?
     @State private var loading = false
     @State private var error = ""
+    @State private var olderPending: [VoiceEnrichmentFeedback] = []
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -30,6 +31,7 @@ struct VoiceEnrichmentView: View {
                             text: insight.text, uncertainty: insight.uncertainty ?? "", evidence: insight.evidence ?? [],
                             goalIDs: insight.goal_ids ?? [], provisional: false,
                             canReview: enrichment.analysis_state == "ready")
+                            .id(analysisID + ":" + insight.id)
                     }
                     ForEach(enrichment.candidate_answers ?? []) { answer in
                         VoiceInsightCard(recordingID: recordingID, analysisID: analysisID, itemID: answer.id,
@@ -40,6 +42,7 @@ struct VoiceEnrichmentView: View {
                                 }
                             }, goalIDs: [answer.goal_id],
                             provisional: true, canReview: enrichment.analysis_state == "ready")
+                            .id(analysisID + ":" + answer.id)
                     }
                 }
                 DisclosureGroup("Analysis passes") {
@@ -52,6 +55,9 @@ struct VoiceEnrichmentView: View {
                     }
                 }
             } else if !loading { Text("No analysis is available yet.").font(.callout) }
+            ForEach(olderPending, id: \.request_id) { feedback in
+                EarlierVoiceFeedback(feedback: feedback)
+            }
             if !error.isEmpty { Text(error).font(.caption) }
         }
         .task(id: recordingID) { await refresh() }
@@ -61,6 +67,12 @@ struct VoiceEnrichmentView: View {
         defer { loading = false }
         guard let response = await store.voiceDetail(recordingID) else { error = "Could not refresh analysis. Try again when connected."; return }
         enrichment = response.recordings.first(where: { $0.id == recordingID && !$0.deleted })?.enrichment
+        olderPending = UserDefaults.standard.dictionaryRepresentation().compactMap { key, value in
+            guard key.hasPrefix("alicia.voiceEnrichmentFeedback." + recordingID + "."), let data = value as? Data,
+                  let saved = try? JSONDecoder().decode(VoiceEnrichmentFeedback.self, from: data),
+                  saved.analysis_id != enrichment?.analysis_id else { return nil }
+            return saved
+        }.sorted { $0.request_id < $1.request_id }
         error = ""
     }
 }
@@ -110,6 +122,7 @@ private struct VoiceInsightCard: View {
         }.padding(.vertical, 14).overlay(alignment: .bottom) { Theme.stroke.frame(height: 0.7) }
         .sheet(item: $goalRoute) { route in NavigationStack { CollaborationView(target: route) } }
         .task(id: key) {
+            note = ""; pending = nil; saving = false; status = ""
             guard let data = UserDefaults.standard.data(forKey: key), let saved = try? JSONDecoder().decode(VoiceEnrichmentFeedback.self, from: data) else { return }
             pending = saved; note = saved.text; status = "This exact feedback is waiting for confirmation."
         }
@@ -117,7 +130,7 @@ private struct VoiceInsightCard: View {
     private var feedbackButtons: some View {
         ForEach([("Right", "right"), ("Not right", "wrong"), ("Salient", "salient"), ("Clarify", "clarify")], id: \.1) { label, verdict in
             Button(label) {
-                let mutation = VoiceEnrichmentFeedback(recording_id: recordingID, analysis_id: analysisID, item_id: itemID,
+                let mutation = VoiceEnrichmentFeedback(originalText: text, recording_id: recordingID, analysis_id: analysisID, item_id: itemID,
                                                       verdict: verdict, text: note)
                 mutation.persist(); pending = mutation
                 Task { await send() }
@@ -129,7 +142,35 @@ private struct VoiceInsightCard: View {
         saving = true; defer { saving = false }
         guard let result = await store.voiceEnrichmentFeedback(pending) else { status = "Confirmation did not arrive. Retry keeps your exact feedback."; return }
         guard result.ok else { status = result.error ?? "Feedback was not accepted. Your words are retained."; return }
-        UserDefaults.standard.removeObject(forKey: key)
+        UserDefaults.standard.removeObject(forKey: pending.storageKey)
+        guard pending.storageKey == key, self.pending?.request_id == pending.request_id else { return }
         status = "Feedback saved · " + pending.verdict; self.pending = nil; note = ""
+    }
+}
+
+private struct EarlierVoiceFeedback: View {
+    @Environment(AppStore.self) private var store
+    let feedback: VoiceEnrichmentFeedback
+    @State private var saving = false
+    @State private var confirmed = false
+    @State private var status = "An earlier analysis has feedback waiting for confirmation. It has not been moved to this analysis."
+    var body: some View {
+        DisclosureGroup("Earlier feedback · " + feedback.verdict) {
+            Text(feedback.originalText ?? "Earlier item: " + feedback.item_id).font(.callout)
+            if !feedback.text.isEmpty { Text(feedback.text).font(.callout).italic() }
+            Text(status).font(.caption)
+            if !confirmed {
+                Button(saving ? "Saving…" : "Retry the original feedback") {
+                    saving = true
+                    Task {
+                        defer { saving = false }
+                        guard let result = await store.voiceEnrichmentFeedback(feedback) else { status = "Confirmation did not arrive. Original feedback retained."; return }
+                        guard result.ok else { status = result.error ?? "The earlier feedback was not accepted; its original words are retained."; return }
+                        UserDefaults.standard.removeObject(forKey: feedback.storageKey)
+                        confirmed = true; status = "Original feedback confirmed."
+                    }
+                }.disabled(saving).frame(minHeight: 44)
+            }
+        }.font(.caption)
     }
 }

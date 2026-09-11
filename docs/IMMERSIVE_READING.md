@@ -24,7 +24,9 @@ alignment the text is readable and only an available chunk can receive focus.
 Studio's **Read along with this episode** explicitly starts
 `POST /api/episode_reading {episode_id}` and polls read-only GET while text is
 prepared. Existing playback can continue. Once ready, the shared reader uses the
-original podcast audio and resumes at the current Studio position. The text is
+original podcast audio and resumes at the current Studio position. Switching back to Studio transfers that position
+and stops the shared reader before Studio plays; callbacks from the paused player
+cannot advance listening evidence or auto-select another track. The text is
 labelled a machine transcript of that audio, not an approved script. If preparing
 fails, normal episode playback remains available. Leaving the view cancels app
 polling, not the Mac's durable preparation.
@@ -45,7 +47,9 @@ actual pass/provider receipts. These are machine interpretations, distinct from
 submitted messages and human agreements. Right / Not right / Salient / Clarify
 plus optional text send the exact analysis/item identity. A UUID and immutable
 payload are stored before sending; an uncertain response exposes Retry and keeps
-the text locked until acknowledged. Refresh itself is read-only. Stale findings
+the text locked until acknowledged. A newer analysis gets a fresh view identity; older
+uncertain feedback remains separately readable and retryable under its original
+analysis and item. Async acknowledgment removes only that original receipt. Refresh itself is read-only. Stale findings
 cannot receive new feedback. Original audio and transcript correction paths stay
 separate.
 
@@ -54,7 +58,8 @@ separate.
 `scripts/test_narration.py` covers exact Unicode offsets, paragraph preservation,
 invalid/missing alignment, chronological continuation and stale receipts.
 `scripts/test_reading_media.py` exercises actual player lifecycle methods with
-inert media; `test_voice_enrichment.py` checks additive decoding and immutable
+inert media; `test_reading_handoff.py` verifies Studio/reader ownership and
+position transfer; `test_voice_enrichment.py` checks additive decoding and immutable
 feedback receipts. `test_narration_ui.py` uses mock-only DEBUG previews and saves
 measured-focus, unavailable and Reduce Motion screenshots. No fixture claims a
 real listening observation, voice capture or physical-device validation.

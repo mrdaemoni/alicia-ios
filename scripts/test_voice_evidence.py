@@ -48,6 +48,8 @@ history_source=(root/'Alicia/Core/EpisodeDay.swift').read_text().split('struct C
 @MainActor final class HistoryRestoreHarness {
  let voiceArchive:VoiceArchive
  let service:any AliciaService
+ struct InertCollaboration { func dialogueContext(for replyID:String?) -> WorkDialogueContext? { nil } }
+ let collaboration = InertCollaboration()
  var messages:[Message]=[]
  init(_ archive:VoiceArchive, _ service:any AliciaService) {voiceArchive=archive;self.service=service}
  static func historyDate(_ raw:String)->Date {.distantPast}

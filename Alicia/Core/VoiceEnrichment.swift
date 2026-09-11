@@ -50,6 +50,7 @@ struct VoiceEnrichment: Codable {
 struct VoiceEnrichmentFeedback: Codable {
     var request_id = UUID().uuidString
     var action = "enrichment_feedback"
+    var originalText: String? = nil
     var recording_id, analysis_id, item_id, verdict, text: String
     var body: [String: Any] {
         ["request_id": request_id, "action": action, "recording_id": recording_id,
