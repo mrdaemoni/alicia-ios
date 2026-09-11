@@ -271,6 +271,9 @@ final class SpeechReader: NSObject {
         }
         // Preparation can be cancelled explicitly with Stop; do not invent playback.
         guard !chunks.isEmpty else { return }
+        if !isSpeaking, progress >= 1 {
+            progress = 0; rebuildQueue(from: 0, offset: 0); publishNowPlaying(); return
+        }
         if isSpeaking {
             if current?.episodeID != nil { episodeStopped?(false) }
             isSpeaking = false; isLoadingMedia = false; queue.pause()

@@ -122,11 +122,13 @@ final class AppStore {
         return await service.episodeReading(episodeID: label, prepare: prepare)
     }
     func readAlongWithEpisode(_ track: Track, chunks: [SpeechChunk], duration: Double) {
+        let readingID = "episode-reading:" + (track.label ?? track.title)
+        if reader.current?.stableID == readingID { return }
         let position = nowPlaying?.label == track.label ? progress * track.duration : 0
         let text = chunks.first?.spokenText ?? ""
         guard !text.isEmpty else { return }
         readAloud(Readable(title: track.title, body: text, kind: "episode", speechChunks: chunks,
-            speechDuration: duration, episodeID: track.label, stableID: "episode-reading:" + (track.label ?? track.title),
+            speechDuration: duration, episodeID: track.label, stableID: readingID,
             textSource: "machine_audio_transcript"))
         if position > 0 { reader.seekToNarration(seconds: position) }
     }

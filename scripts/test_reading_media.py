@@ -109,6 +109,9 @@ final class Synth {
     let beforeInvalid = seek.seekFractions.count
     seek.seekToNarration(seconds: .nan)
     check(seek.seekFractions.count == beforeInvalid, "Non-finite timestamps do not reach the player")
+    let finished = Probe(); finished.isSpeaking = false; finished.progress = 1
+    finished.toggle()
+    check(finished.isSpeaking && finished.progress == 0, "A finished reading restarts explicitly")
     let startup = Probe()
     startup.updateMediaState(generation: 1)
     check(startup.isSpeaking && startup.isLoadingMedia, "Startup intent remains loading before the first player callback")

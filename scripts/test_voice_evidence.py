@@ -37,6 +37,8 @@ folder=work/'VoiceEvidenceTests';folder.mkdir()
 (folder/'VoiceEnrichment.swift').symlink_to(root/'Alicia/Core/VoiceEnrichment.swift')
 (folder/'VoiceEvidence.swift').symlink_to(root/'Alicia/Core/VoiceEvidence.swift')
 (folder/'VoiceProcessing.swift').symlink_to(root/'Alicia/Core/VoiceProcessing.swift')
+context_source=(root/'Alicia/Core/Collaboration.swift').read_text().split('struct WorkDialogueContext:',1)[1].split('enum CollaborationReturnPreferences',1)[0]
+(folder/'WorkDialogueContext.swift').write_text('import Foundation\nstruct WorkDialogueContext:'+context_source)
 # Exercise the actual shared history mapper, with inert dependencies instead of AppStore.init/load.
 app_source=(root/'Alicia/Core/AppStore.swift').read_text()
 history_method=app_source.split('    private func historyMessage(',1)[1].split('\n    }',1)[0]
