@@ -133,6 +133,7 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/voice_submission?request_id=<UUID>` | durable Dialogue/proactive voice send status; only definite404 permits reposting the identical pending request |
 | `GET /api/episode_day?day=YYYY-MM-DD` | current or historical frame, probes, reactions, corrections, explicit keeps |
 | `POST /api/episode_day` | playing/progress/finished observations; reaction, feedback, correction, learning, refresh actions |
+| `GET/POST /api/episode_reading` | original podcast read-along: GET returns cached machine transcript and measured word cues; explicit POST prepares the complete catalog episode locally on the Mac. No listening evidence or model call from GET. |
 | `GET /api/history` | last 120 actual shared conversation turns with stable receipts and optional reply_id; no proactive feed |
 | `GET /api/context_enrichment` | current working picture and captured reply context; optional reply_id; item_id opens captured source |
 | `POST /api/context_enrichment` | UUID-receipted attention priority, correction, explicit note or follow-up setting |
