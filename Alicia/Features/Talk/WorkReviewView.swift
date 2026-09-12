@@ -112,7 +112,7 @@ struct WorkReviewContent: View {
             }
             Text("Mark what matters, or answer in your own words.")
                 .font(.callout).foregroundStyle(Theme.inkSoft)
-            LocalReviewButton(title: result.title, text: result.body)
+            NaturalReviewButton(title: result.title, text: result.body)
             CollaborationSaveStatus()
             if let sections = result.review_sections, !sections.isEmpty {
                 ForEach(sections.filter { !$0.review.hidden }) { section in
@@ -227,8 +227,7 @@ private struct WorkReviewCard: View {
             Button("Set aside") { send("hide") }
             if section.review.stance != "unreviewed" { Button("Clear agreement") { send("clear_stance") } }
             Button("Read this aloud") {
-                store.prepareForRecording()
-                store.reader.readLocally(Readable(title: section.title, body: section.text, kind: "collaboration_review"))
+                store.readAloud(Readable(title: section.title, body: section.text, kind: "collaboration_review"))
             }
         } label: { Text("More").frame(minHeight: 44) }
             .accessibilityIdentifier("workReview.more." + section.id)

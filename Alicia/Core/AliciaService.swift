@@ -30,6 +30,11 @@ final class ConnectionStatus {
 struct SpeechChunk: Hashable {
     var url: URL
     var duration: TimeInterval
+    var text: String = ""
+    var cues: [NarrationCue] = []
+    var timingStatus: String = "unavailable"
+    var spokenText: String = ""
+    var speechBackend: String = ""
 }
 
 /// Where a read-aloud request got to.
@@ -50,6 +55,7 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
+    func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus
     func morningBriefing() async -> MorningBriefing?
     func collaboration() async -> CollaborationState?
     func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse?
@@ -426,8 +432,7 @@ struct MockAliciaService: AliciaService {
                       note: String) async -> Bool { true }
     func pin(action: String, id: String, kind: String, title: String,
              body: String, thinker: String, source: String) async -> Bool { true }
-    /// Mock mode has no TTS — read-aloud falls to the device voice, the one
-    /// case that still earns it.
+    /// Mock mode has no TTS and exposes the same honest unavailable state.
     func requestSpeech(text: String, kind: String) async -> SpeechStatus {
         .unavailable
     }
@@ -483,4 +488,8 @@ struct MockAliciaService: AliciaService {
             body: "A sample synthesis so the card has a shape in mock mode.",
             date: "2026-07-05")
     }
+}
+
+extension AliciaService {
+    func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus { .unavailable }
 }

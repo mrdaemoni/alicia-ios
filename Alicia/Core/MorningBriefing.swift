@@ -3,6 +3,21 @@ import Foundation
 /// A prepared reading, separate from a chosen episode or evidence of listening.
 /// GET /api/morning_briefing is read-only; opening this value does not generate audio.
 struct MorningBriefing: Codable, Equatable, Identifiable {
+    struct Speech: Codable, Equatable {
+        struct Chunk: Codable, Equatable {
+            var url: String
+            var duration: Double?
+            var text: String?
+            var cues: [NarrationCue]?
+            var timing_status: String?
+            var speech_backend: String?
+        }
+        var chunks: [Chunk]?
+        var spoken_text, timing_status, speech_backend: String?
+    }
+    var speech: Speech?
+    /// Authenticated URLs resolved by the service, never a view.
+    var speechChunks: [SpeechChunk] = []
     struct Source: Codable, Equatable {
         var id: String? = nil
         var title: String? = nil
@@ -23,7 +38,7 @@ struct MorningBriefing: Codable, Equatable, Identifiable {
     var sources: [Source] = []
 
     enum CodingKeys: String, CodingKey {
-        case id, day, title, text, status, audio_url, duration, playlist_id, error, sources
+        case id, day, title, text, status, audio_url, duration, playlist_id, error, sources, speech
     }
 
     init(id: String = "", day: String = "", title: String = "", text: String = "",
@@ -43,6 +58,7 @@ struct MorningBriefing: Codable, Equatable, Identifiable {
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        speech = try values.decodeIfPresent(Speech.self, forKey: .speech)
         id = try values.decodeIfPresent(String.self, forKey: .id) ?? ""
         day = try values.decodeIfPresent(String.self, forKey: .day) ?? ""
         title = try values.decodeIfPresent(String.self, forKey: .title) ?? ""

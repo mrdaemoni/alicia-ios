@@ -67,6 +67,7 @@ struct StudioView: View {
                             .frame(minHeight: 560)
                     }
                     if !drawing {
+                    NextEpisodeInvitation()
                     // ── Her queues, above the podcast ────────────────────
                     // Studio is no longer only "Memories of My Future Self":
                     // it's where listening lives, and the queues he built
@@ -169,7 +170,7 @@ struct StudioView: View {
 struct EpisodeDetailView: View {
     @Environment(AppStore.self) private var store
     let track: Track
-    var playOnArrival = true
+    var playOnArrival = false
     @State private var notes: AttributedString?
     /// The shownotes as they arrived — the reader speaks the markdown, not
     /// the restyled AttributedString.
@@ -239,6 +240,7 @@ struct EpisodeDetailView: View {
                     }
                     .padding(14)
                 }
+                EpisodeReadAlongButton(track: track)
                 StippleIllustration(seed: (track.label ?? "x").count * 7 + track.episode,
                                     dots: 500, animated: true)
                     .frame(height: 44)

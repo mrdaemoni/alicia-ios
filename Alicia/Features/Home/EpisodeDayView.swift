@@ -18,6 +18,7 @@ struct EpisodeHomeView: View {
                         onTogglePlayback: store.toggleMorningBriefing,
                         onOpenPlaylist: store.openMorningPlaylist,
                         onRefresh: { Task { await store.refreshMorningBriefing() } })
+                    NextEpisodeInvitation()
                     CollaborationSummary()
                     if let day = store.episodeDay, let episode = day.episode {
                         EpisodeHeading(episode: episode)

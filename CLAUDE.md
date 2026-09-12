@@ -1,3 +1,12 @@
+## A2-037 — natural immersive reading and voice interpretation review
+
+Current branch adds [IMMERSIVE_READING.md](docs/IMMERSIVE_READING.md): shared
+natural narration with exact text and measured cues, an honest unavailable/retry
+state, next episode from observed playback in Us/Studio, and A2-036's reviewable
+voice findings. Device read-aloud is removed. Podcast read-along uses a labelled
+machine transcript from the original audio, never shownotes as a script. Backend
+A2-036/A2-038 deploy first; task RELEASE.md owns actual shipping status.
+
 # CLAUDE.md — Alicia iOS
 
 **Read `AGENTS.md` before doing anything.** It is the repository-wide contract
@@ -6,8 +15,9 @@ and the Motion Lab promotion gate.
 
 Read `SESSION_HANDOFF.md` for the current release and known limits. This file
 carries stable architecture. The current product is the Alicia 2.0 episode/day
-experience; this branch adds A2-033 shared work review on released source
-207279e / TestFlight 15, including Mac voice processing. Read `docs/WORK_REVIEW.md`;
+experience; this branch adds A2-037 immersive natural reading on released source
+f6b3f81 / TestFlight 16, including shared work review and Mac voice processing.
+Read `docs/IMMERSIVE_READING.md` and `docs/WORK_REVIEW.md`;
 the shared task RELEASE.md records actual deployment and upload. Full cross-repository context is in
 `/Users/alicia/alicia/docs/ALICIA_2_0.md`; feature detail is in `docs/EPISODE_DAY.md`.
 Us and Alicia use the actually played episode and explicit human responses.
@@ -123,6 +133,7 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/voice_submission?request_id=<UUID>` | durable Dialogue/proactive voice send status; only definite404 permits reposting the identical pending request |
 | `GET /api/episode_day?day=YYYY-MM-DD` | current or historical frame, probes, reactions, corrections, explicit keeps |
 | `POST /api/episode_day` | playing/progress/finished observations; reaction, feedback, correction, learning, refresh actions |
+| `GET/POST /api/episode_reading` | original podcast read-along: GET returns cached machine transcript and measured word cues; explicit POST prepares the complete catalog episode locally on the Mac. No listening evidence or model call from GET. |
 | `GET /api/history` | last 120 actual shared conversation turns with stable receipts and optional reply_id; no proactive feed |
 | `GET /api/context_enrichment` | current working picture and captured reply context; optional reply_id; item_id opens captured source |
 | `POST /api/context_enrichment` | UUID-receipted attention priority, correction, explicit note or follow-up setting |

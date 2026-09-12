@@ -22,6 +22,7 @@ struct EpisodeDay: Decodable, Identifiable {
     var episode_basis: String? = nil
     var has_playback: Bool? = nil
     var snapshot_revision: Int? = nil
+    var latest_playback: EpisodePlaybackReceipt? = nil
     var id: String { date }
 
     static func choosing(_ episode: Episode, previous: EpisodeDay?) -> EpisodeDay {
@@ -33,7 +34,7 @@ struct EpisodeDay: Decodable, Identifiable {
             frame_id: "", frame_verdict: "", frame_status: "pending",
             reactions: [], learnings: [], corrections: [], played_ms: 0, position_ms: 0,
             days: previous?.days ?? [], vault_note: "", episode_basis: "selected",
-            has_playback: false, snapshot_revision: previous?.snapshot_revision)
+            has_playback: false, snapshot_revision: previous?.snapshot_revision, latest_playback: previous?.latest_playback)
     }
 }
 

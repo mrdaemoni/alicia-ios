@@ -388,7 +388,10 @@ struct MessageBubble: View {
 
             if let voiceURL = message.voiceURL {
                 Button {
-                    store.playVoiceNote(voiceURL)
+                    if isMe { store.playVoiceNote(voiceURL) }
+                    else { store.readAloud(Readable(title: "", body: message.text, kind: "dialogue",
+                        speechChunks: [SpeechChunk(url: voiceURL, duration: 0)],
+                        stableID: message.replyID.map { "voice-reply:" + $0 })) }
                 } label: {
                     InkPlayPause(playing: false, size: 24,
                                  color: Theme.accentSoft,

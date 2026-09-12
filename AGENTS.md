@@ -195,3 +195,12 @@ and tight line ranges whenever possible.
   groups. Do not edit `project.pbxproj` unless the build proves it is necessary.
 - Existing user or agent changes are not cleanup material. If the worktree is
   dirty unexpectedly, stop and identify the owner before changing anything.
+
+## Natural narration — Hector's September 11 direction
+
+All Alicia read-aloud uses natural server or original prerecorded audio. Do not
+restore an on-device speech fallback. Preparation and unavailable audio stay
+visible and retryable. Reuse the shared immersive reader; only measured,
+text-matching cues may drive word highlighting or word seeking. Original
+recordings and machine transcripts remain distinguishable from Hector's own
+submitted words. See `docs/IMMERSIVE_READING.md`.

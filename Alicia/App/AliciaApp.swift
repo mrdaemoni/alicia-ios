@@ -6,7 +6,7 @@ struct AliciaApp: App {
     /// mock otherwise — see AliciaConfig.
     @State private var store = AppStore(service: {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") || ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") || ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") || ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return MockAliciaService() }
+        if ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") || ProcessInfo.processInfo.arguments.contains("--collaboration-preview") || ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") || ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") || ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return MockAliciaService() }
 #endif
         return AliciaConfig.makeService()
     }())
@@ -41,7 +41,15 @@ struct AliciaApp: App {
         WindowGroup {
             Group {
 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--motion-lab") {
+                if ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") && ProcessInfo.processInfo.arguments.contains("--reading-bar-preview") {
+                    VStack { Spacer(); ReadingBar() }.background(Theme.paper)
+                        .task { store.reader.prepareReadingPreview() }
+                } else if ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") {
+                    ImmersiveReadingView(previewReduceMotion: ProcessInfo.processInfo.arguments.contains("--reading-reduce-motion"))
+                        .task {
+                        store.reader.prepareReadingPreview(unavailable: ProcessInfo.processInfo.arguments.contains("--reading-unavailable"))
+                    }
+                } else if ProcessInfo.processInfo.arguments.contains("--motion-lab") {
                     MotionLabView()
                 } else if ProcessInfo.processInfo.arguments.contains("--dialogue-review-sheet-preview") {
                     DialogueReviewView(message: Message(sender: .alicia, text: DialogueReview.preview.reply,

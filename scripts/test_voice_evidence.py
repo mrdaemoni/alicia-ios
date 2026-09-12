@@ -34,8 +34,11 @@ ET.SubElement(entry,'BuildableReference',attrs)
 test=ET.SubElement(tree.find('.//Testables'),'TestableReference',dict(skipped='NO'));ET.SubElement(test,'BuildableReference',attrs)
 tree.write(scheme,encoding='utf-8',xml_declaration=True)
 folder=work/'VoiceEvidenceTests';folder.mkdir()
+(folder/'VoiceEnrichment.swift').symlink_to(root/'Alicia/Core/VoiceEnrichment.swift')
 (folder/'VoiceEvidence.swift').symlink_to(root/'Alicia/Core/VoiceEvidence.swift')
 (folder/'VoiceProcessing.swift').symlink_to(root/'Alicia/Core/VoiceProcessing.swift')
+context_source=(root/'Alicia/Core/Collaboration.swift').read_text().split('struct WorkDialogueContext:',1)[1].split('enum CollaborationReturnPreferences',1)[0]
+(folder/'WorkDialogueContext.swift').write_text('import Foundation\nstruct WorkDialogueContext:'+context_source)
 # Exercise the actual shared history mapper, with inert dependencies instead of AppStore.init/load.
 app_source=(root/'Alicia/Core/AppStore.swift').read_text()
 history_method=app_source.split('    private func historyMessage(',1)[1].split('\n    }',1)[0]
@@ -45,6 +48,8 @@ history_source=(root/'Alicia/Core/EpisodeDay.swift').read_text().split('struct C
 @MainActor final class HistoryRestoreHarness {
  let voiceArchive:VoiceArchive
  let service:any AliciaService
+ struct InertCollaboration { func dialogueContext(for replyID:String?) -> WorkDialogueContext? { nil } }
+ let collaboration = InertCollaboration()
  var messages:[Message]=[]
  init(_ archive:VoiceArchive, _ service:any AliciaService) {voiceArchive=archive;self.service=service}
  static func historyDate(_ raw:String)->Date {.distantPast}
@@ -125,6 +130,19 @@ final class VoiceEvidenceTests:XCTestCase {
   let f=FakeService();f.payload=VoiceEvidencePayload(recordings:[remote])
   await a.sync(using:f);await a.advanceProcessing(using:f)
   return f
+ }
+ @MainActor func testLegacyVoiceRecordWithoutEnrichmentDecodes() throws {
+  let a=archive(),id=UUID().uuidString
+  _ = try macCapture(a,id:id)
+  let original = a.recording(id)!
+  let data = try JSONEncoder().encode(original)
+  var object = try JSONSerialization.jsonObject(with:data) as! [String:Any]
+  object.removeValue(forKey:"enrichment")
+  let restored = try JSONDecoder().decode(VoiceRecording.self,from:JSONSerialization.data(withJSONObject:object))
+  XCTAssertNil(restored.enrichment)
+  XCTAssertEqual(restored.id,id)
+  XCTAssertEqual(restored.segments.count,original.segments.count)
+  XCTAssertTrue(restored.transcripts.isEmpty)
  }
  @MainActor func testMacPauseDoesNotSealAndCompleteOrderedManifestSurvivesRestart()throws {
   let a=archive(),id=UUID().uuidString

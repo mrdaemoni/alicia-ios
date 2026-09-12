@@ -31,6 +31,7 @@ struct VoiceLink: Codable {
 
 struct VoiceRecording: Codable, Identifiable {
     var id: String
+    var enrichment: VoiceEnrichment? = nil
     var context: VoiceContext
     var segments: [VoiceSegment] = []
     var transcripts: [VoiceTranscript] = []
