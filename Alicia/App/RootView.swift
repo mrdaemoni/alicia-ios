@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Us, Mind, Body, Alicia and Studio. Dialogue is a shared action.
 /// The five sections of Alicia. Health lives inside Us (status strip →
 /// full vitals) so the tab bar stays at five and iOS never folds tabs
 /// into a "More" item.
@@ -13,7 +14,10 @@ enum AppSection: String, CaseIterable, Identifiable {
     case dialogue = "Dialogue"
     case mind    = "Alicia"
     case studio  = "Studio"
-    case knowledge = "Knowledge"
+    case knowledge = "Mind"
+    case body = "Body"
+
+    static let tabs: [AppSection] = [.us, .knowledge, .body, .mind, .studio]
 
     var id: String { rawValue }
 
@@ -24,9 +28,10 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch launchName.lowercased() {
         case "us":        self = .us
         case "dialogue":  self = .dialogue
-        case "alicia", "mind": self = .mind
+        case "alicia": self = .mind
+        case "body": self = .body
         case "studio":    self = .studio
-        case "knowledge": self = .knowledge
+        case "knowledge", "mind": self = .knowledge
         default:          return nil
         }
     }
@@ -39,6 +44,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .mind:    return "hare"
         case .studio:  return "waveform"
         case .knowledge: return "books.vertical"
+        case .body: return "body"
         }
     }
 }
@@ -54,13 +60,17 @@ struct RootView: View {
         // covering the composer). Content and bar are siblings — the bar
         // owns the bottom edge, period.
         VStack(spacing: 0) {
+            if store.selectedSection == .dialogue {
+                TalkView()
+            } else {
             TabView(selection: $store.selectedSection) {
-                ForEach(AppSection.allCases) { section in
+                ForEach(AppSection.tabs) { section in
                     tab(for: section)
                         .tag(section)
                         // The system bar is replaced by the editorial word-bar.
                         .toolbar(.hidden, for: .tabBar)
                 }
+            }
             }
             // v28: the global PODCAST player was more clutter than comfort
             // (Hector: "then I have to close it") — it lives in Studio
@@ -115,6 +125,7 @@ struct RootView: View {
         case .mind:     MindView()
         case .studio:   StudioView()
         case .knowledge: KnowledgeView()
+        case .body: BodyView()
         }
     }
 }
@@ -146,9 +157,16 @@ private struct EpisodeConversationBar: View {
                             .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                     }
                         .accessibilityLabel("Write about " + episode.id)
+                        .accessibilityIdentifier("dialogue.open")
                 }.padding(.horizontal, 20).padding(.vertical, 5)
             }
             .buttonStyle(.plain).foregroundStyle(Theme.ink).background(Theme.paper)
+        } else {
+            Button("Talk with Alicia") { store.selectedSection = .dialogue }
+                .font(.system(size: 16, design: .serif))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .foregroundStyle(Theme.ink).background(Theme.paper)
+                .accessibilityIdentifier("dialogue.open")
         }
     }
 }

@@ -26,47 +26,14 @@ struct StudioView: View {
         }
     }
 
-    @State private var drawing = false
 
     var body: some View {
         @Bindable var store = store
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    ZStack {
-                        SectionHeader(title: drawing ? "Canvas" : "Studio",
-                                      kicker: drawing ? "drawn together"
-                                                      : "everything worth listening to")
-                        HStack {
-                            Spacer()
-                            // Canvas lives inside Studio now — the pencil
-                            // toggles between listening and drawing with her.
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    drawing.toggle()
-                                }
-                            } label: {
-                                // A word with her underline, not a widget
-                                // glyph (v22).
-                                VStack(spacing: 2) {
-                                    Text(drawing ? "LISTEN" : "DRAW")
-                                        .font(.system(size: 10, design: .monospaced).weight(.bold))
-                                        .tracking(1.6)
-                                        .foregroundStyle(Theme.ink)
-                                    InkUnderline(seed: drawing ? 3 : 5, lineWidth: 1.1)
-                                        .frame(width: 30, height: 4)
-                                }
-                            }
-                            .accessibilityLabel(drawing ? "Back to Studio" : "Draw with me")
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 14)
-                    }
-                    if drawing {
-                        CanvasBody()
-                            .frame(minHeight: 560)
-                    }
-                    if !drawing {
+                    SectionHeader(title: "Studio", kicker: "everything worth listening to")
+                    Group {
                     NextEpisodeInvitation()
                     // ── Her queues, above the podcast ────────────────────
                     // Studio is no longer only "Memories of My Future Self":

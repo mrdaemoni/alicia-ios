@@ -1,3 +1,7 @@
+## A2-043 — mind and body integration candidate
+
+Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action. Body is private Mac/phone evidence and explicit wellness goals. Daily rituals widget saves offline and syncs when Alicia opens. Drawing is removed from Studio navigation; files remain. No release is claimed; shared A2-043 evidence owns status.
+
 ## A2-037 — natural immersive reading and voice interpretation review
 
 Current branch adds [IMMERSIVE_READING.md](docs/IMMERSIVE_READING.md): shared

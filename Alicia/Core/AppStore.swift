@@ -35,6 +35,7 @@ final class AppStore {
     /// Reads any page in her prepared natural voice. Shares the audio session with the podcast
     /// player, so the two hand off rather than talk over each other.
     let reader = SpeechReader()
+    let bodyStore: BodyStore
     let collaboration: CollaborationStore
     let voiceArchive: VoiceArchive
     var walkRecordingID = UserDefaults.standard.string(forKey: "alicia.walkRecordingID") ?? "" {
@@ -43,6 +44,7 @@ final class AppStore {
 
     init(service: AliciaService) {
         self.service = service
+        self.bodyStore = BodyStore(service: service)
         self.isMock = service is MockAliciaService
         self.collaboration = CollaborationStore(service: service,
             defaults: service is MockAliciaService ? UserDefaults(suiteName: "collaboration-preview-" + UUID().uuidString)! : .standard,

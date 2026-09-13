@@ -6,7 +6,7 @@ work = pathlib.Path(tempfile.mkdtemp(prefix='alicia-context-ui-'))
 print(work, flush=True)
 project = work / 'Alicia.xcodeproj'
 shutil.copytree(root / 'Alicia.xcodeproj', project)
-for folder in ('Alicia','AliciaWidgets'):
+for folder in ('Alicia','AliciaWidgets','Shared'):
     (work / folder).symlink_to(root / folder, target_is_directory=True)
 for source in root.glob('*.plist'):
     (work / source.name).symlink_to(source)
