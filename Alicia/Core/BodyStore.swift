@@ -38,14 +38,20 @@ struct BodySourcePage: Decodable {
 
 @MainActor @Observable final class BodyStore {
     private let service: AliciaService
+    private let captureDirectory: URL?
+    private let refreshWidgets: () -> Void
     var overview: BodyOverview?
     var local: [BodyEvent] = []
     var pendingIDs: Set<String> = []
     var conflictedIDs: Set<String> = []
     var error: String?
     var refreshing = false
+    private var refreshRequested = false
     var lastRefresh: Date?
-    init(service: AliciaService) { self.service = service }
+    init(service: AliciaService, captureDirectory: URL? = nil,
+         refreshWidgets: @escaping () -> Void = { WidgetCenter.shared.reloadTimelines(ofKind: "AliciaRituals") }) {
+        self.service = service; self.captureDirectory = captureDirectory; self.refreshWidgets = refreshWidgets
+    }
 
     var events: [BodyEvent] {
         var byID: [String: BodyEvent] = [:]
@@ -60,26 +66,36 @@ struct BodySourcePage: Decodable {
         return byID.values.sorted(by: BodyCapture.before)
     }
     func reread() {
-        do { let directory = try BodyCapture.root(); local = try BodyCapture.events(directory: directory).filter { !BodyCapture.isDiscarded($0.id, directory: directory) }; pendingIDs = Set(try BodyCapture.pending().map(\.id)) }
+        do { let directory = try captureDirectory ?? BodyCapture.root(); local = try BodyCapture.events(directory: directory).filter { !BodyCapture.isDiscarded($0.id, directory: directory) }; pendingIDs = Set(try BodyCapture.pending(directory: captureDirectory).map(\.id)) }
         catch { self.error = "The local ritual record could not be read. Your files have been kept." }
     }
     func refresh() async {
-        guard !refreshing, !(service is MockAliciaService) else { return }
-        refreshing = true; defer { refreshing = false }
+        guard !(service is MockAliciaService) else { return }
+        guard !refreshing else { refreshRequested = true; return }
+        refreshing = true
+        defer {
+            refreshing = false
+            // A capture arriving after the pending snapshot gets another pass.
+            // Coalesce callers; a failed network request alone never schedules a loop.
+            if refreshRequested {
+                refreshRequested = false
+                Task { await refresh() }
+            }
+        }
         error = nil; reread()
         // Read first: acknowledge a write whose successful HTTP response was lost.
         if let fresh = await service.bodyOverview() {
             overview = fresh; lastRefresh = .now
             for event in fresh.events {
                 if let original = local.first(where: { $0.id == event.id }), original == event {
-                    try? BodyCapture.acknowledge(event.id)
+                    try? BodyCapture.acknowledge(event.id, directory: captureDirectory)
                 }
             }
         } else {
             error = "Cannot reach your Mac. Showing the last view; new captures stay on this phone."
         }
         do {
-            for event in try BodyCapture.pending() {
+            for event in try BodyCapture.pending(directory: captureDirectory) {
                 let result = await service.saveBodyEvent(event)
                 if result?.status == "not_saved" {
                     conflictedIDs.insert(event.id)
@@ -90,25 +106,25 @@ struct BodySourcePage: Decodable {
                     error = "Saved on this phone, waiting for Alicia. Refresh to retry the same capture."
                     break
                 }
-                try BodyCapture.acknowledge(event.id)
+                try BodyCapture.acknowledge(event.id, directory: captureDirectory)
             }
             reread()
             if let fresh = await service.bodyOverview() { overview = fresh; lastRefresh = .now }
         } catch { self.error = "The local capture could not be read or acknowledged. It has not been discarded." }
-        WidgetCenter.shared.reloadTimelines(ofKind: "AliciaRituals")
+        refreshWidgets()
     }
     @discardableResult func capture(_ event: BodyEvent) async -> Bool {
         guard !(service is MockAliciaService) else { error = "Preview only — no personal record was saved."; return false }
         do {
-            try BodyCapture.save(event); reread()
-            WidgetCenter.shared.reloadTimelines(ofKind: "AliciaRituals")
+            try BodyCapture.save(event, directory: captureDirectory); reread()
+            refreshWidgets()
             Task { await refresh() }
             return true // Durable on this device; network acknowledgement has its own status.
         } catch { self.error = "Not saved. Keep this page open and try again."; return false }
     }
     func discardRejected(_ event: BodyEvent) {
         guard conflictedIDs.contains(event.id) else { return }
-        do { try BodyCapture.discardRejected(event.id); conflictedIDs.remove(event.id); reread() }
+        do { try BodyCapture.discardRejected(event.id, directory: captureDirectory); conflictedIDs.remove(event.id); reread() }
         catch { self.error = "Could not discard this rejected edit. Its original has been kept." }
     }
     func ask(_ text: String) async -> BodyAnswer? { await service.askBody(text) }
