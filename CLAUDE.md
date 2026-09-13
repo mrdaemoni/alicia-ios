@@ -36,27 +36,29 @@ relationship, three touchpoints). Target **iOS 17.0**, Swift 5.9+, the installed
 dependencies**. Runs live against the backend on a real iPhone; falls back to
 mock data so the repo stays runnable for anyone who clones it.
 
-## The five tabs
+## The five tabs and shared conversation
 
-Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`
-(kept at five so iOS never folds tabs into "More"):
+`AppSection.tabs` in `Alicia/App/RootView.swift` defines the five visible tabs.
+The internal `.knowledge` case is labelled Mind; `.mind` is labelled Alicia.
+Dialogue retains `.dialogue` for existing routes, rendered outside the five-tab
+view and opened through the shared conversation affordance.
 
-1. **Us** (`EpisodeHomeView`) — the episode actually played today, two or three
-   precise questions with inspectable passages, and a large **Walk with this**
-   action. Questions carry This helps / Go deeper / Missed me. Connection and
-   dated history remain available. The old orbit/cards are unmounted.
-2. **Dialogue** (`TalkView`) — the real shared conversation restored from
-   `/api/history`, a small current-episode header, reviewed voice input, optional voice
-   replies, and Think aloud. The backend uses the same retrieval/model/tool
-   routing boundary as Telegram. Proactive feed items do not seed the transcript.
-3. **Alicia** (`EpisodeMindView`) — her tentative reading, Hector's words,
-   corrections, and explicit learnings. He can correct her and keep something
-   in his own words. A prior rejected reading remains labelled while updating.
-4. **Studio** (`StudioView`) — the podcast and playlist library, shownotes,
-   playback, scrubbing, skips, and rate controls. AppStore reports actual
-   continuous playback; file downloads establish no listening evidence.
-5. **Knowledge** (`KnowledgeView`) — the passive synthesis/notes library and
-   existing pins. Studio and Knowledge retain their library roles.
+1. **Us** (`EpisodeHomeView`) — morning briefing, current episode and grounded
+   probes, Together work, and the mind/body overview with private reflection.
+2. **Mind** (`KnowledgeView`) — knowledge, syntheses, thinkers and existing pins.
+3. **Body** (`BodyView`) — explicit wellness goals and progress criteria,
+   daily ritual capture, dated Oura observations/history and private report
+   reading. Its optional answer runs on the Mac's local model.
+4. **Alicia** (`EpisodeMindView`) — her tentative reading, Hector's words,
+   corrections, explicit learnings and existing archetype traces.
+5. **Studio** (`StudioView`) — episodes, morning playlist and consumption
+   artifacts with the shared immersive reader. Drawing is no longer mounted.
+   Actual continuous playback remains distinct from selection or download.
+
+**Dialogue** (`TalkView`) keeps shared history, reviewed voice input and goal
+passage context. Mind goal work continues through the existing cloud pipeline;
+private Body records do not enter it. See `docs/MIND_BODY.md` for the private
+API and offline WidgetKit capture contract.
 
 `WalkReflectionView` is a dedicated full-screen recording and review surface. It
 pauses playback and retains original microphone audio. Pause or leaving the
@@ -79,7 +81,7 @@ Alicia/
   Core/           Models · AliciaService (protocol + mock) · LiveAliciaService
                   · Config · AppStore · SpeechTranscriber · ProactiveNotifier
                   · SampleData
-  Features/       Home · Talk · Mind · Studio · Canvas · Health
+  Features/       Home · Talk · Mind · Body · Knowledge · Studio · Health (Canvas retained, unmounted)
   Assets.xcassets AppIcon · AccentColor · Art* (Hector's drawings)
 ```
 
@@ -127,7 +129,7 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/home` | retained home/library context; no longer the Us framing source |
 | `GET /api/timeline` | every lived day since she began (Timeline sheet) |
 | `GET /api/featured` · `/api/syntheses` · `/api/quote` | the day's synthesis, the shelf, the rotating quote |
-| `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Knowledge tab + her archetype balance |
+| `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Mind library + her archetype balance |
 | `POST /api/speak` | render arbitrary text in her voice (read-aloud fallback when nothing is cached) |
 | `POST /api/pin` · `/api/card_feedback` | hold a card on the home screen; 👍/👎 on a card |
 | `POST /api/events` | **presence telemetry** — batch `{events:[{kind, ref, ms, meta}]}`. Kinds: `app_open`, `screen_view`, `section_dwell`, `episode_play`, `episode_progress`, `episode_finish`, `card_view`. This is the one endpoint that reports what he *did* rather than what he deliberately tapped; without it a day spent listening reads to her as silence. Fire-and-forget — never block UI on it, and batch on background/foreground transitions. Episode playback now comes from the player via `/api/episode_day`; an audio GET is not listening evidence. |
