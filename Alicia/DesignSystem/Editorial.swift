@@ -30,7 +30,7 @@ struct EditorialTabBar: View {
         // the space after DIALOGUE huge and STUDIO·KNOWLEDGE cramped —
         // words this different in length need optical spacing).
         HStack(spacing: 0) {
-            ForEach(Array(AppSection.allCases.enumerated()), id: \.element.id) { i, section in
+            ForEach(Array(AppSection.tabs.enumerated()), id: \.element.id) { i, section in
                 if i > 0 { Spacer(minLength: 8) }
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {

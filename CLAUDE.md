@@ -1,3 +1,7 @@
+## A2-043 — mind and body integration candidate
+
+Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action. Body is private Mac/phone evidence and explicit wellness goals. Daily rituals widget saves offline and syncs when Alicia opens. Drawing is removed from Studio navigation; files remain. No release is claimed; shared A2-043 evidence owns status.
+
 ## A2-037 — natural immersive reading and voice interpretation review
 
 Current branch adds [IMMERSIVE_READING.md](docs/IMMERSIVE_READING.md): shared
@@ -112,6 +116,8 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | Endpoint | For |
 |---|---|
 | `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds tap-to-play media. Reviewed Mac voice adds `client_request_id`, `recording_id`, machine source IDs and captured `episode_id`. |
+| `GET /api/body` · `POST /api/body` | Private overview and explicit wellness/ritual receipts |
+| `GET /api/body/source` · `POST /api/body/ask` | Exact private report passages and optional local health answer |
 | `GET /api/thoughts` · `/api/tracks` · `/api/gallery` · `/api/health` | tab data |
 | `GET /api/proactive?limit=` | retained proactive feed and best-effort local notifications; never seeds Dialogue history |
 | `POST /api/react` | emoji reactions, by `message_id` or `proactive_id` |

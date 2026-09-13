@@ -18,6 +18,7 @@ struct EpisodeHomeView: View {
                         onTogglePlayback: store.toggleMorningBriefing,
                         onOpenPlaylist: store.openMorningPlaylist,
                         onRefresh: { Task { await store.refreshMorningBriefing() } })
+                    MindBodyOverview()
                     NextEpisodeInvitation()
                     CollaborationSummary()
                     if let day = store.episodeDay, let episode = day.episode {
@@ -87,8 +88,8 @@ struct EpisodeHomeView: View {
                 .padding(22)
                 .padding(.bottom, 20)
             }
-            .task { await store.refreshMorningBriefing() }
-            .refreshable { await store.refreshMorningBriefing(); await store.refreshEpisodeDay() }
+            .task { await store.refreshMorningBriefing(); await store.bodyStore.refresh() }
+            .refreshable { await store.refreshMorningBriefing(); await store.refreshEpisodeDay(); await store.bodyStore.refresh() }
             .presenceBackground(.us, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showHistory) { EpisodeHistoryView() }

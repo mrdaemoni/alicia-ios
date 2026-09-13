@@ -20,6 +20,36 @@ struct LiveAliciaService: AliciaService {
     let baseURL: URL
     let token: String
 
+    func askBody(_ text: String) async -> BodyAnswer? {
+        let data = try? JSONSerialization.data(withJSONObject: ["text": text])
+        return await privateBodyRequest(method: "POST", data: data, path: "/api/body/ask")
+    }
+    func bodySource(id: String, offset: Int) async -> BodySourcePage? {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "id", value: id), URLQueryItem(name: "offset", value: String(offset))]
+        return await privateBodyRequest(method: "GET", data: nil, path: "/api/body/source?" + (components.percentEncodedQuery ?? ""))
+    }
+    func bodyOverview() async -> BodyOverview? {
+        await privateBodyRequest(method: "GET", data: nil)
+    }
+    func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult? {
+        guard let data = try? JSONEncoder().encode(event) else { return nil }
+        return await privateBodyRequest(method: "POST", data: data)
+    }
+    private func privateBodyRequest<T: Decodable>(method: String, data: Data?, path: String = "/api/body") async -> T? {
+        var req = request(path, method: method, body: data)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        let config = URLSessionConfiguration.ephemeral
+        config.urlCache = nil
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 20
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+        guard let (bytes, response) = try? await session.data(for: req),
+              [200, 409].contains((response as? HTTPURLResponse)?.statusCode ?? 0) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: bytes)
+    }
+
     // MARK: request plumbing
 
     private func request(_ path: String, method: String = "GET", body: Data? = nil) -> URLRequest {

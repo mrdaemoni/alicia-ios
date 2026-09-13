@@ -55,6 +55,10 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
+    func askBody(_ text: String) async -> BodyAnswer?
+    func bodySource(id: String, offset: Int) async -> BodySourcePage?
+    func bodyOverview() async -> BodyOverview?
+    func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult?
     func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus
     func morningBriefing() async -> MorningBriefing?
     func collaboration() async -> CollaborationState?
@@ -492,4 +496,12 @@ struct MockAliciaService: AliciaService {
 
 extension AliciaService {
     func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus { .unavailable }
+}
+
+// Older/mock services show an honest unavailable Body surface.
+extension AliciaService {
+    func askBody(_ text: String) async -> BodyAnswer? { nil }
+    func bodySource(id: String, offset: Int) async -> BodySourcePage? { nil }
+    func bodyOverview() async -> BodyOverview? { nil }
+    func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult? { nil }
 }
