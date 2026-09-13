@@ -42,42 +42,56 @@ tree.write(scheme,encoding='utf-8',xml_declaration=True)
 (work/'ContextUITests').mkdir()
 (work/'ContextUITests/ContextUITests.swift').write_text(r'''
 import XCTest
-final class ReadingUITests: XCTestCase {
- func launch(_ extra:[String]=[]) -> XCUIApplication {
+final class BodyUITests: XCTestCase {
+ func launch(_ tab:String="body") -> XCUIApplication {
   continueAfterFailure=false
-  let app=XCUIApplication();app.launchArguments=["--immersive-reading-preview"]+extra;app.launch()
-  XCTAssertTrue(app.buttons["reading.play"].waitForExistence(timeout:15));return app
+  let app=XCUIApplication();app.launchArguments=["--body-preview","--episode-day-preview","--tab",tab];app.launch()
+  XCTAssertTrue(app.buttons["BODY"].waitForExistence(timeout:15));return app
  }
  func capture(_ name:String,_ app:XCUIApplication) {let shot=XCTAttachment(screenshot:app.screenshot());shot.name=name;shot.lifetime = .keepAlways;add(shot)}
- func testGlobalReadAlongAffordance() {
-  continueAfterFailure=false
-  let app=XCUIApplication();app.launchArguments=["--immersive-reading-preview","--reading-bar-preview"];app.launch()
-  let open=app.buttons["reading.open"];XCTAssertTrue(open.waitForExistence(timeout:15));XCTAssertTrue(open.label.contains("READ ALONG"))
-  capture("global-read-along",app);open.tap()
-  XCTAssertTrue(app.buttons["reading.play"].waitForExistence(timeout:10))
-  XCTAssertEqual(app.buttons["reading.play"].label,"Listen")
+ func reveal(_ element:XCUIElement,_ app:XCUIApplication) {
+  for _ in 0..<8 {if element.exists && element.isHittable {return};app.swipeUp()}
  }
- func testMeasuredReadingAndManualScroll() {
-  let app=launch();XCTAssertEqual(app.buttons["reading.play"].label,"Listen")
-  XCTAssertTrue(app.staticTexts["Tap a word to listen from there."].exists)
-  capture("measured-reading",app)
-  app.swipeUp();XCTAssertTrue(app.buttons["Follow voice"].exists)
-  app.buttons["Follow voice"].tap();XCTAssertTrue(app.buttons["Following"].exists)
-  capture("reading-end",app)
+ func testFiveSectionsAndDialogue() {
+  let app=launch();capture("body-today",app)
+  for name in ["US","MIND","BODY","ALICIA","STUDIO"] {
+   let tab=app.buttons[name];XCTAssertTrue(tab.exists);tab.tap()
+  }
+  XCTAssertFalse(app.buttons["DRAW"].exists)
+  capture("studio-without-drawing",app)
+  app.buttons["dialogue.open"].tap()
+  XCTAssertTrue(app.textFields["dialogue.composer"].waitForExistence(timeout:10))
+  app.buttons["BODY"].tap();XCTAssertTrue(app.buttons["body.ritual.exercise"].exists)
  }
- func testUnavailableVoiceIsNotSpeaking() {
-  let app=launch(["--reading-unavailable"])
-  XCTAssertTrue(app.staticTexts["reading.failure"].exists)
-  XCTAssertEqual(app.buttons["reading.play"].label,"Retry voice")
-  capture("unavailable-natural-voice",app)
+ func testGoalIntentionAndCriterionStayEditable() {
+  let app=launch();app.buttons["GOALS"].tap()
+  let add=app.buttons["body.addGoal"];XCTAssertTrue(add.waitForExistence(timeout:10));add.tap()
+  let intention=app.textViews["body.goalIntention"];XCTAssertTrue(intention.waitForExistence(timeout:10));intention.tap();intention.typeText("Understand what supports my energy")
+  let criterion=app.textViews["body.goalCriterion"];criterion.tap();criterion.typeText("I notice which days feel clear")
+  capture("goal-edit-with-keyboard",app)
+  XCTAssertEqual(intention.value as? String,"Understand what supports my energy")
+  XCTAssertEqual(criterion.value as? String,"I notice which days feel clear")
+  app.buttons["Cancel"].tap();XCTAssertTrue(app.buttons["body.addGoal"].waitForExistence(timeout:10))
  }
- func testReduceMotionReading() {
-  let app=launch(["--reading-reduce-motion"])
-  XCTAssertTrue(app.buttons["Following"].exists)
-  capture("reading-reduce-motion",app)
+ func testMissingMeasurementAndHistory() {
+  let app=launch()
+  let missing=app.staticTexts["Not available"];reveal(missing,app);XCTAssertTrue(missing.exists);capture("oura-unknown-is-visible",app)
+  let history=app.buttons.matching(NSPredicate(format:"label CONTAINS %@","Sleep")).firstMatch
+  reveal(history,app);history.tap()
+  XCTAssertTrue(app.staticTexts["Most recent: 7.4 hours"].waitForExistence(timeout:10));capture("dated-metric-history",app)
+ }
+ func testPrivateConnectionFeedbackInline() {
+  let app=launch("us")
+  let connect=app.buttons["body.connectDay"];reveal(connect,app);XCTAssertTrue(connect.exists);connect.tap()
+  let fits=app.buttons["Fits"];reveal(fits,app);fits.tap()
+  let field=app.textViews["body.reflection"];reveal(field,app);field.tap();field.typeText("My attention felt steadier after exercise")
+  XCTAssertEqual(field.value as? String,"My attention felt steadier after exercise")
+  capture("private-connection-feedback-inline",app)
  }
 }
 ''')
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
-result=pathlib.Path(os.environ.get('ALICIA_TEST_EVIDENCE_DIR',str(work)))/('reading-ui-'+work.name+'.xcresult')
-subprocess.run(['xcodebuild','-project',str(project),'-scheme','Alicia','-destination','platform=iOS Simulator,name=iPhone 17','-derivedDataPath',str(work/'DerivedData'),'-resultBundlePath',str(result),'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','test'],env=env,check=True)
+result=pathlib.Path(os.environ.get('ALICIA_TEST_EVIDENCE_DIR',str(work)))/('body-ui-'+work.name+'.xcresult')
+selected=[name for name in os.environ.get('ALICIA_UI_TESTS','').split(',') if name]
+filters=['-only-testing:ContextUITests/BodyUITests/'+name for name in selected]
+subprocess.run(['xcodebuild','-project',str(project),'-scheme','Alicia','-destination','platform=iOS Simulator,name=iPhone 17','-derivedDataPath',str(work/'DerivedData'),'-resultBundlePath',str(result),'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','test']+filters,env=env,check=True)

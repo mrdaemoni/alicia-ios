@@ -42,7 +42,7 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA0000000000000000000001 /* Alicia */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Alicia; sourceTree = "<group>"; };
 		BB0000000000000000000001 /* AliciaWidgets */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = AliciaWidgets; sourceTree = "<group>"; };
-		CC0000000000000000000001 /* Shared */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Shared; sourceTree = "<group>"; };
+		FA0000000000000000000001 /* Shared */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Shared; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,7 +68,7 @@
 			children = (
 				AA0000000000000000000001 /* Alicia */,
 				BB0000000000000000000001 /* AliciaWidgets */,
-				CC0000000000000000000001 /* Shared */,
+				FA0000000000000000000001 /* Shared */,
 				AA0000000000000000000004 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -100,7 +100,7 @@
 				BB0000000000000000000013 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				CC0000000000000000000001 /* Shared */,
+				FA0000000000000000000001 /* Shared */,
 				AA0000000000000000000001 /* Alicia */,
 			);
 			name = Alicia;
@@ -121,7 +121,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				CC0000000000000000000001 /* Shared */,
+				FA0000000000000000000001 /* Shared */,
 				BB0000000000000000000001 /* AliciaWidgets */,
 			);
 			name = AliciaWidgetsExtension;

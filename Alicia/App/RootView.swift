@@ -157,6 +157,7 @@ private struct EpisodeConversationBar: View {
                             .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                     }
                         .accessibilityLabel("Write about " + episode.id)
+                        .accessibilityIdentifier("dialogue.open")
                 }.padding(.horizontal, 20).padding(.vertical, 5)
             }
             .buttonStyle(.plain).foregroundStyle(Theme.ink).background(Theme.paper)

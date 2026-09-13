@@ -24,9 +24,9 @@ struct LiveAliciaService: AliciaService {
         let data = try? JSONSerialization.data(withJSONObject: ["text": text])
         return await privateBodyRequest(method: "POST", data: data, path: "/api/body/ask")
     }
-    func bodySource(id: String, offset: Int) async -> BodySourcePage? {
+    func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage? {
         var components = URLComponents()
-        components.queryItems = [URLQueryItem(name: "id", value: id), URLQueryItem(name: "offset", value: String(offset))]
+        components.queryItems = [URLQueryItem(name: "id", value: id), URLQueryItem(name: "offset", value: String(offset)), URLQueryItem(name: "sha256", value: expectedHash)]
         return await privateBodyRequest(method: "GET", data: nil, path: "/api/body/source?" + (components.percentEncodedQuery ?? ""))
     }
     func bodyOverview() async -> BodyOverview? {
@@ -41,9 +41,9 @@ struct LiveAliciaService: AliciaService {
         req.cachePolicy = .reloadIgnoringLocalCacheData
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 20
-        let session = URLSession(configuration: config)
+        config.timeoutIntervalForRequest = path == "/api/body/ask" ? 210 : 15
+        config.timeoutIntervalForResource = path == "/api/body/ask" ? 210 : 20
+        let session = URLSession(configuration: config, delegate: PrivateBodySessionDelegate(), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         guard let (bytes, response) = try? await session.data(for: req),
               [200, 409].contains((response as? HTTPURLResponse)?.statusCode ?? 0) else { return nil }
@@ -1037,5 +1037,17 @@ struct LiveAliciaService: AliciaService {
                            symbol: "wifi.slash",
                            author: .alicia)
         }
+    }
+}
+
+
+/// Body requests stay at the configured Mac endpoint; redirects cannot replay
+/// a private question or authored goal to a different host.
+private final class PrivateBodySessionDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }

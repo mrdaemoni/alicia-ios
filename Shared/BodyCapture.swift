@@ -21,13 +21,19 @@ struct BodyEvent: Codable, Identifiable, Equatable {
     var episode_id = ""
     var mind_goal_id = ""
     var id: String { request_id }
+    init(kind: String, goal_id: String = "", now: Date = .now) {
+        self.kind = kind; self.goal_id = goal_id
+        self.captured_at = BodyCapture.timestamp(now)
+        self.local_day = BodyCapture.day(now)
+        self.timezone = TimeZone.current.identifier
+    }
 }
 
 enum BodyCapture {
-    static func timestamp() -> String {
+    static func timestamp(_ date: Date = .now) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: Date())
+        return formatter.string(from: date)
     }
     static let rituals = [("exercise", "Exercise"), ("cold_plunge", "Cold plunge"), ("sauna", "Sauna")]
     static func day(_ date: Date) -> String {
@@ -37,6 +43,17 @@ enum BodyCapture {
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
+    }
+    static func instant(_ text: String) -> Date {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: text) ?? .distantPast
+    }
+    static func before(_ lhs: BodyEvent, _ rhs: BodyEvent) -> Bool {
+        let a = instant(lhs.captured_at), b = instant(rhs.captured_at)
+        return a == b ? lhs.id < rhs.id : a < b
     }
     static func root() throws -> URL {
         guard let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.myalicia.app") else {
@@ -64,14 +81,15 @@ enum BodyCapture {
         return try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "json" && !isDiscarded($0.deletingPathExtension().lastPathComponent, directory: dir) }
             .map { try JSONDecoder().decode(BodyEvent.self, from: Data(contentsOf: $0)) }
-            .sorted { ($0.captured_at, $0.id) < ($1.captured_at, $1.id) }
+            .sorted(by: before)
     }
     static func acknowledge(_ id: String, directory: URL? = nil) throws {
         let dir = try directory ?? root()
         try Data().write(to: dir.appendingPathComponent(id + ".ack"), options: .atomic)
     }
-    static func discardRejected(_ id: String) throws {
-        try Data().write(to: root().appendingPathComponent(id + ".discarded"), options: .atomic)
+    static func discardRejected(_ id: String, directory: URL? = nil) throws {
+        let dir = try directory ?? root()
+        try Data().write(to: dir.appendingPathComponent(id + ".discarded"), options: .atomic)
     }
     static func isDiscarded(_ id: String, directory: URL) -> Bool {
         FileManager.default.fileExists(atPath: directory.appendingPathComponent(id + ".discarded").path)

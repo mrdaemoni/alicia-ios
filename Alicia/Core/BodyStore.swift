@@ -50,14 +50,14 @@ struct BodySourcePage: Decodable {
     var events: [BodyEvent] {
         var byID: [String: BodyEvent] = [:]
         for event in (overview?.events ?? []) + local { byID[event.id] = event }
-        return byID.values.sorted { ($0.captured_at, $0.id) < ($1.captured_at, $1.id) }
+        return byID.values.sorted(by: BodyCapture.before)
     }
     var goals: [BodyEvent] {
         var byID: [String: BodyEvent] = [:]
         for event in overview?.goals ?? [] { byID[event.goal_id] = event }
         // Pending edits remain visible and explicitly labelled until saved.
         for event in local where event.kind == "goal" && pendingIDs.contains(event.id) { byID[event.goal_id] = event }
-        return byID.values.sorted { $0.captured_at < $1.captured_at }
+        return byID.values.sorted(by: BodyCapture.before)
     }
     func reread() {
         do { let directory = try BodyCapture.root(); local = try BodyCapture.events(directory: directory).filter { !BodyCapture.isDiscarded($0.id, directory: directory) }; pendingIDs = Set(try BodyCapture.pending().map(\.id)) }
@@ -112,5 +112,5 @@ struct BodySourcePage: Decodable {
         catch { self.error = "Could not discard this rejected edit. Its original has been kept." }
     }
     func ask(_ text: String) async -> BodyAnswer? { await service.askBody(text) }
-    func source(_ id: String, offset: Int) async -> BodySourcePage? { await service.bodySource(id: id, offset: offset) }
+    func source(_ id: String, offset: Int, expectedHash: String) async -> BodySourcePage? { await service.bodySource(id: id, offset: offset, expectedHash: expectedHash) }
 }

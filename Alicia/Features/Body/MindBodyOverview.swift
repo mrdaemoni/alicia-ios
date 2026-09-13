@@ -72,11 +72,17 @@ struct MindBodyOverview: View {
                     Text("Choose").tag(""); Text("Fits").tag("Fits")
                     Text("Not sure").tag("Not sure"); Text("Doesn't fit").tag("Doesn't fit")
                 }.pickerStyle(.segmented)
-                TextField("What did you notice? (optional)", text: $note, axis: .vertical)
-                    .lineLimit(3...8).textFieldStyle(.roundedBorder)
+                Text("What did you notice? (optional)").font(.caption)
+                TextEditor(text: $note)
+                    .frame(minHeight: 110)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.stroke, lineWidth: 0.7))
+                    .accessibilityLabel("What did you notice?")
+                    .accessibilityIdentifier("body.reflection")
                 Button(saving ? "Saving…" : "Keep this reflection") {
                     var event = BodyEvent(kind: "reflection")
-                    event.text = verdict + (note.isEmpty ? "" : " — " + note)
+                    event.text = [verdict, note].filter { !$0.isEmpty }.joined(separator: " — ")
                     event.criterion = [observation, question].compactMap { $0 }.joined(separator: "\n")
                     event.goal_id = wellnessGoalID; event.mind_goal_id = mindGoalID
                     event.episode_id = store.episodeDay?.episode?.id ?? ""

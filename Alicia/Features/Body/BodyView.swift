@@ -280,7 +280,7 @@ struct BodySourceView: View {
             }.padding(22)
         }.background(Theme.paper).task(id: offset) { await load() }
     }
-    private func load() async { loading = true; page = await store.bodyStore.source(source.id, offset: offset); loading = false }
+    private func load() async { loading = true; page = await store.bodyStore.source(source.id, offset: offset, expectedHash: source.sha256 ?? ""); loading = false }
 }
 
 
