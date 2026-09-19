@@ -1,3 +1,16 @@
+## A2-050 — where he is
+
+`Core/PlaceTracker.swift` gives Alicia a **place, not a position**: significant-
+change monitoring, on-device reverse geocoding, and only a locality, region and
+`home | office | travelling` ever published. Coordinates never leave the class.
+`NSLocationWhenInUseUsageDescription` explains that in his words, and the
+permission is requested from `PlaceAwareness` on the Alicia tab — where the
+prompt arrives attached to a reason and he can read back exactly what she is
+told. A refused permission is an ordinary state; everything else works.
+
+The place travels two ways: one `place` presence event when the city changes,
+and inside `SurfaceContext`, so a reflection recorded in Seattle is filed as one.
+
 ## A2-047 — the home screen Hector actually uses
 
 Hector's build-18 field report, built on Codex's preserved A2-045 composer.

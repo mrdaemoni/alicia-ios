@@ -1156,10 +1156,14 @@ final class AppStore {
     var privateBodyMessages: [Message] = []
     var privateBodySending = false
     var composerSection: AppSection { selectedSection == .dialogue ? ((collaboration.dialogueContext != nil || answeringAskID != nil) ? .us : dialogueOrigin) : selectedSection }
+    /// Every captured context picks up where he was, if he has granted it.
+    /// A reflection recorded in Seattle reads differently from the same words
+    /// at home, and that is exactly the awareness he asked for.
     func surfaceContext() -> SurfaceContext {
         let names: [AppSection: String] = [.us: "us", .knowledge: "mind", .body: "body", .mind: "alicia", .studio: "studio", .dialogue: "dialogue"]
         return SurfaceContext(section: names[composerSection] ?? "dialogue", captured_at: voiceTimestamp(),
-            episode_id: [.us, .studio].contains(composerSection) ? episodeDay?.episode?.id ?? "" : "")
+            episode_id: [.us, .studio].contains(composerSection) ? episodeDay?.episode?.id ?? "" : "",
+            place: PlaceTracker.shared.wire)
     }
     func sendPrivateBody(_ text: String, recordingID: String = "") {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
