@@ -9,6 +9,18 @@ struct EpisodeHomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
                     SectionHeader(title: "Us", kicker: Date.now.formatted(date: .complete, time: .omitted))
+                    MorningBriefingView(briefing: store.morningBriefing,
+                        playingBriefingID: store.playingMorningBriefingID,
+                        loadingBriefingID: store.reader.isLoadingMedia ? store.currentMorningBriefingID : nil,
+                        failedBriefingID: store.reader.failure != nil ? store.currentMorningBriefingID : nil,
+                        playbackError: store.reader.failure,
+                        isRefreshing: store.morningBriefingRefreshing,
+                        onTogglePlayback: store.toggleMorningBriefing,
+                        onOpenPlaylist: store.openMorningPlaylist,
+                        onRefresh: { Task { await store.refreshMorningBriefing() } })
+                    MindBodyOverview()
+                    NextEpisodeInvitation()
+                    CollaborationSummary()
                     if let day = store.episodeDay, let episode = day.episode {
                         EpisodeHeading(episode: episode)
                         if !day.focus.isEmpty {
@@ -46,11 +58,17 @@ struct EpisodeHomeView: View {
                         Button("CONTINUE IN DIALOGUE") { store.selectedSection = .dialogue }
                             .font(.system(size: 11, design: .monospaced)).tracking(1.3)
                     } else {
-                        InkTitle(text: "Begin with what you hear", size: 32)
-                        Text("Play an episode in Studio. Its ideas will be here, ready for your reaction.")
-                            .font(.system(size: 20, design: .serif))
-                        Button("OPEN STUDIO") { store.selectedSection = .studio }
-                            .buttonStyle(EpisodeButtonStyle())
+                        if store.collaboration.state?.goals.contains(where: { $0.status == "active" }) == true {
+                            Text("An episode can add another perspective.").font(.subheadline).italic()
+                            Button("BRING IN AN EPISODE") { store.selectedSection = .studio }
+                                .font(.caption.monospaced()).frame(minHeight: 44)
+                        } else {
+                            InkTitle(text: "Begin with what you hear", size: 32)
+                            Text("Play an episode in Studio. Its ideas will be here, ready for your reaction.")
+                                .font(.system(size: 20, design: .serif))
+                            Button("OPEN STUDIO") { store.selectedSection = .studio }
+                                .buttonStyle(EpisodeButtonStyle())
+                        }
                         if !store.walkDraft.isEmpty {
                             Button("RETURN TO YOUR REFLECTION") {
                                 store.walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? ""
@@ -70,7 +88,8 @@ struct EpisodeHomeView: View {
                 .padding(22)
                 .padding(.bottom, 20)
             }
-            .refreshable { await store.refreshEpisodeDay() }
+            .task { await store.refreshMorningBriefing(); await store.bodyStore.refresh() }
+            .refreshable { await store.refreshMorningBriefing(); await store.refreshEpisodeDay(); await store.bodyStore.refresh() }
             .presenceBackground(.us, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showHistory) { EpisodeHistoryView() }
@@ -96,10 +115,11 @@ struct EpisodePassage: View {
 }
 
 struct EpisodeHeading: View {
+    @Environment(AppStore.self) private var store
     let episode: EpisodeDay.Episode
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("IN OUR EARS · " + episode.id)
+            Text((store.episodeDay?.has_playback == false ? "CHOSEN IN STUDIO · " : "IN OUR EARS · ") + episode.id)
                 .font(.system(size: 10, design: .monospaced)).tracking(1.7)
                 .foregroundStyle(Theme.accent)
             Text(episode.title.strippedEmojis)
@@ -114,17 +134,20 @@ struct WalkInvitation: View {
     var body: some View {
         Button { store.openWalk() } label: {
             VStack(alignment: .leading, spacing: 9) {
-                Text(store.walkDraft.isEmpty ? "Walk with this" : "Return to your reflection")
-                    .font(.system(size: 25, design: .serif))
-                Text("TAP AND THINK ALOUD")
+                Text(store.walkDraft.isEmpty || store.walkEpisodeID != store.episodeDay?.episode?.id ? "Walk with this" : "Return to your reflection")
+                    .font(.system(size: 23, design: .serif))
+                Text("THINK ALOUD TOGETHER")
                     .font(.system(size: 10, design: .monospaced)).tracking(1.5)
                 Text("I'll listen. We can reflect when you're ready.")
                     .font(.system(size: 15, design: .serif)).italic()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(22)
-            .foregroundStyle(Theme.paper)
-            .background(Theme.ink)
+            .padding(.vertical, 18)
+            .padding(.horizontal, 16)
+            .foregroundStyle(Theme.ink)
+            .background(Theme.paper.opacity(0.45))
+            .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("episode.walk")
@@ -267,6 +290,10 @@ struct EpisodeMindView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     SectionHeader(title: "Alicia", kicker: "WHAT I'M HOLDING WITH YOU")
+                    CollaborationSummary()
+                    NavigationLink("About you · enrich Alicia’s context") { ContextEnrichmentView() }
+                        .font(.callout).frame(minHeight: 44)
+                    WorkSessionsEntry()
                     if let day = store.episodeDay, let episode = day.episode {
                         EpisodeHeading(episode: episode)
                         if !day.understanding.isEmpty {
@@ -373,5 +400,49 @@ struct EpisodeHistoryView: View {
             .background(Theme.paper)
             .toolbar { Button("Close") { dismiss() } }
         }
+    }
+}
+
+/// The way in to every spoken session and its state. It lives in Alicia
+/// because that is where the work she is doing with his words belongs, and it
+/// carries its own count so the number waiting on him is visible without
+/// opening anything.
+struct WorkSessionsEntry: View {
+    @Environment(AppStore.self) private var store
+    @State private var open = false
+
+    private var waiting: Int {
+        store.voiceArchive.recordings
+            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage.needsYou }.count
+    }
+    private var total: Int {
+        store.voiceArchive.recordings.filter { !$0.deleted && !$0.isPrivateBody }.count
+    }
+
+    var body: some View {
+        Button { open = true } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Your spoken sessions").font(.callout)
+                    Text(waiting > 0
+                         ? "\(waiting) waiting for you · \(total) in all"
+                         : total > 0 ? "\(total) recorded · none waiting on you"
+                                     : "Nothing spoken yet")
+                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                }
+                Spacer(minLength: 0)
+                if waiting > 0 {
+                    Circle().fill(Theme.amber).frame(width: 7, height: 7)
+                }
+                InkChevron().frame(width: 9, height: 14).foregroundStyle(Theme.inkSoft)
+            }
+            .frame(minHeight: 44).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("sessions.open")
+        .accessibilityLabel(waiting > 0
+            ? "Your spoken sessions, \(waiting) waiting for you"
+            : "Your spoken sessions")
+        .sheet(isPresented: $open) { WorkSessionsView() }
     }
 }

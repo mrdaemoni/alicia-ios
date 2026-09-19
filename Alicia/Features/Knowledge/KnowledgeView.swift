@@ -48,9 +48,9 @@ struct KnowledgeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     SectionHeader(title: store.knowledgeSegment == 0
-                                  ? "Knowledge" : "The Thinkers",
+                                  ? "Mind" : "The Thinkers",
                                   kicker: store.knowledgeSegment == 0
-                                  ? "the vault, in your pocket"
+                                  ? "a clear mind · knowledge and connections"
                                   : "\(thinkers.count) minds, hand in hand")
 
                     // v21: two rooms, one door — her underline marks which.

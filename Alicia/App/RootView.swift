@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Us, Mind, Body, Alicia and Studio. Dialogue is a shared action.
 /// The five sections of Alicia. Health lives inside Us (status strip →
 /// full vitals) so the tab bar stays at five and iOS never folds tabs
 /// into a "More" item.
@@ -13,7 +14,10 @@ enum AppSection: String, CaseIterable, Identifiable {
     case dialogue = "Dialogue"
     case mind    = "Alicia"
     case studio  = "Studio"
-    case knowledge = "Knowledge"
+    case knowledge = "Mind"
+    case body = "Body"
+
+    static let tabs: [AppSection] = [.us, .knowledge, .body, .mind, .studio]
 
     var id: String { rawValue }
 
@@ -24,9 +28,10 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch launchName.lowercased() {
         case "us":        self = .us
         case "dialogue":  self = .dialogue
-        case "alicia", "mind": self = .mind
+        case "alicia": self = .mind
+        case "body": self = .body
         case "studio":    self = .studio
-        case "knowledge": self = .knowledge
+        case "knowledge", "mind": self = .knowledge
         default:          return nil
         }
     }
@@ -39,6 +44,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .mind:    return "hare"
         case .studio:  return "waveform"
         case .knowledge: return "books.vertical"
+        case .body: return "body"
         }
     }
 }
@@ -48,18 +54,30 @@ struct RootView: View {
 
     var body: some View {
         @Bindable var store = store
+        @Bindable var collaboration = store.collaboration
         // A hard layout, not a safe-area inset: the inset mechanism
         // repeatedly failed on device (bar floating above the bottom,
         // covering the composer). Content and bar are siblings — the bar
         // owns the bottom edge, period.
         VStack(spacing: 0) {
+#if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ritual-widget-preview") {
+                RitualWidgetContent(entry: RitualEntry(date: .now, events: [], pending: 0, failed: false),
+                    forceAccented: ProcessInfo.processInfo.arguments.contains("--accented-preview"))
+                    .frame(height: 160).padding(16)
+            }
+#endif
+            if store.selectedSection == .dialogue {
+                TalkView()
+            } else {
             TabView(selection: $store.selectedSection) {
-                ForEach(AppSection.allCases) { section in
+                ForEach(AppSection.tabs) { section in
                     tab(for: section)
                         .tag(section)
                         // The system bar is replaced by the editorial word-bar.
                         .toolbar(.hidden, for: .tabBar)
                 }
+            }
             }
             // v28: the global PODCAST player was more clutter than comfort
             // (Hector: "then I have to close it") — it lives in Studio
@@ -68,10 +86,31 @@ struct RootView: View {
             // mistake: it exists only while something is being read to you,
             // it follows you off the page you started it from, and its
             // crossed-out mark ends it in one tap.
+            //
+            // v39: the way to reach her is furniture, not a state. It used to
+            // appear only when an episode existed, and both it and the tab bar
+            // collapsed the moment the field took focus — so the one control
+            // Hector reaches for most had three appearances and one of them
+            // was nothing at all. Three permanent bands now, always in this
+            // order: her, then what is being read to him, then where he is.
+            ConversationComposer()
             ReadingBar()
             EditorialTabBar()
         }
         .ignoresSafeArea(edges: .bottom)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("alicia.openThoughtReturn"))) { _ in
+            store.selectedSection = .mind
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("alicia.openCollaboration"))) { note in
+            let info = note.userInfo ?? [:]
+            store.collaboration.route = CollaborationRoute(candidateID: info["collaborationCandidate"] as? String ?? "",
+                goalID: info["goalID"] as? String ?? "", connectionID: info["connectionID"] as? String ?? "",
+                agreementID: info["agreementID"] as? String ?? "")
+        }
+        .task { store.collaboration.restoreRoute() }
+        .sheet(item: $collaboration.route) { route in
+            NavigationStack { CollaborationView(target: route) }
+        }
         // Presence: which tab, for how long. Fires on every change including
         // the first, so the section he lands on is timed from the start.
         .task(id: store.selectedSection) {
@@ -90,6 +129,18 @@ struct RootView: View {
         // Serif body type everywhere — the sketchbook voice.
         .fontDesign(.serif)
         .fullScreenCover(isPresented: $store.showWalk) { WalkReflectionView() }
+        // Writing to her is contextual: it belongs on top of the page he is
+        // already on, carrying that page in with it, and it gives the page
+        // back when he closes it. Dialogue stays a place he can also go.
+        .sheet(isPresented: $store.showConversation) {
+            ConversationSheet()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        // The way back to a reflection, from wherever he happens to be.
+        .sheet(item: $store.reviewRecording) { target in
+            VoiceRecordingsView(recordingID: target.id)
+        }
     }
 
     @ViewBuilder
@@ -100,6 +151,7 @@ struct RootView: View {
         case .mind:     MindView()
         case .studio:   StudioView()
         case .knowledge: KnowledgeView()
+        case .body: BodyView()
         }
     }
 }

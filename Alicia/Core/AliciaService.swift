@@ -30,6 +30,11 @@ final class ConnectionStatus {
 struct SpeechChunk: Hashable {
     var url: URL
     var duration: TimeInterval
+    var text: String = ""
+    var cues: [NarrationCue] = []
+    var timingStatus: String = "unavailable"
+    var spokenText: String = ""
+    var speechBackend: String = ""
 }
 
 /// Where a read-aloud request got to.
@@ -50,10 +55,41 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
+    func askBody(_ text: String) async -> BodyAnswer?
+    func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage?
+    func bodyOverview() async -> BodyOverview?
+    func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult?
+    func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus
+    func morningBriefing() async -> MorningBriefing?
+    func collaboration() async -> CollaborationState?
+    func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse?
+    func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource?
+
+    func finalizeVoice(_ finalization: VoiceFinalization) async -> VoiceTransport<VoiceProcessingResponse>
+    func retryVoiceTranscription(_ retry: VoiceTranscriptionRetry) async -> VoiceTransport<VoiceProcessingResponse>
+    func voiceSubmissionStatus(_ requestID: String) async -> VoiceTransport<VoiceSubmissionStatus>
+    func submitVoice(_ submission: VoiceSubmission) async -> VoiceTransport<VoiceSubmissionStatus>
+    func voiceReplyURL(_ path: String) -> URL?
+    func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult?
+    func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload?
+    func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult?
+    func downloadVoice(recordingID: String, segmentID: String) async -> Data?
+    func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent>
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?) -> AsyncStream<ChatEvent>
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?) -> AsyncStream<ChatEvent>
+    func contextEnrichment(replyID: String) async -> ContextEnrichment?
+    func changeContext(_ change: ContextChange) async -> ContextChangeResult?
+    func contextSource(replyID: String, itemID: String) async -> ContextSource?
     func episodeDay(day: String) async -> EpisodeDay?
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse?
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt?
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt?
+    /// `surface` names the section a walk was started from when it was not
+    /// started from an episode. Both are never empty at once.
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String, surface: String) async -> WalkReceipt?
     func conversationHistory() async -> ConversationHistory?
+    func dialogueReview(replyID: String) async -> DialogueReview?
+    func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult?
     /// Streams a reply as events: tokens, an optional voice-note URL, and a
     /// final `.done` carrying the backend message id (for reactions).
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent>
@@ -86,6 +122,7 @@ protocol AliciaService {
     /// Reply to one of her proactive messages. Lands as Tier-3 capture +
     /// shared history + memory on the backend; returns her answer.
     func reply(proactiveID: String, text: String) async -> String?
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String?
     /// Co-creation: send the current canvas composite and where the pencil
     /// stopped (normalized 0…1, nil if unknown); she draws from that point.
     func cocreate(image: Data, width: Int, height: Int,
@@ -142,6 +179,71 @@ protocol AliciaService {
     /// citable, and then the view renders nothing rather than a placeholder:
     /// a quiet week is a fact about the week.
     func mindNote() async -> String
+}
+
+extension AliciaService {
+    func morningBriefing() async -> MorningBriefing? { nil }
+    func collaboration() async -> CollaborationState? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") { return await CollaborationPreview.shared.read() }
+#endif
+        return nil
+    }
+    func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") { return await CollaborationPreview.shared.save(mutation) }
+#endif
+        return nil
+    }
+    func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") { return ContextSource(title: "Preview source", text: "Preview: removal serves the outcome; it is not an end in itself.", notice: "Fixture source. No live file was read.") }
+#endif
+        return nil
+    }
+
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String? {
+        await reply(proactiveID: proactiveID, text: text)
+    }
+
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
+        await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt)
+    }
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String, surface: String) async -> WalkReceipt? {
+        await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt)
+    }
+    func finalizeVoice(_ finalization: VoiceFinalization) async -> VoiceTransport<VoiceProcessingResponse> { .unavailable }
+    func retryVoiceTranscription(_ retry: VoiceTranscriptionRetry) async -> VoiceTransport<VoiceProcessingResponse> { .unavailable }
+    func voiceSubmissionStatus(_ requestID: String) async -> VoiceTransport<VoiceSubmissionStatus> { .unavailable }
+    func submitVoice(_ submission: VoiceSubmission) async -> VoiceTransport<VoiceSubmissionStatus> { .unavailable }
+    func voiceReplyURL(_ path: String) -> URL? { nil }
+    func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult? { nil }
+    func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload? { nil }
+    func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult? { nil }
+    func downloadVoice(recordingID: String, segmentID: String) async -> Data? { nil }
+    func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice)
+    }
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: recordingID, workContext: workContext)
+    }
+
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?) -> AsyncStream<ChatEvent> {
+        guard let workContext else { return stream(prompt, voice: voice, recordingID: recordingID) }
+        return AsyncStream { continuation in
+            #if DEBUG
+            if self is MockAliciaService {
+                continuation.yield(.token("Preview · We are discussing \(workContext.sectionTitle) for \(workContext.goalTitle). No live message was sent."))
+            } else {
+                continuation.yield(.token("This service cannot carry the selected passage. Your goal context has been kept; reconnect before sending."))
+            }
+            #else
+            continuation.yield(.token("This service cannot carry the selected passage. Reconnect before sending."))
+            #endif
+            continuation.yield(.done(messageID: nil)); continuation.finish()
+        }
+    }
+
 }
 
 struct TimelineDay: Decodable, Hashable, Identifiable {
@@ -210,15 +312,66 @@ struct ArchetypeStat: Decodable, Hashable {
 
 /// In-memory stand-in so the app runs with zero backend.
 struct MockAliciaService: AliciaService {
+    func contextEnrichment(replyID: String) async -> ContextEnrichment? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--dialogue-review-preview") || ProcessInfo.processInfo.arguments.contains("--episode-day-preview") {
+            return await ContextPreviewStore.shared.read(replyID)
+        }
+#endif
+        return nil
+    }
+    func changeContext(_ change: ContextChange) async -> ContextChangeResult? {
+#if DEBUG
+        return await ContextPreviewStore.shared.save(change)
+#else
+        return nil
+#endif
+    }
+    func contextSource(replyID: String, itemID: String) async -> ContextSource? {
+#if DEBUG
+        return ContextSource(title: "Preview source", text: "A source excerpt is evidence, not proof of an implemented feature.", notice: "Fixture source, no live file read.")
+#else
+        return nil
+#endif
+    }
     func episodeDay(day: String) async -> EpisodeDay? {
 #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
+            return await EpisodeChoicePreviewStore.shared.current
+        }
         if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { return EpisodeDay.preview }
 #endif
         return nil
     }
-    func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? { nil }
-    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? { nil }
+    func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
+            return await EpisodeChoicePreviewStore.shared.act(body)
+        }
+#endif
+        return nil
+    }
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--voice-save-preview") { return WalkReceipt(ok: true) }
+#endif
+        return nil
+    }
     func conversationHistory() async -> ConversationHistory? { nil }
+    func dialogueReview(replyID: String) async -> DialogueReview? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return await DialogueReviewPreviewStore.shared.read() }
+#endif
+        return nil
+    }
+    func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) {
+            return await DialogueReviewPreviewStore.shared.save(mutation)
+        }
+#endif
+        return nil
+    }
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
         let reply = SampleData.reply(to: prompt)
         return AsyncStream { continuation in
@@ -236,7 +389,21 @@ struct MockAliciaService: AliciaService {
     func sharedContext() async -> SharedContext? { SampleData.sharedContext }
     func reflections() async -> [Reflection]? { SampleData.reflections }
     func thoughts() async -> [Thought]? { SampleData.thoughts }
-    func tracks() async -> [Track]? { SampleData.tracks }
+    func tracks() async -> [Track]? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--work-review-preview") {
+            return [Track(title: "Preview · Sculpture and subtraction", mood: "Consider", duration: 300,
+                symbol: "", season: 15, episode: 3, label: "S15E03", collection: "S15", collectionTitle: "Season 15")]
+        }
+#endif
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") {
+            return [Track(title: "Preview · Endings Chosen", mood: "Fixture", duration: 1300, symbol: "", season: 15, episode: 7, label: "S15E07", collection: "S15", collectionTitle: "Preview episodes"),
+                    Track(title: "Preview · The Discard Log", mood: "Fixture", duration: 1200, symbol: "", season: 15, episode: 6, label: "S15E06", collection: "S15", collectionTitle: "Preview episodes")]
+        }
+#endif
+        return SampleData.tracks
+    }
     func gallery() async -> [Artwork]? { SampleData.gallery }
     func health() async -> [HealthMetric]? { SampleData.health }
     func proactive(limit: Int) async -> [ProactiveMessage] { [] }
@@ -280,8 +447,7 @@ struct MockAliciaService: AliciaService {
                       note: String) async -> Bool { true }
     func pin(action: String, id: String, kind: String, title: String,
              body: String, thinker: String, source: String) async -> Bool { true }
-    /// Mock mode has no TTS — read-aloud falls to the device voice, the one
-    /// case that still earns it.
+    /// Mock mode has no TTS and exposes the same honest unavailable state.
     func requestSpeech(text: String, kind: String) async -> SpeechStatus {
         .unavailable
     }
@@ -337,4 +503,16 @@ struct MockAliciaService: AliciaService {
             body: "A sample synthesis so the card has a shape in mock mode.",
             date: "2026-07-05")
     }
+}
+
+extension AliciaService {
+    func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus { .unavailable }
+}
+
+// Older/mock services show an honest unavailable Body surface.
+extension AliciaService {
+    func askBody(_ text: String) async -> BodyAnswer? { nil }
+    func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage? { nil }
+    func bodyOverview() async -> BodyOverview? { nil }
+    func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult? { nil }
 }

@@ -1,3 +1,48 @@
+## A2-047 — the home screen Hector actually uses
+
+Hector's build-18 field report, built on Codex's preserved A2-045 composer.
+
+**The conversation is a layer, not a place.** `ConversationComposer` is a
+permanent band directly above `EditorialTabBar`, on the same ink ground; it
+never takes the keyboard and nothing collapses for it any more. Tapping it
+raises `ConversationSheet` over the current section, carrying that section's
+name and its own per-section draft; closing it returns him to the page he was
+on. `TalkView` (Dialogue) still exists and keeps shared history.
+
+**The microphone is the page.** `ListeningRoom` and the shared `ListeningStage`
+put `AliciaPresence` full-bleed behind his own words in large serif, in the
+voice of the section he spoke from. "Talk about this episode" opens the same
+room through `WalkReflectionView`, whose lifecycle is unchanged: original audio
+kept, Mac transcript, explicit review before anything is sent. Both paths ask
+for speech authorization so live text can be read back, falling back to
+microphone-only and saying so.
+
+**A reflection has one address.** `VoiceRecording.stage` is the single
+vocabulary — Saved / Your Mac is writing it / Waiting for you to read / Sending
+/ Alicia has it / Needs your attention — used by the band, the recordings list
+and `VoiceProcessingView`. Anything waiting on him surfaces on the band from
+wherever he is.
+
+**Body says what is wrong.** A refused bridge now reports `last_built`,
+`last_measurement` and `stale_days`, and `BodyOverview.refusal` states them;
+no measurement block is drawn for a bridge the backend did not accept. The
+bridge itself is rebuilt by a scheduled task on the Mac (backend A2-046).
+
+Evidence: `scripts/test_home_conversation_ui.py`.
+
+## A2-043 — mind and body integration candidate
+
+Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action. Body is private Mac/phone evidence and explicit wellness goals. Daily rituals widget saves offline and syncs when Alicia opens. Drawing is removed from Studio navigation; files remain. No release is claimed; shared A2-043 evidence owns status.
+
+## A2-037 — natural immersive reading and voice interpretation review
+
+Current branch adds [IMMERSIVE_READING.md](docs/IMMERSIVE_READING.md): shared
+natural narration with exact text and measured cues, an honest unavailable/retry
+state, next episode from observed playback in Us/Studio, and A2-036's reviewable
+voice findings. Device read-aloud is removed. Podcast read-along uses a labelled
+machine transcript from the original audio, never shownotes as a script. Backend
+A2-036/A2-038 deploy first; task RELEASE.md owns actual shipping status.
+
 # CLAUDE.md — Alicia iOS
 
 **Read `AGENTS.md` before doing anything.** It is the repository-wide contract
@@ -5,8 +50,11 @@ for Codex–Opus coordination, worktrees, file ownership, review handoffs, Git,
 and the Motion Lab promotion gate.
 
 Read `SESSION_HANDOFF.md` for the current release and known limits. This file
-carries stable architecture. Current product: **v38 (2026-09-05)**, the
-Alicia 2.0 episode/day experience. Full cross-repository context is in
+carries stable architecture. The current product is the Alicia 2.0 episode/day
+experience; this branch adds A2-037 immersive natural reading on released source
+f6b3f81 / TestFlight 16, including shared work review and Mac voice processing.
+Read `docs/IMMERSIVE_READING.md` and `docs/WORK_REVIEW.md`;
+the shared task RELEASE.md records actual deployment and upload. Full cross-repository context is in
 `/Users/alicia/alicia/docs/ALICIA_2_0.md`; feature detail is in `docs/EPISODE_DAY.md`.
 Us and Alicia use the actually played episode and explicit human responses.
 The older orbit/cards and archetype gallery are unmounted.
@@ -20,34 +68,41 @@ relationship, three touchpoints). Target **iOS 17.0**, Swift 5.9+, the installed
 dependencies**. Runs live against the backend on a real iPhone; falls back to
 mock data so the repo stays runnable for anyone who clones it.
 
-## The five tabs
+## The five tabs and shared conversation
 
-Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`
-(kept at five so iOS never folds tabs into "More"):
+`AppSection.tabs` in `Alicia/App/RootView.swift` defines the five visible tabs.
+The internal `.knowledge` case is labelled Mind; `.mind` is labelled Alicia.
+Dialogue retains `.dialogue` for existing routes, rendered outside the five-tab
+view and opened through the shared conversation affordance.
 
-1. **Us** (`EpisodeHomeView`) — the episode actually played today, two or three
-   precise questions with inspectable passages, and a large **Walk with this**
-   action. Questions carry This helps / Go deeper / Missed me. Connection and
-   dated history remain available. The old orbit/cards are unmounted.
-2. **Dialogue** (`TalkView`) — the real shared conversation restored from
-   `/api/history`, a small current-episode header, dictation, optional voice
-   replies, and Think aloud. The backend uses the same retrieval/model/tool
-   routing boundary as Telegram. Proactive feed items do not seed the transcript.
-3. **Alicia** (`EpisodeMindView`) — her tentative reading, Hector's words,
-   corrections, and explicit learnings. He can correct her and keep something
-   in his own words. A prior rejected reading remains labelled while updating.
-4. **Studio** (`StudioView`) — the podcast and playlist library, shownotes,
-   playback, scrubbing, skips, and rate controls. AppStore reports actual
-   continuous playback; file downloads establish no listening evidence.
-5. **Knowledge** (`KnowledgeView`) — the passive synthesis/notes library and
-   existing pins. Studio and Knowledge retain their library roles.
+1. **Us** (`EpisodeHomeView`) — morning briefing, current episode and grounded
+   probes, Together work, and the mind/body overview with private reflection.
+2. **Mind** (`KnowledgeView`) — knowledge, syntheses, thinkers and existing pins.
+3. **Body** (`BodyView`) — explicit wellness goals and progress criteria,
+   daily ritual capture, dated Oura observations/history and private report
+   reading. Its optional answer runs on the Mac's local model.
+4. **Alicia** (`EpisodeMindView`) — her tentative reading, Hector's words,
+   corrections, explicit learnings and existing archetype traces.
+5. **Studio** (`StudioView`) — episodes, morning playlist and consumption
+   artifacts with the shared immersive reader. Drawing is no longer mounted.
+   Actual continuous playback remains distinct from selection or download.
 
-`WalkReflectionView` is a dedicated full-screen dictation surface. It pauses
-playback, shows the words as they arrive, persists a local draft, and saves with
-an idempotent receipt before clearing. On-device dictation pauses when the app
-leaves the foreground. Automatic screen sleep is disabled while this view is visible and active,
-including paused editing, and the prior idle setting is restored on exit.
-There is no claim of lock-screen or background recording.
+**Dialogue** (`TalkView`) keeps shared history, reviewed voice input and goal
+passage context. Mind goal work continues through the existing cloud pipeline;
+private Body records do not enter it. See `docs/MIND_BODY.md` for the private
+API and offline WidgetKit capture contract.
+
+`WalkReflectionView` is a dedicated full-screen recording and review surface. It
+pauses playback and retains original microphone audio. Pause or leaving the
+foreground keeps an unfinished recording; Finish seals its complete ordered
+manifest. Foreground sync uploads the audio, and the Mac prepares a separate
+machine transcript. Hector reviews and edits it, then explicitly sends those
+words with a durable receipt. The same review is reachable from Dialogue and
+Recordings. Legacy Apple Speech code remains for existing compatibility paths;
+new Mac-mode capture needs microphone permission only. Automatic screen sleep is
+disabled while the walk is visible and active, including paused editing, and the
+prior idle setting is restored on exit. No background recording or locked-phone
+upload is promised. See `docs/MAC_VOICE_PROCESSING.md` for recovery and provenance.
 
 ## Architecture
 
@@ -58,7 +113,7 @@ Alicia/
   Core/           Models · AliciaService (protocol + mock) · LiveAliciaService
                   · Config · AppStore · SpeechTranscriber · ProactiveNotifier
                   · SampleData
-  Features/       Home · Talk · Mind · Studio · Canvas · Health
+  Features/       Home · Talk · Mind · Body · Knowledge · Studio · Health (Canvas retained, unmounted)
   Assets.xcassets AppIcon · AccentColor · Art* (Hector's drawings)
 ```
 
@@ -94,30 +149,36 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 
 | Endpoint | For |
 |---|---|
-| `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds a voice-note URL |
-| `GET /api/context_enrichment` | current working picture and captured reply context; optional reply_id; item_id opens captured source |
-| `POST /api/context_enrichment` | UUID-receipted attention priority, correction, explicit note or follow-up setting |
-| `GET /api/dialogue_review?reply_id=<UUID>` | public context for one saved reply; read-only |
-| `POST /api/dialogue_review` | explicit feedback, requested opposite-model comparison, or contextual preference; UUID receipt |
+| `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds tap-to-play media. Reviewed Mac voice adds `client_request_id`, `recording_id`, machine source IDs and captured `episode_id`. |
+| `GET /api/body` · `POST /api/body` | Private overview and explicit wellness/ritual receipts |
+| `GET /api/body/source` · `POST /api/body/ask` | Exact private report passages and optional local health answer |
 | `GET /api/thoughts` · `/api/tracks` · `/api/gallery` · `/api/health` | tab data |
 | `GET /api/proactive?limit=` | retained proactive feed and best-effort local notifications; never seeds Dialogue history |
 | `POST /api/react` | emoji reactions, by `message_id` or `proactive_id` |
-| `POST /api/reply` | reply to a proactive message (lands in capture/history/memory) |
+| `POST /api/reply` | reply to a proactive message; reviewed Mac voice adds the same receipt/source IDs and retains original `proactive_id` and `episode_id`, without requesting new reply audio |
 | `GET /api/greeting` | legacy greeting endpoint; not loaded by the current Us screen |
 | `GET /api/context` · `/api/context/<id>` | retained orbit/receipt API; old Us orbit is unmounted |
 | `GET /api/home` | retained home/library context; no longer the Us framing source |
 | `GET /api/timeline` | every lived day since she began (Timeline sheet) |
 | `GET /api/featured` · `/api/syntheses` · `/api/quote` | the day's synthesis, the shelf, the rotating quote |
-| `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Knowledge tab + her archetype balance |
+| `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Mind library + her archetype balance |
 | `POST /api/speak` | render arbitrary text in her voice (read-aloud fallback when nothing is cached) |
 | `POST /api/pin` · `/api/card_feedback` | hold a card on the home screen; 👍/👎 on a card |
 | `POST /api/events` | **presence telemetry** — batch `{events:[{kind, ref, ms, meta}]}`. Kinds: `app_open`, `screen_view`, `section_dwell`, `episode_play`, `episode_progress`, `episode_finish`, `card_view`. This is the one endpoint that reports what he *did* rather than what he deliberately tapped; without it a day spent listening reads to her as silence. Fire-and-forget — never block UI on it, and batch on background/foreground transitions. Episode playback now comes from the player via `/api/episode_day`; an audio GET is not listening evidence. |
 | `GET /api/reflections` | her morning/evening self-reflections, text + a playable reading when rendered |
 | `GET /api/mind` | on-demand reading of the current episode, corrections and explicit keeps; Sunday push paused. Current Us/Alicia use `/api/episode_day`. Missing evidence can correctly return `has_note: false`. |
-| `GET/POST /api/mode` | walk/drive state; finish accepts `text`, `episode_id`, `request_id` and acknowledges durable save |
+| `GET/POST /api/mode` | walk/drive state; finish accepts `text`, `episode_id`, `request_id` and acknowledges durable save. Reviewed Mac voice also supplies `recording_id`, `transcription_request_id`, `transcript_id`. |
+| `GET/POST /api/voice_evidence` | raw voice metadata/versions; additive `finalize` with an ordered expected segment manifest and explicit `retry_transcription`; GET includes separate optional `transcription.draft` |
+| `PUT/GET /api/voice_evidence/audio/<recording>/<segment>` | exact original CAF upload/replay, checked by byte count and SHA-256 |
+| `GET /api/voice_submission?request_id=<UUID>` | durable Dialogue/proactive voice send status; only definite404 permits reposting the identical pending request |
 | `GET /api/episode_day?day=YYYY-MM-DD` | current or historical frame, probes, reactions, corrections, explicit keeps |
 | `POST /api/episode_day` | playing/progress/finished observations; reaction, feedback, correction, learning, refresh actions |
-| `GET /api/history` | last 120 actual shared conversation turns with stable receipts; no proactive feed |
+| `GET/POST /api/episode_reading` | original podcast read-along: GET returns cached machine transcript and measured word cues; explicit POST prepares the complete catalog episode locally on the Mac. No listening evidence or model call from GET. |
+| `GET /api/history` | last 120 actual shared conversation turns with stable receipts and optional reply_id; no proactive feed |
+| `GET /api/context_enrichment` | current working picture and captured reply context; optional reply_id; item_id opens captured source |
+| `POST /api/context_enrichment` | UUID-receipted attention priority, correction, explicit note or follow-up setting |
+| `GET /api/dialogue_review?reply_id=<UUID>` | public context for one saved reply; read-only |
+| `POST /api/dialogue_review` | explicit feedback, requested opposite-model comparison, or contextual preference; UUID receipt |
 | `GET /api/episode/<label>` | shownotes markdown |
 | `POST /api/speak` · `GET /api/speech/<name>` | read-aloud: her voice rendered in ramped chunks (`skills/reading_voice.py`), returned as an ordered chunk list — `ready` / `streaming` / `rendering`, never blocking |
 | `GET /api/playlists` · `POST /api/playlist` | Studio's listening queues (create/rename/delete/add/remove/reorder); adding also renders that piece's audio so a queue is warm before he drives |
@@ -152,8 +213,13 @@ ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
   `BGAppRefreshTask` (`com.alicia.app.refresh`) polls `/api/proactive` and
   posts **local** notifications for unseen messages. iOS controls the timing,
   so it's best-effort. Seen-tracking is shared with the foreground load path.
-- **Voice input** (`Core/SpeechTranscriber.swift`) — on-device SFSpeech
-  dictation straight into the Dialogue composer.
+- **Voice input** (`Core/SpeechTranscriber.swift`, `Core/VoiceEvidence.swift`,
+  `Core/VoiceProcessing.swift`) — new Walk/Dialogue input captures original audio
+  without starting Apple Speech. The Mac transcribes the finalized recording;
+  `Talk/VoiceProcessingView.swift` offers durable review, Done editing and explicit
+  Send. The independently typed Dialogue draft remains unchanged. Apple Speech
+  recognition is retained as legacy code, not the new capture requirement.
+  `docs/MAC_VOICE_PROCESSING.md` documents offline recovery and the exact receipts.
 
 ## How to build / run
 
@@ -200,3 +266,60 @@ branch automatically through `ship.sh`. Current base: **v38 (2026-09-05)**. Test
 - `docs/RESEARCH.md` (library research from the scaffold session) is
   historical — the zero-dependency approach won; consult it only if a real
   need for a chat/markdown/image library appears.
+
+
+## A2-006: brief Dialogue with inspection
+
+This branch adds `Core/DialogueReview.swift` and `Talk/DialogueReviewView.swift`.
+**Behind this reply** opens from the short message or its long-press menu. It
+shows a saved public reading, lens and supplied context, with granular feedback
+and optional labelled comparison; only unchanged-input pairs qualify for training review. `ChatEvent.details` and history `reply_id`
+keep the inspection bound to the exact reply. View requests go through AppStore
+and AliciaService. Legacy replies keep their original text but have no invented
+context. See `docs/DIALOGUE_REVIEW.md` for draft/retry and training boundaries.
+The preceding v38 / 1.0 (5) entry is historical. Exact branch build and Apple
+processing status are recorded in the shared A2-006 `RELEASE.md` receipt.
+
+
+## A2-007 — context enrichment candidate
+
+Dialogue owns its inspector sheet outside LazyVStack rows; each text field has a
+separate focus identity. `ContextEnrichmentView` uses AppStore/AliciaService for
+frozen context, tentative personal readings, source drill-in and durable edits.
+`ListeningPresence` reuses the selected home motion tied to actual microphone
+state. `ThoughtReturnNotifier` schedules the backend's optional prepared return
+with one local-day reservation, quiet hours and immediate stop/cancellation.
+No APNs, training, new Telegram stream or new animation family. Feature contract:
+`/Users/alicia/alicia/docs/CONTEXT_ENRICHMENT.md`. Release evidence belongs to
+`/Users/alicia/Documents/Alicia-development/tasks/A2-007/RELEASE.md`.
+
+## Original voice archive (A2-009)
+
+`Core/VoiceEvidence.swift` owns original CAF files, capture metadata, text versions,
+and the durable upload/deletion outbox. New Mac-mode recordings also retain capture
+order, an immutable final manifest, separate machine draft, authored review and
+send receipts. Backgrounding or closing pauses recording without finalizing it.
+The legacy Apple Speech mode can restart recognition while the raw sink continues;
+new Mac capture does not run that recognizer or depend on its permission.
+`Talk/VoiceRecordingsView.swift` offers replay, corrections, context and deletion.
+AppStore/AliciaService use GET/POST `/api/voice_evidence` and PUT/GET
+`/api/voice_evidence/audio/<recording>/<segment>`. The original stays on phone and
+private Mac until explicit deletion; no automatic training. Mac processing uses
+the paired backend's local transcription worker. The new machine draft never
+replaces the original or becomes a human statement until explicit reviewed Send.
+See `docs/MAC_VOICE_PROCESSING.md` for the additive service contract and limits.
+
+## A2-010 — collaborative partner
+
+Read docs/COLLABORATION.md. Core/Collaboration.swift owns the shared goals,
+connections, agreements, outcomes and exact pending receipts. CollaborationView
+is reached through compact Us/Alicia summaries, Dialogue and Context enrichment;
+there is no sixth tab. CollaborationNotifier consumes the shared backend's
+purposeful return and preserves its exact navigation target. Its policy has no
+daily reservation and supersedes the old ThoughtReturn policy when supported.
+The new state uses AliciaService GET/POST /api/collaboration and bounded source
+reads; views do not issue HTTP. --collaboration-preview is mock-only.
+
+Morning exercise briefing: `GET /api/morning_briefing` (read-only dated snapshot)
+and `GET /api/morning_briefing/audio/<id>.m4a` (authenticated Range audio).
+See docs/MORNING_BRIEFING.md. It never selects a podcast episode or manufactures listening evidence.

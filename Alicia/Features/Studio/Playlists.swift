@@ -140,7 +140,8 @@ struct PlaylistDetailView: View {
                     body: item.body,
                     date: item.source,
                     speechChunks: item.speechChunks,
-                    speechDuration: item.duration))
+                    speechDuration: item.duration,
+                    stableReadingID: item.readable.stableID))
             }
         }
         .alert("Name this playlist", isPresented: $renaming) {

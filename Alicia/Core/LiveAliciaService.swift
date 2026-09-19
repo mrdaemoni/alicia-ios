@@ -20,6 +20,36 @@ struct LiveAliciaService: AliciaService {
     let baseURL: URL
     let token: String
 
+    func askBody(_ text: String) async -> BodyAnswer? {
+        let data = try? JSONSerialization.data(withJSONObject: ["text": text])
+        return await privateBodyRequest(method: "POST", data: data, path: "/api/body/ask")
+    }
+    func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage? {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "id", value: id), URLQueryItem(name: "offset", value: String(offset)), URLQueryItem(name: "sha256", value: expectedHash)]
+        return await privateBodyRequest(method: "GET", data: nil, path: "/api/body/source?" + (components.percentEncodedQuery ?? ""))
+    }
+    func bodyOverview() async -> BodyOverview? {
+        await privateBodyRequest(method: "GET", data: nil)
+    }
+    func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult? {
+        guard let data = try? JSONEncoder().encode(event) else { return nil }
+        return await privateBodyRequest(method: "POST", data: data)
+    }
+    private func privateBodyRequest<T: Decodable>(method: String, data: Data?, path: String = "/api/body") async -> T? {
+        var req = request(path, method: method, body: data)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        let config = URLSessionConfiguration.ephemeral
+        config.urlCache = nil
+        config.timeoutIntervalForRequest = path == "/api/body/ask" ? 210 : 15
+        config.timeoutIntervalForResource = path == "/api/body/ask" ? 210 : 20
+        let session = URLSession(configuration: config, delegate: PrivateBodySessionDelegate(), delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        guard let (bytes, response) = try? await session.data(for: req),
+              [200, 409].contains((response as? HTTPURLResponse)?.statusCode ?? 0) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: bytes)
+    }
+
     // MARK: request plumbing
 
     private func request(_ path: String, method: String = "GET", body: Data? = nil) -> URLRequest {
@@ -112,29 +142,194 @@ struct LiveAliciaService: AliciaService {
         } catch { return nil }
     }
 
+    private func voiceRequest<T: Decodable>(_ type: T.Type, path: String, body: Data? = nil,
+                                             allowNotFound: Bool = false) async -> VoiceTransport<T> {
+        do {
+            var req = request(path, method: body == nil ? "GET" : "POST", body: body)
+            req.timeoutInterval = 120
+            let (data, response) = try await URLSession.shared.data(for: req)
+            return decodeVoiceResponse(type, data: data, status: (response as? HTTPURLResponse)?.statusCode ?? 0,
+                                       allowNotFound: allowNotFound)
+        } catch { return .unavailable }
+    }
+    func finalizeVoice(_ finalization: VoiceFinalization) async -> VoiceTransport<VoiceProcessingResponse> {
+        guard let body = try? JSONEncoder().encode(finalization) else { return .unavailable }
+        return await voiceRequest(VoiceProcessingResponse.self, path: "/api/voice_evidence", body: body)
+    }
+    func retryVoiceTranscription(_ retry: VoiceTranscriptionRetry) async -> VoiceTransport<VoiceProcessingResponse> {
+        guard let body = try? JSONEncoder().encode(retry) else { return .unavailable }
+        return await voiceRequest(VoiceProcessingResponse.self, path: "/api/voice_evidence", body: body)
+    }
+    func voiceSubmissionStatus(_ requestID: String) async -> VoiceTransport<VoiceSubmissionStatus> {
+        guard UUID(uuidString: requestID) != nil else { return .rejected("Invalid send receipt.") }
+        return await voiceRequest(VoiceSubmissionStatus.self, path: "/api/voice_submission?request_id=" + requestID,
+                                  allowNotFound: true)
+    }
+    func submitVoice(_ submission: VoiceSubmission) async -> VoiceTransport<VoiceSubmissionStatus> {
+        guard let body = try? JSONSerialization.data(withJSONObject: submission.body) else { return .unavailable }
+        if submission.destination == "walk" {
+            let result = await voiceRequest(WalkReceipt.self, path: "/api/mode", body: body)
+            switch result {
+            case .value(let receipt):
+                return receipt.ok ? .value(VoiceSubmissionStatus(request_id: submission.requestID, state: "completed"))
+                    : .rejected(receipt.message ?? "The walk was not accepted. Your words are kept.")
+            case .rejected(let error): return .rejected(error)
+            default: return .unavailable
+            }
+        }
+        // Drain the SSE/JSON response without treating a partial token as a saved reply.
+        // The durable status endpoint supplies the exact completed public answer.
+        do {
+            var req = request(submission.destination == "proactive" ? "/api/reply" : "/api/chat", method: "POST", body: body)
+            req.timeoutInterval = 180
+            let (bytes, response) = try await URLSession.shared.bytes(for: req)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 400 || status == 409 {
+                var data = Data()
+                for try await byte in bytes { if data.count < 65536 { data.append(byte) } }
+                return decodeVoiceResponse(VoiceSubmissionStatus.self, data: data, status: status)
+            }
+            guard status == 200 else { return .unavailable }
+            var streamedReply = VoiceReplyStreamReceipt()
+            if submission.destination == "dialogue" {
+                for try await line in bytes.lines {
+                    if Task.isCancelled { return .unavailable }
+                    if streamedReply.receive(line) { break }
+                }
+            } else {
+                for try await _ in bytes { if Task.isCancelled { return .unavailable } }
+            }
+            let saved = await voiceSubmissionStatus(submission.requestID)
+            if case .value(let receipt) = saved, submission.destination == "dialogue", submission.voice {
+                return .value(streamedReply.confirmed(receipt, requestID: submission.requestID))
+            }
+            return saved
+        } catch { return .unavailable }
+    }
+
+    func voiceReplyURL(_ path: String) -> URL? { mediaURL(path) }
+
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse? {
         await post("/api/episode_day", body: body)
     }
 
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? {
+        await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt, recordingID: "")
+    }
+
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
+        await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt,
+                         recordingID: recordingID, surface: "")
+    }
+
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String, surface: String) async -> WalkReceipt? {
         await post("/api/mode", body: ["action": "end_walk", "text": text,
-                                     "episode_id": episodeID, "request_id": requestID, "topic": prompt])
+                                     "episode_id": episodeID, "request_id": requestID, "topic": prompt,
+                                     "recording_id": recordingID, "surface": surface])
     }
 
     func conversationHistory() async -> ConversationHistory? {
         await fetchOne("/api/history")
     }
 
+    func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult? {
+        await post("/api/voice_evidence", body: body)
+    }
+
+    func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload? {
+        guard recordingID.isEmpty || UUID(uuidString: recordingID) != nil else { return nil }
+        return await fetchOne("/api/voice_evidence" + (recordingID.isEmpty ? "" : "?recording_id=" + recordingID))
+    }
+
+    func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult? {
+        guard UUID(uuidString: recordingID) != nil, UUID(uuidString: segment.id) != nil else { return nil }
+        do {
+            var req = request("/api/voice_evidence/audio/" + recordingID + "/" + segment.id, method: "PUT")
+            req.setValue("audio/x-caf", forHTTPHeaderField: "Content-Type")
+            req.setValue(try JSONEncoder().encode(segment).base64EncodedString(), forHTTPHeaderField: "X-Alicia-Audio")
+            req.timeoutInterval = 90
+            let (data, response) = try await URLSession.shared.upload(for: req, fromFile: file)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return try JSONDecoder().decode(VoiceEvidenceResult.self, from: data)
+        } catch { return nil }
+    }
+
+    func downloadVoice(recordingID: String, segmentID: String) async -> Data? {
+        guard UUID(uuidString: recordingID) != nil, UUID(uuidString: segmentID) != nil else { return nil }
+        do {
+            var req = request("/api/voice_evidence/audio/" + recordingID + "/" + segmentID)
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+            let (bytes, response) = try await URLSession.shared.data(for: req)
+            return (response as? HTTPURLResponse)?.statusCode == 200 ? bytes : nil
+        } catch { return nil }
+    }
+
+    func collaboration() async -> CollaborationState? { await fetchOne("/api/collaboration") }
+    func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse? {
+        do {
+            let bytes = try JSONEncoder().encode(mutation)
+            let (data, response) = try await URLSession.shared.data(
+                for: request("/api/collaboration", method: "POST", body: bytes))
+            return CollaborationResponse.decode(data, status: (response as? HTTPURLResponse)?.statusCode)
+        } catch { return nil }
+    }
+    func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource? {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: resultID.isEmpty ? "connection_id" : "result_id", value: resultID.isEmpty ? connectionID : resultID), URLQueryItem(name: "evidence_id", value: evidenceID)]
+        guard let query = components.percentEncodedQuery else { return nil }
+        return await fetchOne("/api/collaboration/source?" + query)
+    }
+
+    func contextEnrichment(replyID: String) async -> ContextEnrichment? {
+        guard replyID.isEmpty || UUID(uuidString: replyID) != nil else { return nil }
+        return await fetchOne("/api/context_enrichment?reply_id=" + replyID)
+    }
+
+    func changeContext(_ change: ContextChange) async -> ContextChangeResult? {
+        await post("/api/context_enrichment", body: change.body)
+    }
+
+    func contextSource(replyID: String, itemID: String) async -> ContextSource? {
+        guard UUID(uuidString: replyID) != nil,
+              let encoded = itemID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return nil }
+        return await fetchOne("/api/context_enrichment?reply_id=" + replyID + "&item_id=" + encoded)
+    }
+
+    func dialogueReview(replyID: String) async -> DialogueReview? {
+        guard UUID(uuidString: replyID) != nil else { return nil }
+        return await fetchOne("/api/dialogue_review?reply_id=" + replyID)
+    }
+
+    func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult? {
+        await post("/api/dialogue_review", body: mutation.body)
+    }
+
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: "")
+    }
+
+    func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: recordingID, workContext: nil)
+    }
+
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: recordingID, workContext: workContext, surfaceContext: nil)
+    }
+
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?) -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in
             let task = Task {
                 do {
-                    let body = try JSONSerialization.data(
-                        withJSONObject: ["text": prompt, "voice": voice])
+                    var payload: [String: Any] = ["text": prompt, "voice": voice, "recording_id": recordingID]
+                    if let workContext { payload["work_context"] = workContext.wire }
+                    if let surfaceContext { payload["surface_context"] = surfaceContext.wire }
+                    let body = try JSONSerialization.data(withJSONObject: payload)
                     let (bytes, resp) = try await URLSession.shared.bytes(
                         for: request("/api/chat", method: "POST", body: body))
                     guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-                        continuation.yield(.token("(Alicia is unreachable right now — check the backend and your connection.)"))
+                        continuation.yield(.token(workContext != nil && (resp as? HTTPURLResponse)?.statusCode == 400
+                            ? "This passage could not be confirmed. Your message was not sent to a model. Open the current work in Together, then try again."
+                            : "(Alicia is unreachable right now — check the backend and your connection.)"))
                         continuation.yield(.done(messageID: nil))
                         continuation.finish()
                         return
@@ -146,6 +341,7 @@ struct LiveAliciaService: AliciaService {
                               let event = try? JSONDecoder().decode(WireEvent.self, from: data)
                         else { continue }
                         if let t = event.t { continuation.yield(.token(t)) }
+                        if let id = event.reply_id { continuation.yield(.details(id)) }
                         if let v = event.voice, let url = mediaURL(v) {
                             continuation.yield(.voice(url))
                         }
@@ -174,6 +370,7 @@ struct LiveAliciaService: AliciaService {
         var voice: String?
         var done: Bool?
         var message_id: Int?
+        var reply_id: String?
         var error: String?
     }
 
@@ -305,9 +502,13 @@ struct LiveAliciaService: AliciaService {
     private struct ReplyDTO: Decodable { var ok: Bool; var response: String? }
 
     func reply(proactiveID: String, text: String) async -> String? {
+        await reply(proactiveID: proactiveID, text: text, recordingID: "", episodeID: "")
+    }
+
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String? {
         do {
             let body = try JSONSerialization.data(
-                withJSONObject: ["proactive_id": proactiveID, "text": text])
+                withJSONObject: ["proactive_id": proactiveID, "text": text, "recording_id": recordingID, "episode_id": episodeID])
             let (data, resp) = try await URLSession.shared.data(
                 for: request("/api/reply", method: "POST", body: body))
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
@@ -357,7 +558,7 @@ struct LiveAliciaService: AliciaService {
         (await fetch("/api/syntheses", as: [SynthesisDTO].self) ?? []).map {
             FeaturedSynthesis(title: $0.title, excerpt: $0.excerpt,
                               body: $0.body, date: $0.date,
-                              speechChunks: speechChunks($0.speech?.chunks),
+                              speechChunks: speechChunks($0.speech?.chunks, spokenText: $0.speech?.spoken_text, timingStatus: $0.speech?.timing_status),
                               speechDuration: $0.speech?.duration ?? 0)
         }
     }
@@ -526,9 +727,15 @@ struct LiveAliciaService: AliciaService {
     private struct ChunkDTO: Decodable {
         var url: String?
         var duration: Double?
+        var text: String?
+        var cues: [NarrationCue]?
+        var timing_status: String?
+        var speech_backend: String?
     }
 
     private struct SpeechDTO: Decodable {
+        var spoken_text: String?
+        var timing_status: String?
         var chunks: [ChunkDTO]?
         var duration: Double?
     }
@@ -542,11 +749,23 @@ struct LiveAliciaService: AliciaService {
         guard let f: FeaturedDTO = await fetchOne("/api/featured") else { return nil }
         return FeaturedSynthesis(title: f.title, excerpt: f.excerpt,
                                  body: f.body, date: f.date,
-                                 speechChunks: speechChunks(f.speech?.chunks),
+                                 speechChunks: speechChunks(f.speech?.chunks, spokenText: f.speech?.spoken_text, timingStatus: f.speech?.timing_status),
                                  speechDuration: f.speech?.duration ?? 0)
     }
 
     // MARK: playlists
+
+    func morningBriefing() async -> MorningBriefing? {
+        guard var briefing: MorningBriefing = await fetchOne("/api/morning_briefing") else { return nil }
+        if !briefing.audio_url.isEmpty { briefing.audio_url = mediaURL(briefing.audio_url)?.absoluteString ?? "" }
+        briefing.speechChunks = (briefing.speech?.chunks ?? []).compactMap { chunk in
+            guard let url = mediaURL(chunk.url) else { return nil }
+            return SpeechChunk(url: url, duration: chunk.duration ?? 0, text: chunk.text ?? "",
+                cues: chunk.cues ?? [], timingStatus: chunk.timing_status ?? briefing.speech?.timing_status ?? "unavailable",
+                spokenText: briefing.speech?.spoken_text ?? "", speechBackend: chunk.speech_backend ?? briefing.speech?.speech_backend ?? "")
+        }
+        return briefing
+    }
 
     private struct PlaylistDTO: Decodable {
         struct ItemDTO: Decodable {
@@ -572,7 +791,7 @@ struct LiveAliciaService: AliciaService {
                               body: i.body ?? "",
                               source: i.source ?? "",
                               duration: i.duration ?? 0,
-                              speechChunks: speechChunks(i.speech?.chunks))
+                              speechChunks: speechChunks(i.speech?.chunks, spokenText: i.speech?.spoken_text, timingStatus: i.speech?.timing_status))
             },
             duration: dto.duration ?? 0,
             ready: dto.ready ?? 0)
@@ -612,15 +831,19 @@ struct LiveAliciaService: AliciaService {
     // MARK: read aloud
 
     private struct SpeakDTO: Decodable {
+        var spoken_text: String?
+        var timing_status: String?
+        var speech_backend: String?
         var status: String
         var chunks: [ChunkDTO]?
         var duration: Double?
     }
 
-    private func speechChunks(_ dtos: [ChunkDTO]?) -> [SpeechChunk] {
+    private func speechChunks(_ dtos: [ChunkDTO]?, spokenText: String? = nil, timingStatus: String? = nil) -> [SpeechChunk] {
         (dtos ?? []).compactMap { c in
             guard let url = mediaURL(c.url ?? "") else { return nil }
-            return SpeechChunk(url: url, duration: c.duration ?? 0)
+            return SpeechChunk(url: url, duration: c.duration ?? 0, text: c.text ?? "",
+                cues: c.cues ?? [], timingStatus: c.timing_status ?? timingStatus ?? "unavailable", spokenText: spokenText ?? "", speechBackend: c.speech_backend ?? "")
         }
     }
 
@@ -678,6 +901,8 @@ struct LiveAliciaService: AliciaService {
     /// reflections list down with it — one missing reading must not cost the
     /// journal.
     private struct ReflectionSpeechDTO: Decodable {
+        var spoken_text: String?
+        var timing_status: String?
         var status: String?; var chunks: [ChunkDTO]?; var duration: Double?
     }
     private struct ReflectionDTO: Decodable {
@@ -696,7 +921,7 @@ struct LiveAliciaService: AliciaService {
             // present is playable start to finish; a tap falls back to
             // /api/speak when it is not.
             if let sp = r.speech, sp.status == "ready" {
-                let chunks = speechChunks(sp.chunks)
+                let chunks = speechChunks(sp.chunks, spokenText: sp.spoken_text, timingStatus: sp.timing_status)
                 if !chunks.isEmpty {
                     status = .ready(chunks: chunks, duration: sp.duration ?? 0)
                 }
@@ -710,14 +935,20 @@ struct LiveAliciaService: AliciaService {
     func requestSpeech(text: String, kind: String) async -> SpeechStatus {
         do {
             let body = try JSONSerialization.data(
-                withJSONObject: ["text": text, "kind": kind])
+                withJSONObject: ["text": text, "kind": kind, "required_backend": "gemini"])
             let (data, resp) = try await URLSession.shared.data(
                 for: request("/api/speak", method: "POST", body: body))
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
                 return .unavailable
             }
             let dto = try JSONDecoder().decode(SpeakDTO.self, from: data)
-            let chunks = speechChunks(dto.chunks)
+            let chunks = speechChunks(dto.chunks).map { chunk in
+                var copy = chunk
+                copy.spokenText = dto.spoken_text ?? ""
+                if copy.timingStatus == "unavailable" { copy.timingStatus = dto.timing_status ?? "unavailable" }
+                if copy.speechBackend.isEmpty { copy.speechBackend = dto.speech_backend ?? "" }
+                return copy
+            }
             switch dto.status {
             case "ready":
                 guard !chunks.isEmpty else { return .failed }
@@ -735,6 +966,27 @@ struct LiveAliciaService: AliciaService {
         } catch {
             return .unavailable
         }
+    }
+
+    func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus {
+        do {
+            let body = prepare ? try JSONSerialization.data(withJSONObject: ["episode_id": episodeID]) : nil
+            let escaped = episodeID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let path = prepare ? "/api/episode_reading" : "/api/episode_reading?episode_id=" + escaped
+            let (data, response) = try await URLSession.shared.data(for: request(path, method: prepare ? "POST" : "GET", body: body))
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return .unavailable }
+            let dto = try JSONDecoder().decode(SpeakDTO.self, from: data)
+            if dto.status == "rendering" || dto.status == "pending" { return .rendering }
+            guard dto.status == "ready", let text = dto.spoken_text, !text.isEmpty else { return .failed }
+            let chunks = speechChunks(dto.chunks).map { chunk in
+                var copy = chunk; copy.spokenText = text
+                copy.timingStatus = dto.timing_status ?? copy.timingStatus
+                copy.speechBackend = dto.speech_backend ?? "prerecorded"
+                return copy
+            }
+            guard !chunks.isEmpty else { return .failed }
+            return .ready(chunks: chunks, duration: dto.duration ?? 0)
+        } catch { return .unavailable }
     }
 
     private struct GreetingDTO: Decodable { var greeting: String }
@@ -795,5 +1047,17 @@ struct LiveAliciaService: AliciaService {
                            symbol: "wifi.slash",
                            author: .alicia)
         }
+    }
+}
+
+
+/// Body requests stay at the configured Mac endpoint; redirects cannot replay
+/// a private question or authored goal to a different host.
+private final class PrivateBodySessionDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }

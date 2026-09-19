@@ -32,17 +32,61 @@ final class AppStore {
     /// words, and it must never reach the real home-screen widget.
     let isMock: Bool
 
-    /// Reads any page aloud (device voice instantly, her voice when the
-    /// backend has rendered it). Shares the audio session with the podcast
+    /// Reads any page in her prepared natural voice. Shares the audio session with the podcast
     /// player, so the two hand off rather than talk over each other.
     let reader = SpeechReader()
+    let bodyStore: BodyStore
+    let collaboration: CollaborationStore
+    let voiceArchive: VoiceArchive
+    var walkRecordingID = UserDefaults.standard.string(forKey: "alicia.walkRecordingID") ?? "" {
+        didSet { UserDefaults.standard.set(walkRecordingID, forKey: "alicia.walkRecordingID") }
+    }
 
     init(service: AliciaService) {
         self.service = service
+        self.bodyStore = BodyStore(service: service)
         self.isMock = service is MockAliciaService
+        self.collaboration = CollaborationStore(service: service,
+            defaults: service is MockAliciaService ? UserDefaults(suiteName: "collaboration-preview-" + UUID().uuidString)! : .standard,
+            notifications: !(service is MockAliciaService))
+        self.voiceArchive = VoiceArchive(root: service is MockAliciaService
+            ? FileManager.default.temporaryDirectory.appendingPathComponent("voice-preview-" + UUID().uuidString) : nil)
         if isMock { messages = SampleData.messages }
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { messages = [] }
+        if ProcessInfo.processInfo.arguments.contains("--dialogue-review-preview") {
+            messages = [Message(sender: .me, text: "Preview · " + DialogueReview.preview.user_text),
+                        Message(sender: .alicia, text: DialogueReview.preview.reply, replyID: DialogueReview.previewID)]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") {
+            voiceArchive.seedPreview()
+            messages = []
+            if ProcessInfo.processInfo.arguments.contains("--collaboration-target-preview") {
+                collaboration.route = CollaborationRoute(candidateID: "preview-candidate", goalID: CollaborationPreview.goalID, connectionID: CollaborationPreview.connectionID)
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") {
+            voiceArchive.seedPreview()
+            messages = [Message(sender: .me, text: "Preview · I want to revisit the criteria for ending a commitment.",
+                                recordingID: VoiceArchive.previewID)]
+            episodeDay = EpisodeDay.preview
+            if ProcessInfo.processInfo.arguments.contains("--voice-mac-preview") {
+                voiceArchive.seedMacPreview(state: ProcessInfo.processInfo.arguments.contains("--voice-mac-recording") ? "capturing" : ProcessInfo.processInfo.arguments.contains("--voice-mac-waiting") ? "waiting_for_audio" : "ready")
+            }
+            if ProcessInfo.processInfo.arguments.contains("--voice-reply-media-preview") {
+                messages.append(Message(sender: .alicia, text: "Preview · Start with one criterion you can use today.",
+                    replyID: "preview-saved-audio", voiceURL: URL(fileURLWithPath: "/inert-preview-only.wav")))
+                messages.append(Message(sender: .alicia, text: "Preview · The saved reply is here even when its original audio did not reach the phone.",
+                    replyID: "preview-recovered-reply", canReadVoiceReply: true))
+            }
+            if ProcessInfo.processInfo.arguments.contains("--voice-save-preview") {
+                pendingWalkSave = nil
+                walkRecordingID = VoiceArchive.previewID
+                walkEpisodeID = "S15E07"; walkDraft = "Preview reflection about a useful criterion."
+                walkPrompt = "Preview — what would help you decide?"
+                showWalk = true
+            }
+        }
 #endif
         reader.service = service
         // Presence telemetry rides the same service (and is a no-op on the
@@ -70,7 +114,25 @@ final class AppStore {
         // A session that only ever reads still deserves lock-screen controls
         // — the podcast player used to be the only thing that armed them.
         configureRemoteCommandsOnce()
+        if let label = item.episodeID, let track = track(forLabel: label) { chooseEpisode(track) }
         reader.read(item)
+    }
+
+    /// Preparing text does not pause the episode or count as listening.
+    func prepareEpisodeReading(_ track: Track, prepare: Bool) async -> SpeechStatus {
+        guard let label = track.label else { return .unavailable }
+        return await service.episodeReading(episodeID: label, prepare: prepare)
+    }
+    func readAlongWithEpisode(_ track: Track, chunks: [SpeechChunk], duration: Double) {
+        let readingID = "episode-reading:" + (track.label ?? track.title)
+        if reader.current?.stableID == readingID { return }
+        let position = nowPlaying?.label == track.label ? progress * track.duration : 0
+        let text = chunks.first?.spokenText ?? ""
+        guard !text.isEmpty else { return }
+        readAloud(Readable(title: track.title, body: text, kind: "episode", speechChunks: chunks,
+            speechDuration: duration, episodeID: track.label, stableID: readingID,
+            textSource: "machine_audio_transcript"))
+        if position > 0 { reader.seekToNarration(seconds: position) }
     }
 
     // MARK: the episode and the day
@@ -80,7 +142,10 @@ final class AppStore {
     var walkPrompt = UserDefaults.standard.string(forKey: "alicia.walkPrompt") ?? "" {
         didSet { UserDefaults.standard.set(walkPrompt, forKey: "alicia.walkPrompt") }
     }
-    var walkEpisodeID = ""
+    var walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? ""
+    /// The section a walk was started from, when it was not started from an
+    /// episode. Empty for an episode walk.
+    var walkSurface = UserDefaults.standard.string(forKey: "alicia.walkSurface") ?? ""
     var walkDraft = UserDefaults.standard.string(forKey: "alicia.walkDraft") ?? "" {
         didSet { UserDefaults.standard.set(walkDraft, forKey: "alicia.walkDraft") }
     }
@@ -93,18 +158,116 @@ final class AppStore {
     }
     var isSavingWalk = false
     private var framePoll: Task<Void, Never>?
+    private var lastObservedPlayback: EpisodePlaybackReceipt? = {
+        guard let data = UserDefaults.standard.data(forKey: "alicia.lastObservedPlayback") else { return nil }
+        return try? JSONDecoder().decode(EpisodePlaybackReceipt.self, from: data)
+    }()
+    var nextEpisodeTrack: Track? {
+        guard let latest = EpisodeContinuation.latest(local: lastObservedPlayback, server: episodeDay?.latest_playback) else { return nil }
+        return EpisodeContinuation.next(after: latest.episode_id, tracks: tracks)
+    }
     private var playbackLabel = ""
     private var playbackPosition: Double = 0
     private var playbackClock: TimeInterval = 0
     private var playbackAccumulated: Double = 0
     private var playbackFlushing = false
+    private var episodeChoiceNeedsRefresh = false
     private var playbackOutbox: [[String: Any]] =
         UserDefaults.standard.array(forKey: "alicia.playbackOutbox") as? [[String: Any]] ?? []
 
+    private var contextActivityRevision = 0
+    private var contextSettingsRevision = 0
+
+    func noteContextActivity() {
+        contextActivityRevision += 1
+        ThoughtReturnNotifier.cancel()
+    }
+
+    func contextEnrichment(_ replyID: String = "") async -> ContextEnrichment? {
+        await service.contextEnrichment(replyID: replyID)
+    }
+
+    func contextSource(_ replyID: String, itemID: String) async -> ContextSource? {
+        await service.contextSource(replyID: replyID, itemID: itemID)
+    }
+
+    func changeContext(_ change: ContextChange) async -> ContextChangeResult? {
+        noteContextActivity()
+        let revision = contextActivityRevision
+        if change.action == "settings" { contextSettingsRevision += 1 }
+        let settingsRevision = contextSettingsRevision
+        if change.action == "settings", !change.followups_enabled { ThoughtReturnNotifier.setLocalEnabled(false) }
+        let result = await service.changeContext(change)
+        if result?.ok == true, let fresh = result?.context {
+            if change.action == "settings", settingsRevision == contextSettingsRevision {
+                ThoughtReturnNotifier.setLocalEnabled(change.followups_enabled)
+            }
+            if revision == contextActivityRevision { await syncThoughtReturn(fresh) }
+        }
+        return result
+    }
+
+    private func syncThoughtReturn(_ supplied: ContextEnrichment? = nil) async {
+        if collaboration.state != nil { ThoughtReturnNotifier.cancel(); return }
+        guard service is LiveAliciaService, !showWalk, !isWalking, !isStreaming else { return }
+        let revision = contextActivityRevision
+        let fresh: ContextEnrichment?
+        if let supplied { fresh = supplied } else { fresh = await service.contextEnrichment(replyID: "") }
+        guard revision == contextActivityRevision, let fresh else { return }
+        await ThoughtReturnNotifier.sync(fresh)
+    }
+
     func refreshEpisodeDay() async {
         if let fresh = await service.episodeDay(day: "") {
-            episodeDay = fresh
+            acceptEpisodeDay(fresh)
         }
+        await syncThoughtReturn()
+    }
+
+    /// One shared conversation topic, immediately visible while its receipt syncs.
+    func chooseEpisode(_ track: Track) {
+        guard let label = track.label, !label.isEmpty else { return }
+        guard label.range(of: #"^S\d{1,2}E\d{2}$"#, options: .regularExpression) != nil else {
+            episodeError = "This recording isn't available as an episode conversation yet."
+            return
+        }
+        let chosen = EpisodeDay.choosing(.init(id: label, title: track.title, source_paths: []), previous: episodeDay)
+        if episodeDay?.episode?.id == label, episodeDay?.episode_basis == "selected", episodeDay?.date == chosen.date { return }
+        noteContextActivity()
+        episodeDay = chosen
+        playbackOutbox.append(["action": "selected", "episode_id": label,
+            "event_id": UUID().uuidString, "observed_at": ISO8601DateFormatter().string(from: .now),
+            "title": track.title])
+        UserDefaults.standard.set(playbackOutbox, forKey: "alicia.playbackOutbox")
+        Task { await flushPlaybackOutbox() }
+    }
+
+    private var pendingEpisodeChoice: [String: Any]? {
+        playbackOutbox.last {
+            guard $0["action"] as? String == "selected",
+                  let time = $0["observed_at"] as? String,
+                  let date = ISO8601DateFormatter().date(from: time) else { return false }
+            return Calendar.current.isDateInToday(date)
+        }
+    }
+
+    var episodeChoiceSyncing: Bool { pendingEpisodeChoice != nil || episodeChoiceNeedsRefresh }
+
+    func retryEpisodeSync() { Task { await flushPlaybackOutbox() } }
+
+    private func acceptEpisodeDay(_ fresh: EpisodeDay) {
+        if let pending = pendingEpisodeChoice, let label = pending["episode_id"] as? String {
+            // A stale fetch/receipt cannot restore the previous topic during a switch.
+            if fresh.episode?.id != label {
+                episodeDay = .choosing(.init(id: label, title: pending["title"] as? String ?? label,
+                                            source_paths: []), previous: episodeDay)
+                return
+            }
+        }
+        if let incoming = fresh.snapshot_revision, let current = episodeDay?.snapshot_revision,
+           incoming < current { return }
+        episodeDay = fresh
+        episodeChoiceNeedsRefresh = false
     }
 
     func loadEpisodeDay(_ date: String) async -> EpisodeDay? {
@@ -128,6 +291,7 @@ final class AppStore {
                        verdict: String = "", episodeID: String? = nil,
                        eventID: String = UUID().uuidString) async -> Bool {
         guard let label = episodeID ?? episodeDay?.episode?.id else { return false }
+        noteContextActivity()
         let result = await service.episodeAction([
             "action": action, "episode_id": label, "event_id": eventID,
             "text": text, "target_id": target, "verdict": verdict])
@@ -136,26 +300,111 @@ final class AppStore {
             return false
         }
         episodeError = ""
-        if let day = result.day { episodeDay = day }
+        if let day = result.day { acceptEpisodeDay(day) }
         awaitEpisodeFrame()
         return true
     }
 
-    func openWalk(probe: String = "") {
+    /// A walk is no longer only an episode's walk.
+    ///
+    /// Hector asked for WALK on the composer band: *"if I type the walk, it
+    /// will be able to send me to the walk mode, where I can just probably
+    /// speak for a long time in an open-ended manner … and treat it as all the
+    /// other walks that are triggered when I listen to either a morning
+    /// session or an episode."*
+    ///
+    /// So a walk now has a subject: the episode when one is playing, otherwise
+    /// the section he started it from. The lifecycle is identical either way —
+    /// original audio kept, Mac transcript, his review, explicit send. Only
+    /// what it is *about* changes, and `walkSurface` is what carries that to
+    /// the backend.
+    func openWalk(probe: String = "", surface: SurfaceContext? = nil) {
         guard let episode = episodeDay?.episode else {
-            episodeError = "Play an episode in Studio to begin."
+            guard let surface else {
+                episodeError = "Play an episode in Studio to begin."
+                return
+            }
+            openSurfaceWalk(surface, probe: probe)
             return
         }
-        if walkDraft.isEmpty {
-            walkEpisodeID = episode.id
+        if let pending = pendingWalkSave, pending["episode_id"] != episode.id {
+            episodeError = "A reflection for \(pending["episode_id"] ?? walkEpisodeID) still needs its save confirmed. Retry it before starting \(episode.id)."
+            walkEpisodeID = pending["episode_id"] ?? walkEpisodeID
+            walkRecordingID = pending["recording_id"] ?? walkRecordingID
+            showWalk = true
+            return
+        }
+        if walkEpisodeID != episode.id {
+            // Keep separate drafts when a new Studio choice opens a different walk.
+            var drafts = UserDefaults.standard.dictionary(forKey: "alicia.episodeWalkDrafts") as? [String: [String: String]] ?? [:]
+            if (!walkDraft.isEmpty || voiceArchive.hasAudio(walkRecordingID)), !walkEpisodeID.isEmpty {
+                drafts[walkEpisodeID] = ["text": walkDraft, "prompt": walkPrompt, "request_id": walkRequestID, "recording_id": walkRecordingID]
+            }
+            let restored = drafts.removeValue(forKey: episode.id)
+            UserDefaults.standard.set(drafts, forKey: "alicia.episodeWalkDrafts")
+            walkDraft = restored?["text"] ?? ""
+            walkPrompt = restored?["prompt"] ?? probe
+            walkRequestID = restored?["request_id"] ?? UUID().uuidString
+            walkRecordingID = restored?["recording_id"] ?? walkRequestID
+        } else if walkDraft.isEmpty, pendingWalkSave == nil, !voiceArchive.hasAudio(walkRecordingID) {
             walkPrompt = probe
             walkRequestID = UUID().uuidString
-            UserDefaults.standard.set(walkEpisodeID, forKey: "alicia.walkEpisodeID")
-            UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
-        } else {
-            walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? episode.id
+            walkRecordingID = walkRequestID
         }
+        walkEpisodeID = episode.id
+        walkSurface = surface?.section ?? ""
+        UserDefaults.standard.set(walkEpisodeID, forKey: "alicia.walkEpisodeID")
+        UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+        UserDefaults.standard.set(walkSurface, forKey: "alicia.walkSurface")
+        episodeError = ""
+        noteContextActivity()
         showWalk = true
+    }
+
+    /// The section he started from is the subject. Drafts are kept per subject
+    /// exactly as they are per episode, so an unfinished Mind walk is still
+    /// there after a Body walk, and neither becomes the other.
+    private func openSurfaceWalk(_ surface: SurfaceContext, probe: String) {
+        let key = "surface:" + surface.section
+        if let pending = pendingWalkSave, pending["episode_id"] != "" || pending["surface"] != surface.section {
+            episodeError = "A reflection still needs its save confirmed. Retry it before starting another."
+            walkEpisodeID = pending["episode_id"] ?? ""
+            walkSurface = pending["surface"] ?? walkSurface
+            walkRecordingID = pending["recording_id"] ?? walkRecordingID
+            showWalk = true
+            return
+        }
+        if walkSubjectKey != key {
+            var drafts = UserDefaults.standard.dictionary(forKey: "alicia.episodeWalkDrafts") as? [String: [String: String]] ?? [:]
+            if (!walkDraft.isEmpty || voiceArchive.hasAudio(walkRecordingID)), !walkSubjectKey.isEmpty {
+                drafts[walkSubjectKey] = ["text": walkDraft, "prompt": walkPrompt,
+                                          "request_id": walkRequestID, "recording_id": walkRecordingID]
+            }
+            let restored = drafts.removeValue(forKey: key)
+            UserDefaults.standard.set(drafts, forKey: "alicia.episodeWalkDrafts")
+            walkDraft = restored?["text"] ?? ""
+            walkPrompt = restored?["prompt"] ?? probe
+            walkRequestID = restored?["request_id"] ?? UUID().uuidString
+            walkRecordingID = restored?["recording_id"] ?? walkRequestID
+        } else if walkDraft.isEmpty, pendingWalkSave == nil, !voiceArchive.hasAudio(walkRecordingID) {
+            walkPrompt = probe
+            walkRequestID = UUID().uuidString
+            walkRecordingID = walkRequestID
+        }
+        walkEpisodeID = ""
+        walkSurface = surface.section
+        UserDefaults.standard.set("", forKey: "alicia.walkEpisodeID")
+        UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+        UserDefaults.standard.set(walkSurface, forKey: "alicia.walkSurface")
+        episodeError = ""
+        noteContextActivity()
+        showWalk = true
+    }
+
+    /// Which subject the current walk draft belongs to — an episode id, or
+    /// `surface:<section>`. One key, so the draft store cannot confuse them.
+    var walkSubjectKey: String {
+        walkEpisodeID.isEmpty ? (walkSurface.isEmpty ? "" : "surface:" + walkSurface) : walkEpisodeID
     }
 
     func beginWalkRecording() async -> Bool {
@@ -165,17 +414,125 @@ final class AppStore {
         }
         guard showWalk else { return false }
         prepareForRecording()
-        (thinkingMode, walkWords) = await service.modeState()
-        guard showWalk, !Task.isCancelled else { return false }
-        if !isWalking {
-            guard await service.modeAction("start_walk", topic: "Reaction to \(walkEpisodeID)") != nil else {
-                episodeError = "The walk couldn't connect. You can keep writing here and try again."
-                return false
-            }
-            thinkingMode = "walk"
-        }
-        guard showWalk, !Task.isCancelled else { pauseEpisodeWalk(); return false }
+        // Capturing the original never waits for the Mac or a network request.
+        // finishWalk starts/ends the shared server mode when words are submitted.
         return true
+    }
+
+    /// `liveText` runs Apple's on-device recognizer alongside the raw sink so
+    /// the words can be read back while he is still speaking. It is off by
+    /// default — Mac-mode capture deliberately needs microphone permission
+    /// only, and the Mac's transcript remains the authority either way. The
+    /// full-screen ListeningRoom turns it on because seeing the words land is
+    /// the entire reason Hector asked for that screen.
+    func startVoiceCapture(_ speech: SpeechTranscriber, id: String, walk: Bool,
+                           surface: SurfaceContext? = nil, liveText: Bool = false) throws {
+        guard !isMock else { throw CocoaError(.featureUnsupported) }
+        let episodeID = walk ? walkEpisodeID : surface?.episode_id ?? episodeDay?.episode?.id ?? ""
+        // A walk started from a section carries that section, the same way an
+        // episode walk carries its episode. Both are never empty at once.
+        let walkSurfaceContext = walk && walkEpisodeID.isEmpty && !walkSurface.isEmpty
+            ? SurfaceContext(section: walkSurface, captured_at: voiceTimestamp()) : nil
+        let sameEpisode = episodeDay?.episode?.id == episodeID
+        var context = VoiceContext(session_id: id, source: walk ? "ios_walk" : "ios_dialogue",
+            started_at: voiceTimestamp(), timezone: TimeZone.current.identifier,
+            episode_id: episodeID, episode_title: sameEpisode ? episodeDay?.episode?.title ?? "" : episodeID,
+            episode_basis: sameEpisode ? episodeDay?.episode_basis ?? "" : "",
+            frame_id: sameEpisode ? episodeDay?.frame_id ?? "" : "", question_presented: walk ? walkPrompt : "",
+            playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0,
+            proactive_id: walk ? nil : answeringAskID)
+        context.surface_context = surface ?? walkSurfaceContext
+        let privateBody = surface?.section == "body"
+        let review = VoiceReview(destination: walk ? "walk" : answeringAskID == nil ? "dialogue" : "proactive",
+                                 proactiveID: walk ? "" : answeringAskID ?? "",
+                                 proactiveExcerpt: walk ? "" : answeringAskExcerpt)
+        let sink = try voiceArchive.begin(id: id, context: context, review: privateBody ? nil : review)
+        try speech.start(sink: sink, onSegments: { [weak self] segments in
+            guard let self else { return }
+            self.voiceArchive.addSegments(segments, to: id)
+            Task { await self.syncVoiceArchive() }
+        }, onTranscript: { [weak self] text in
+            guard let self else { return }
+            self.voiceArchive.addTranscript(text, kind: "on_device", to: id)
+            Task { await self.syncVoiceArchive() }
+        }, liveTranscription: privateBody || liveText, onCaptureError: { [weak self] error in
+            self?.voiceArchive.noteCaptureError(error, id: id)
+        })
+        Task { await syncVoiceArchive() }
+    }
+
+    func syncVoiceArchive() async {
+        guard !isMock else { return }
+        await voiceArchive.sync(using: service)
+        await voiceArchive.advanceProcessing(using: service)
+    }
+    func refreshVoiceArchive() async {
+        guard !isMock else { return }
+        await voiceArchive.refresh(using: service)
+        await voiceArchive.advanceProcessing(using: service)
+        await reconcileVoiceReplies()
+    }
+    @discardableResult
+    func finalizeVoice(_ id: String, speech: SpeechTranscriber? = nil) -> Bool {
+        if speech?.audioCaptureFailed == true { voiceArchive.noteCaptureError("Some audio could not be written.", id: id) }
+        let sealed = voiceArchive.finalize(id)
+        if sealed { Task { await syncVoiceArchive() } }
+        return sealed
+    }
+    func retryVoiceTranscription(_ id: String) {
+        voiceArchive.retryTranscription(id)
+        Task { await refreshVoiceArchive() }
+    }
+    func sendReviewedVoice(_ id: String) async {
+        guard voiceArchive.prepareSubmission(id, voice: voiceReplies) else { return }
+        if let submission = voiceArchive.recording(id)?.submission,
+           submission.destination == "proactive", answeringAskID == submission.proactiveID {
+            cancelAnswering()
+        }
+        await syncVoiceArchive()
+        await reconcileVoiceReplies()
+        await refreshEpisodeDay()
+    }
+    private func reconcileVoiceReplies() async {
+        // Read history only when a voice receipt completed. The backend is the source of message IDs.
+        guard !isStreaming, voiceArchive.recordings.contains(where: { $0.submissionStatus?.state == "completed" }) else { return }
+        let before = messages.map(\.id)
+        if let history = await service.conversationHistory(), !isStreaming, messages.map(\.id) == before {
+            messages = history.messages.map(historyMessage)
+        }
+    }
+    private func historyMessage(_ row: ConversationHistory.Turn) -> Message {
+        let replyID = row.reply_id?.isEmpty == false ? row.reply_id : nil
+        let savedVoice = row.role == "assistant" ? voiceArchive.voiceReplyStatus(replyID) : nil
+        let existingURL = row.role == "assistant" && replyID != nil
+            ? messages.first(where: { $0.sender == .alicia && $0.replyID == replyID })?.voiceURL : nil
+        return Message(sender: row.role == "user" ? .me : .alicia, text: row.content,
+            date: Self.historyDate(row.ts), messageID: savedVoice?.message_id, replyID: replyID,
+            recordingID: row.recording_id?.isEmpty == false ? row.recording_id : nil,
+            voiceURL: savedVoice?.voice_path.flatMap(service.voiceReplyURL) ?? existingURL,
+            canReadVoiceReply: savedVoice != nil,
+            workContext: collaboration.dialogueContext(for: replyID))
+    }
+    func voiceEnrichmentFeedback(_ feedback: VoiceEnrichmentFeedback) async -> VoiceEvidenceResult? {
+        await service.voiceAction(feedback.body)
+    }
+    func voiceDetail(_ id: String) async -> VoiceEvidencePayload? {
+        guard voiceArchive.recording(id)?.isPrivateBody != true else { return nil }
+        return await service.voiceRecordings(recordingID: id)
+    }
+    func playOriginalVoice(_ id: String) async -> [URL] {
+        prepareForRecording()
+        return await voiceArchive.playbackFiles(id, using: service)
+    }
+    func correctVoice(_ id: String, text: String) async -> Bool {
+        guard voiceArchive.addTranscript(text, kind: "correction", to: id) else { return false }
+        await syncVoiceArchive()
+        await refreshEpisodeDay()
+        return true
+    }
+    func deleteOriginalVoice(_ id: String) async {
+        do { try voiceArchive.deleteAudio(id); await syncVoiceArchive() }
+        catch { voiceArchive.lastError = "Audio deletion needs another attempt." }
     }
 
     func pauseEpisodeWalk() {
@@ -193,9 +550,26 @@ final class AppStore {
         voicePlayer?.pause()
     }
 
-    func finishEpisodeWalk() async -> Bool {
+    func finishEpisodeWalk(closeOnSuccess: Bool = true, audioOnly: Bool = false) async -> Bool {
+        if audioOnly, pendingWalkSave != nil { return false }
+        if audioOnly, !voiceArchive.hasAudio(walkRecordingID) {
+            episodeError = "There is no saved recording yet. Your words are still here."
+            return false
+        }
+        if (audioOnly || walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
+           voiceArchive.hasAudio(walkRecordingID), pendingWalkSave == nil {
+            // Audio-only is a valid saved source, not fabricated transcript text.
+            if closeOnSuccess { showWalk = false }
+            pauseEpisodeWalk()
+            walkRecordingID = ""
+            walkRequestID = UUID().uuidString
+            UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+            Task { await syncVoiceArchive() }
+            return true
+        }
         let pending = pendingWalkSave ?? ["text": walkDraft.trimmingCharacters(in: .whitespacesAndNewlines),
-                                          "episode_id": walkEpisodeID, "request_id": walkRequestID, "prompt": walkPrompt]
+                                          "episode_id": walkEpisodeID, "request_id": walkRequestID, "prompt": walkPrompt,
+                                          "recording_id": walkRecordingID, "surface": walkSurface]
         let text = pending["text"] ?? ""
         guard !text.isEmpty, !isSavingWalk else { return false }
         guard text.unicodeScalars.count <= 60000 else {
@@ -207,7 +581,9 @@ final class AppStore {
         isSavingWalk = true
         defer { isSavingWalk = false }
         guard let receipt = await service.finishWalk(text: text, episodeID: pending["episode_id"] ?? walkEpisodeID,
-                                                      requestID: pending["request_id"] ?? walkRequestID, prompt: pending["prompt"] ?? "") else {
+                                                      requestID: pending["request_id"] ?? walkRequestID, prompt: pending["prompt"] ?? "",
+                                                      recordingID: pending["recording_id"] ?? "",
+                                                      surface: pending["surface"] ?? walkSurface) else {
             episodeError = "I couldn't confirm the save. The submitted words are kept here; tap Retry save."
             return false
         }
@@ -221,15 +597,20 @@ final class AppStore {
             return false
         }
         pendingWalkSave = nil
-        messages.append(Message(sender: .me, text: text))
+        let recordedID = pending["recording_id"] ?? walkRecordingID
+        if voiceArchive.recording(recordedID) != nil {
+            voiceArchive.addTranscript(text, kind: "submitted", to: recordedID)
+            Task { await syncVoiceArchive() }
+        }
+        messages.append(Message(sender: .me, text: text, recordingID: recordedID.isEmpty ? nil : recordedID))
         // Never erase words that arrived after the submitted snapshot.
         if walkDraft.trimmingCharacters(in: .whitespacesAndNewlines) == text { walkDraft = "" }
         walkRequestID = UUID().uuidString
+        walkRecordingID = ""
         UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
         thinkingMode = "idle"
         episodeError = ""
-        showWalk = false
-        selectedSection = .mind
+        if closeOnSuccess { showWalk = false; selectedSection = .mind }
         await refreshEpisodeDay()
         awaitEpisodeFrame()
         return true
@@ -253,6 +634,13 @@ final class AppStore {
         playbackPosition = position
         if elapsed > 0, elapsed < 3, advanced > 0, advanced <= elapsed * max(1, rate) + 1 {
             playbackAccumulated += elapsed
+            if lastObservedPlayback?.episode_id != label || Date.now.timeIntervalSince(lastObservedPlayback?.date ?? .distantPast) >= 15 {
+                let receipt = EpisodePlaybackReceipt(episode_id: label, observed_at: ISO8601DateFormatter().string(from: .now))
+                lastObservedPlayback = receipt
+                if let data = try? JSONEncoder().encode(receipt) {
+                    UserDefaults.standard.set(data, forKey: "alicia.lastObservedPlayback")
+                }
+            }
         }
         if playbackAccumulated >= 15 {
             enqueuePlayback("progress", label: label, position: position,
@@ -284,21 +672,72 @@ final class AppStore {
         playbackFlushing = true
         defer { playbackFlushing = false }
         while let first = playbackOutbox.first {
-            guard let receipt = await service.episodeAction(first), receipt.ok else {
-                episodeError = "Listening hasn't synced to Alicia yet. I'll retry when connected."
+            guard let receipt = await service.episodeAction(first) else {
+                episodeError = "The episode hasn't synced to Alicia yet. Your choice and listening are kept here for retry."
                 return
+            }
+            if !receipt.ok {
+                guard receipt.retryable == false else {
+                    episodeError = receipt.error ?? "The episode hasn't synced. I'll retry when connected."
+                    return
+                }
+                // Keep a rejected receipt locally for inspection, but let a new
+                // valid choice proceed. Uncertain deliveries stay in the outbox.
+                var rejected = UserDefaults.standard.array(forKey: "alicia.rejectedEpisodeReceipts") as? [[String: Any]] ?? []
+                rejected.append(first.merging(["error": receipt.error ?? "Rejected"]) { _, new in new })
+                UserDefaults.standard.set(rejected, forKey: "alicia.rejectedEpisodeReceipts")
+                playbackOutbox.removeFirst()
+                UserDefaults.standard.set(playbackOutbox, forKey: "alicia.playbackOutbox")
+                episodeError = receipt.error ?? "That episode is unavailable. Choose another in Studio."
+                if first["action"] as? String == "selected", pendingEpisodeChoice == nil {
+                    episodeDay = nil
+                    episodeChoiceNeedsRefresh = true
+                }
+                if let fresh = await service.episodeDay(day: "") { acceptEpisodeDay(fresh) }
+                continue
             }
             playbackOutbox.removeFirst()
             UserDefaults.standard.set(playbackOutbox, forKey: "alicia.playbackOutbox")
-            if first["action"] as? String == "playing" {
-                if let day = receipt.day { episodeDay = day }
+            if ["selected", "playing"].contains(first["action"] as? String ?? "") {
+                if let day = receipt.day { acceptEpisodeDay(day) }
                 episodeError = ""
                 awaitEpisodeFrame()
             }
         }
+        if episodeChoiceNeedsRefresh { await refreshEpisodeDay() }
     }
 
     // MARK: playlists — the listening queues (Studio)
+
+    var morningBriefing: MorningBriefing?
+    var morningBriefingRefreshing = false
+    var morningPlaylistID: String?
+
+    func refreshMorningBriefing() async {
+        guard !morningBriefingRefreshing else { return }
+        morningBriefingRefreshing = true
+        defer { morningBriefingRefreshing = false }
+        if let fresh = await service.morningBriefing() { morningBriefing = fresh }
+    }
+
+    var currentMorningBriefingID: String? {
+        guard let id = reader.current?.stableID, id.hasPrefix("morning:") else { return nil }
+        return String(id.dropFirst("morning:".count))
+    }
+
+    var playingMorningBriefingID: String? { reader.isSpeaking ? currentMorningBriefingID : nil }
+
+    func toggleMorningBriefing(_ briefing: MorningBriefing) {
+        guard briefing.hasPlayableAudio, let url = URL(string: briefing.audio_url) else { return }
+        readAloud(Readable(title: briefing.title, body: briefing.text, kind: "note",
+            speechChunks: briefing.speechChunks.isEmpty ? [SpeechChunk(url: url, duration: briefing.duration)] : briefing.speechChunks,
+            speechDuration: briefing.duration, stableID: "morning:" + briefing.id))
+    }
+
+    func openMorningPlaylist(_ id: String) {
+        morningPlaylistID = id
+        selectedSection = .studio
+    }
 
     /// Her weekly mind note. Empty string means she had nothing citable this
     /// week — the view renders nothing, never a placeholder.
@@ -314,6 +753,9 @@ final class AppStore {
     /// press once, then the phone goes in a pocket.
     func playPlaylist(_ playlist: Playlist, from index: Int = 0) {
         configureRemoteCommandsOnce()
+        if playlist.readables.indices.contains(index),
+           let label = playlist.readables[index].episodeID,
+           let track = track(forLabel: label) { chooseEpisode(track) }
         reader.play(queue: playlist.readables, from: index,
                     playlist: playlist.name)
     }
@@ -380,6 +822,9 @@ final class AppStore {
     private var liveTimelineSeeded = false
 
     func load() async {
+        Task { await refreshMorningBriefing() }
+        Task { await collaboration.load() }
+        Task { await refreshVoiceArchive() }
         let messagesAtStart = messages.map(\.id)
         async let day = service.episodeDay(day: "")
         async let history = service.conversationHistory()
@@ -394,12 +839,9 @@ final class AppStore {
         async let sy = service.syntheses()
         async let hc = service.homeContext()
         async let pls = service.playlists()
-        if let fresh = await day { episodeDay = fresh }
+        if let fresh = await day { acceptEpisodeDay(fresh) }
         if let transcript = await history, !isStreaming, messages.map(\.id) == messagesAtStart {
-            messages = transcript.messages.map { row in
-                Message(sender: row.role == "user" ? .me : .alicia, text: row.content,
-                        date: Self.historyDate(row.ts))
-            }
+            messages = transcript.messages.map(historyMessage)
         }
         Task { await flushPlaybackOutbox() }
         // Keep-last-known: nil means the fetch FAILED (network/auth/decode)
@@ -495,6 +937,7 @@ final class AppStore {
     }
 
     private func pollProactive() async {
+        await collaboration.load()
         await refreshEpisodeDay()
         await flushPlaybackOutbox()
         let fresh = await service.proactive(limit: 30)
@@ -705,7 +1148,32 @@ final class AppStore {
         play(track)
     }
     /// Programmatic tab switching (Dialogue chips → Alicia tab).
-    var selectedSection: AppSection = .us
+    var selectedSection: AppSection = .us {
+        didSet { if selectedSection != .dialogue { dialogueOrigin = selectedSection } }
+    }
+    var dialogueOrigin: AppSection = .us
+    var composerDrafts = ComposerDrafts()
+    var privateBodyMessages: [Message] = []
+    var privateBodySending = false
+    var composerSection: AppSection { selectedSection == .dialogue ? ((collaboration.dialogueContext != nil || answeringAskID != nil) ? .us : dialogueOrigin) : selectedSection }
+    func surfaceContext() -> SurfaceContext {
+        let names: [AppSection: String] = [.us: "us", .knowledge: "mind", .body: "body", .mind: "alicia", .studio: "studio", .dialogue: "dialogue"]
+        return SurfaceContext(section: names[composerSection] ?? "dialogue", captured_at: voiceTimestamp(),
+            episode_id: [.us, .studio].contains(composerSection) ? episodeDay?.episode?.id ?? "" : "")
+    }
+    func sendPrivateBody(_ text: String, recordingID: String = "") {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, !privateBodySending else { return }
+        if !recordingID.isEmpty { voiceArchive.addTranscript(clean, kind: "submitted", to: recordingID) }
+        privateBodyMessages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID))
+        privateBodySending = true
+        Task {
+            defer { privateBodySending = false }
+            let result = await bodyStore.ask(clean)
+            privateBodyMessages.append(Message(sender: .alicia, text: result?.text ?? "A private answer is unavailable. Your question stayed in the private Body lane."))
+        }
+    }
+    var workEpisode: Track?
 
     /// True from the moment a reply is asked for until the stream ends.
     /// Dialogue's presence reads this to show her *thinking* — the one place
@@ -714,9 +1182,56 @@ final class AppStore {
     /// Which proactive card the Alicia tab should scroll to on arrival
     /// (set by a Dialogue whisper tap; cleared after the scroll).
     var pendingMindFocusID: String?
-    /// The Dialogue composer owns the keyboard — the editorial tab bar
-    /// steps aside while it's up.
+    /// The Dialogue composer owns the keyboard. Kept for the Dialogue tab's
+    /// own field; since v39 nothing steps aside for it — the tab bar and the
+    /// composer band are permanent, and typing happens in `showConversation`.
     var composerFocused = false
+
+    /// Writing to her, as a layer over whatever section he is on. The sheet
+    /// carries `surfaceContext()` in with it and hands the page back on close,
+    /// which is why this is a presentation flag rather than a tab.
+    var showConversation = false
+
+    /// The most recent reflection that is waiting on him, if any.
+    ///
+    /// A reflection sitting in a list he never opens is a reflection he lost —
+    /// which is exactly what "Queued on your Mac" produced. The composer band
+    /// carries this, so wherever he is, the app can say the one true sentence
+    /// about where his words are.
+    var reflectionNeedingYou: VoiceRecording? {
+        voiceArchive.recordings
+            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage.needsYou }
+            .max(by: { voiceDate($0.context.started_at) < voiceDate($1.context.started_at) })
+    }
+
+    /// The last thing he sent her, for the short while after he sent it. This
+    /// answers "did I already send it?" without him going to look.
+    var recentlySentReflection: VoiceRecording? {
+        voiceArchive.recordings
+            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage == .sent }
+            .max(by: { voiceDate($0.context.started_at) < voiceDate($1.context.started_at) })
+    }
+
+    /// A recording he asked to look at from anywhere. RootView presents it,
+    /// so the way back to his own words does not depend on which tab he is on.
+    /// Wrapped rather than a bare id because `sheet(item:)` needs an identity
+    /// and String should not be given one globally.
+    struct ReviewedRecording: Identifiable, Equatable { let id: String }
+    var reviewRecording: ReviewedRecording?
+
+    /// The section the conversation layer was opened from, frozen at the moment
+    /// it opens. The sheet deliberately does not derive this from live state:
+    /// its draft binding decides which section a keystroke is *filed under*,
+    /// and a sheet that is being dismissed can be re-evaluated after the tab
+    /// has already moved. Freezing it here costs nothing and removes the
+    /// question entirely.
+    private(set) var conversationContext = SurfaceContext(section: "us", captured_at: "")
+
+    func openConversation() {
+        conversationContext = surfaceContext()
+        showConversation = true
+    }
+
     var isWalking: Bool { thinkingMode == "walk" }
 
     /// Start or end a walk. Her acknowledgment lands in the timeline.
@@ -741,6 +1256,7 @@ final class AppStore {
 
     func beginAnswering(_ message: Message) {
         guard let pid = message.proactiveID else { return }
+        collaboration.dialogueContext = nil
         answeringAskID = pid
         answeringAskExcerpt = String(
             message.text.strippedLeadingEmoji.prefix(70))
@@ -751,14 +1267,20 @@ final class AppStore {
         answeringAskExcerpt = ""
     }
 
-    func send(_ text: String) {
+    func send(_ text: String, recordingID: String = "", surfaceContext: SurfaceContext? = nil) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, !isStreaming else { return }
+        guard !clean.isEmpty, !isStreaming, !episodeChoiceSyncing else { return }
+        noteContextActivity()
+        if !recordingID.isEmpty {
+            voiceArchive.addTranscript(clean, kind: "submitted", to: recordingID)
+            Task { await syncVoiceArchive() }
+        }
         if let askID = answeringAskID {
+            let episodeID = voiceArchive.recording(recordingID)?.context.episode_id ?? ""
             cancelAnswering()
-            messages.append(Message(sender: .me, text: clean))
+            messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID))
             Task {
-                let reply = await service.reply(proactiveID: askID, text: clean)
+                let reply = await service.reply(proactiveID: askID, text: clean, recordingID: recordingID, episodeID: episodeID)
                 if let reply, !reply.isEmpty {
                     messages.append(Message(sender: .alicia, text: reply))
                 } else {
@@ -769,26 +1291,42 @@ final class AppStore {
             }
             return
         }
-        messages.append(Message(sender: .me, text: clean))
+        let workContext = collaboration.dialogueContext
+        messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID, workContext: workContext))
         let idx = messages.count
-        messages.append(Message(sender: .alicia, text: ""))
+        messages.append(Message(sender: .alicia, text: "", workContext: workContext))
         isStreaming = true
         Task {
-            // `defer` rather than a trailing assignment: a thrown or cancelled
-            // stream must not leave her looking permanently mid-thought.
-            defer { isStreaming = false }
-            for await event in service.stream(clean, voice: voiceReplies) {
-                guard messages.indices.contains(idx) else { break }
-                switch event {
-                case .token(let t):   messages[idx].text += t
-                case .voice(let url): messages[idx].voiceURL = url
-                case .done(let mid):  messages[idx].messageID = mid
+            do {
+                // `defer` rather than a trailing assignment: a thrown or cancelled
+                // stream must not leave her looking permanently mid-thought.
+                defer { isStreaming = false }
+                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext) {
+                    guard messages.indices.contains(idx) else { break }
+                    switch event {
+                    case .token(let t):   messages[idx].text += t
+                    case .details(let id):
+                        messages[idx].replyID = id
+                        if let workContext { collaboration.rememberDialogueContext(workContext, replyID: id) }
+                    case .voice(let url): messages[idx].voiceURL = url
+                    case .done(let mid):  messages[idx].messageID = mid
+                    }
                 }
+                // During a walk the backend accumulates instead of chatting —
+                // keep the word counter fresh.
+                if isWalking { (thinkingMode, walkWords) = await service.modeState() }
             }
-            // During a walk the backend accumulates instead of chatting —
-            // keep the word counter fresh.
-            if isWalking { (thinkingMode, walkWords) = await service.modeState() }
+            await syncThoughtReturn()
         }
+    }
+
+    /// Saved public context for one particular reply.
+    func replyInspection(_ replyID: String) async -> DialogueReview? {
+        await service.dialogueReview(replyID: replyID)
+    }
+
+    func saveReplyReview(_ mutation: DialogueMutation) async -> DialogueMutationResult? {
+        await service.dialogueReviewAction(mutation)
     }
 
     /// Shownotes markdown for an episode (Studio detail page).
@@ -850,14 +1388,15 @@ final class AppStore {
     private var endObserver: NSObjectProtocol?
     private var stallObserver: NSObjectProtocol?
 
-    func play(_ track: Track) {
-        // An episode starting ends a reading outright — unlike the reverse,
-        // there's no position worth keeping once you've chosen the podcast.
-        reader.stop()
+    func play(_ track: Track, chooseTopic: Bool = true) {
+        if chooseTopic { chooseEpisode(track) }
+        let readingPosition = takePlaybackFromReader(for: track)
         // Re-tapping the current track (e.g. opening its detail page)
         // must not restart it from zero.
-        if nowPlaying?.id == track.id, player != nil {
-            if !isPlaying { isPlaying = true; player?.play() }
+        if (nowPlaying?.id == track.id || (track.label != nil && nowPlaying?.label == track.label)), player != nil {
+            if let readingPosition { seekStudio(to: readingPosition, track: track) }
+            if !isPlaying { isPlaying = true; player?.play(); player?.rate = playbackRate }
+            publishNowPlaying()
             return
         }
         flushEpisodePlayback()
@@ -865,15 +1404,32 @@ final class AppStore {
         nowPlaying = track
         isPlaying = true
         if let f = track.fileName, f.hasPrefix("http"), let url = URL(string: f) {
-            startPlayer(url: url)
+            startPlayer(url: url, at: readingPosition ?? 0)
         } else {
             stopPlayer()
             startTicker()
         }
     }
 
+    private func takePlaybackFromReader(for track: Track) -> Double? {
+        guard reader.isActive else { return nil }
+        let sameEpisode = track.label != nil && reader.current?.episodeID == track.label
+        let position = sameEpisode && reader.elapsed.isFinite ? reader.elapsed : nil
+        reader.stop()
+        return position
+    }
+
+    private func seekStudio(to seconds: Double, track: Track) {
+        guard track.duration > 0, seconds.isFinite else { return }
+        let target = max(0, min(seconds, track.duration))
+        progress = target / track.duration
+        player?.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+    }
+
     func togglePlay() {
-        guard nowPlaying != nil else { return }
+        guard let track = nowPlaying else { return }
+        if let readingPosition = takePlaybackFromReader(for: track) { seekStudio(to: readingPosition, track: track) }
+        if !isPlaying { chooseEpisode(track) }
         if isPlaying { flushEpisodePlayback() }
         isPlaying.toggle()
         if let player {
@@ -922,7 +1478,7 @@ final class AppStore {
         updateNowPlayingElapsed(target)
     }
 
-    private func startPlayer(url: URL) {
+    private func startPlayer(url: URL, at startPosition: Double = 0) {
         ticker?.cancel()
         stopPlayer()
         isScrubbing = false   // a scrub abandoned mid-switch froze the bar
@@ -941,7 +1497,7 @@ final class AppStore {
             object: item, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.isPlaying else { return }
+                guard let self, self.player === p, self.isPlaying, !self.reader.isActive else { return }
                 // Nudge playback back into motion once the buffer refills.
                 self.player?.playImmediately(atRate: self.playbackRate)
             }
@@ -951,7 +1507,8 @@ final class AppStore {
             queue: .main
         ) { [weak self] time in
             MainActor.assumeIsolated {
-                guard let self, let d = self.nowPlaying?.duration, d > 0 else { return }
+                guard let self, self.player === p, !self.reader.isActive,
+                      let d = self.nowPlaying?.duration, d > 0 else { return }
                 guard !self.isScrubbing else { return }   // finger owns the bar
                 self.progress = min(1, time.seconds / d)
                 self.updateNowPlayingElapsed(time.seconds)
@@ -965,10 +1522,12 @@ final class AppStore {
             object: item, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.flushEpisodePlayback(ended: true)
-                self?.next()
+                guard let self, self.player === p, self.isPlaying, !self.reader.isActive else { return }
+                self.flushEpisodePlayback(ended: true)
+                self.next(chooseTopic: false)
             }
         }
+        if startPosition > 0, let track = nowPlaying { seekStudio(to: startPosition, track: track) }
         p.play()
         p.rate = playbackRate
         configureRemoteCommandsOnce()
@@ -1099,10 +1658,10 @@ final class AppStore {
         player = nil
     }
 
-    func next() {
+    func next(chooseTopic: Bool = true) {
         guard let current = nowPlaying,
               let i = tracks.firstIndex(of: current) else { return }
-        play(tracks[(i + 1) % tracks.count])
+        play(tracks[(i + 1) % tracks.count], chooseTopic: chooseTopic)
     }
 
     func previous() {
@@ -1119,7 +1678,7 @@ final class AppStore {
                 guard let self else { return }
                 guard self.isPlaying, let d = self.nowPlaying?.duration, d > 0 else { continue }
                 self.progress = min(1, self.progress + 0.5 / d)
-                if self.progress >= 1 { self.next() }
+                if self.progress >= 1 { self.next(chooseTopic: false) }
             }
         }
     }

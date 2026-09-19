@@ -2,10 +2,19 @@ import SwiftUI
 
 struct TalkView: View {
     @Environment(AppStore.self) private var store
-    @State private var draft = ""
+    @AppStorage("alicia.dialogueDraft") private var draft = ""
+    @AppStorage("alicia.dialogueRecordingID") private var recordingID = ""
+    @State private var inspectedMessage: Message?
     @State private var speech = SpeechTranscriber()
-    @State private var dictationBase = ""
     @FocusState private var focused: Bool
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var showRecordings = false
+    @State private var selectedRecordingID: String?
+    @State private var microphoneError = ""
+    @State private var microphoneGeneration = 0
+    @State private var microphoneStarting = false
+    @State private var lastSavedRecordingID = ""
+    @State private var visible = false
 
     var body: some View {
         NavigationStack {
@@ -16,19 +25,42 @@ struct TalkView: View {
                         HStack(alignment: .top) {
                             Text(episode.title.strippedEmojis).font(.subheadline).italic()
                             Spacer()
-                            Button("THINK ALOUD") { store.openWalk() }
-                                .font(.system(size: 10, design: .monospaced)).tracking(1)
+                            Button { focused = false; store.openWalk() } label: {
+                                Text("THINK ALOUD")
+                                    .font(.system(size: 10, design: .monospaced)).tracking(1)
+                                    .frame(minHeight: 44).contentShape(Rectangle())
+                            }
+                            .accessibilityIdentifier("episode.talkFromDialogue")
                         }
                     }
+                    if store.episodeChoiceSyncing {
+                        Button("Syncing your episode choice · tap to retry") { store.retryEpisodeSync() }
+                            .font(.caption).foregroundStyle(Theme.inkSoft)
+                    }
+                    Button("OUR SHARED FOCUS") {
+                        cancelMicrophoneStart(); speech.stop(); focused = false
+                        store.collaboration.route = CollaborationRoute()
+                    }.font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
+                    EpisodeErrorLine()
+                    Button("RECORDINGS") { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = nil; showRecordings = true }
+                        .font(.system(size: 10, design: .monospaced)).tracking(1)
+                        .frame(minHeight: 44).accessibilityIdentifier("voice.recordings")
                 }.padding(.horizontal, 18).padding(.bottom, 12)
                 messageList
-                composer
             }
             // Sister field to Us: calmer, sparser — quiet water under words.
             .presenceBackground(.dialogue, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .animation(.easeOut(duration: 0.2), value: focused)
             .onChange(of: focused) { _, now in store.composerFocused = now }
+            .sheet(item: $inspectedMessage) { message in
+                DialogueReviewView(message: message)
+                    .presentationDetents([.large])
+            }
+            .sheet(isPresented: $showRecordings) { VoiceRecordingsView(recordingID: selectedRecordingID) }
+            .onAppear { visible = true }
+            .onDisappear { visible = false; cancelMicrophoneStart(); speech.stop() }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { cancelMicrophoneStart(); speech.stop() } }
         }
     }
 
@@ -36,8 +68,18 @@ struct TalkView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    ForEach(store.messages) { message in
-                        MessageBubble(message: message).id(message.id)
+                    ForEach(store.composerSection == .body ? store.privateBodyMessages : store.messages) { message in
+                        MessageBubble(message: message, inspect: { inspectedMessage = $0 }).id(message.id)
+                        if let context = message.workContext {
+                            Button("RETURN TO · " + context.goalTitle) {
+                                cancelMicrophoneStart(); speech.stop(); focused = false
+                                store.collaboration.route = CollaborationRoute(goalID: context.goal_id, resultID: context.result_id, sectionID: context.section_id, originalQuote: context.quote)
+                            }.font(.caption.monospaced()).frame(minHeight: 44)
+                        }
+                        if let id = message.recordingID {
+                            Button("REVIEW ORIGINAL RECORDING") { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = id; showRecordings = true }
+                                .font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -56,112 +98,7 @@ struct TalkView: View {
         }
     }
 
-    private var composer: some View {
-        VStack(spacing: 6) {
-            // v23: answering one of her asks — the send routes to her
-            // capture loops, and this strip says so.
-            if store.answeringAskID != nil {
-                HStack(spacing: 7) {
-                    InkChevron(pointing: .right, size: 10,
-                               color: Theme.paper.opacity(0.8), seed: 47)
-                    Text("ANSWERING · " + store.answeringAskExcerpt.uppercased())
-                        .font(.system(size: 8, design: .monospaced).weight(.semibold))
-                        .tracking(1.2)
-                        .foregroundStyle(Theme.paper.opacity(0.8))
-                        .lineLimit(1)
-                    Spacer()
-                    Button { store.cancelAnswering() } label: {
-                        Text("CANCEL")
-                            .font(.system(size: 8, design: .monospaced).weight(.semibold))
-                            .tracking(1.2)
-                            .underline()
-                            .foregroundStyle(Theme.paper.opacity(0.65))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 4)
-            }
-            composerRow
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        // One piece with the word-bar: the composer sits IN the ink frame.
-        .background(Theme.ink)
-        .onChange(of: speech.transcript) { _, new in
-            if speech.isRecording || !new.isEmpty {
-                draft = dictationBase.isEmpty ? new
-                      : dictationBase + (new.isEmpty ? "" : " " + new)
-            }
-        }
-        // Choosing an ask to answer pulls the keyboard up ready to write.
-        .onChange(of: store.answeringAskID) { _, id in
-            if id != nil { focused = true }
-        }
-    }
-
-    private var composerRow: some View {
-        HStack(spacing: 8) {
-            TextField(speech.isRecording ? "Listening…"
-                      : store.answeringAskID != nil ? "Answer her…"
-                      : store.isWalking ? "Walking — talk or type…"
-                                        : "Message Alicia…",
-                      text: $draft, axis: .vertical)
-                .font(.subheadline)
-                .lineLimit(1...5)
-                .focused($focused)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .foregroundStyle(Theme.ink)
-                .background(Theme.paper, in: Capsule())
-
-            // Voice in — live on-device transcription into the draft.
-            // Works the same in walk mode (accumulates) and regular chat.
-            Button {
-                toggleDictation()
-            } label: {
-                // Dictation in her register: wave bars while listening,
-                // the word at rest (v24).
-                Group {
-                    if speech.isRecording {
-                        InkWaveBars(size: 24, color: Theme.rose, seed: 25)
-                    } else {
-                        Text("MIC")
-                            .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                            .tracking(1.4)
-                            .foregroundStyle(Theme.paper.opacity(0.85))
-                    }
-                }
-                .frame(width: 34, height: 34)
-            }
-            .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
-
-            Button {
-                speech.stop()
-                store.send(draft)
-                draft = ""
-            } label: {
-                // Hand-drawn send — paper ink on the dark band (v21).
-                InkSubmitArrow(size: 34, color: Theme.paper, seed: 23)
-            }
-            .disabled(store.isStreaming || draft.trimmingCharacters(in: .whitespaces).isEmpty)
-            .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
-        }
-    }
-
-    private func toggleDictation() {
-        if speech.isRecording {
-            speech.stop()
-            return
-        }
-        focused = false
-        store.prepareForRecording()
-        dictationBase = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        Task {
-            guard await speech.requestAuthorization() else { return }
-            try? speech.start()
-        }
-    }
+    private func cancelMicrophoneStart() { microphoneGeneration += 1; microphoneStarting = false }
 }
 
 /// A proactive message as an editorial interlude — no bubble, no wash:
@@ -209,37 +146,14 @@ struct ProactiveWhisper: View {
 struct MessageBubble: View {
     @Environment(AppStore.self) private var store
     let message: Message
-    @State private var expanded = false
+    var inspect: (Message) -> Void = { _ in }
     private var isMe: Bool { message.sender == .me }
 
     // Reactions render as words in her register (InkReactions); the emoji
     // strings still travel to the backend, where the loops key on them.
 
-    /// A long message from her that isn't asking or answering directly —
-    /// a report. Reports open folded to their first breath; direct speech
-    /// (anything that ends in a question, or short) stays full-size.
-    private var isReport: Bool {
-        guard !isMe, message.text.count > 350 else { return false }
-        let tail = message.text.suffix(120)
-        return !tail.contains("?")
-    }
-
-    /// Her text arrives with Telegram's inline emoji markers (💭/✨/🎙) —
-    /// on paper, the ink chrome does that work, so they're shed (v24).
-    private var cleanText: String {
-        isMe ? message.text : message.text.strippedEmojis
-    }
-
     private var displayText: String {
-        let text = cleanText
-        guard isReport, !expanded else { return text }
-        // Fold at the first paragraph break past a minimum, else hard-cut.
-        if text.count > 120,
-           let cut = text.range(of: "\n\n", range:
-                text.index(text.startIndex, offsetBy: 120)..<text.endIndex) {
-            return String(text[..<cut.lowerBound])
-        }
-        return String(text.prefix(220)) + "…"
+        isMe ? message.text : message.conversationalPreview.strippedEmojis
     }
 
     /// Markdown-rendered body (falls back to plain text on parse failure).
@@ -296,29 +210,42 @@ struct MessageBubble: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(message.text.isEmpty ? AttributedString("…") : rendered)
                     .foregroundStyle(Theme.ink)
-                if isReport {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
-                    } label: {
-                        Text(expanded ? "LESS" : "THE REST →")
-                            .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                            .tracking(1.6)
-                            .underline()
-                            .foregroundStyle(Theme.accentSoft)
-                    }
-                    .buttonStyle(.plain)
+                if !isMe, !message.text.isEmpty {
+                    Button("BEHIND THIS REPLY") { inspect(message) }
+                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                        .tracking(1.2)
+                        .foregroundStyle(Theme.accentSoft)
+                        .frame(minHeight: 44)
+                        .buttonStyle(.plain)
                 }
             }
 
             if let voiceURL = message.voiceURL {
                 Button {
-                    store.playVoiceNote(voiceURL)
+                    if isMe { store.playVoiceNote(voiceURL) }
+                    else { store.readAloud(Readable(title: "", body: message.text, kind: "dialogue",
+                        speechChunks: [SpeechChunk(url: voiceURL, duration: 0)],
+                        stableID: message.replyID.map { "voice-reply:" + $0 })) }
                 } label: {
                     InkPlayPause(playing: false, size: 24,
                                  color: Theme.accentSoft,
                                  seed: message.text.count, ringed: true)
                 }
                 .accessibilityLabel("Play voice note")
+                .frame(minWidth: 44, minHeight: 44)
+            } else if !isMe, message.canReadVoiceReply, !message.text.isEmpty {
+                Button {
+                    store.readAloud(Readable(title: "", body: message.text, kind: "dialogue",
+                        stableID: message.replyID.map { "voice-reply:" + $0 }))
+                } label: {
+                    VStack(spacing: 4) {
+                        InkPlayPause(playing: false, size: 24, color: Theme.accentSoft,
+                                     seed: message.text.count, ringed: true)
+                        Text("READ").font(.system(size: 9, design: .monospaced))
+                    }.frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("Read reply aloud")
+                .accessibilityHint("The original reply audio was not recovered. Read these saved words aloud.")
             }
         }
         .padding(.horizontal, 14)
@@ -339,6 +266,9 @@ struct MessageBubble: View {
             }
         }
         .contextMenu {
+            if !isMe, !message.text.isEmpty {
+                Button("Behind this reply") { inspect(message) }
+            }
             // React to her messages — chat replies feed the archetype loop,
             // proactive messages feed their circulation entry. Words in
             // her register; the emoji rides underneath to the backend.
@@ -359,5 +289,5 @@ struct MessageBubble: View {
     TalkView()
         .environment(AppStore(service: MockAliciaService()))
         .tint(Theme.accent)
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
 }

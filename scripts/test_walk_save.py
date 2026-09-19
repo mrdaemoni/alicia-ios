@@ -11,7 +11,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[1]
 source = (root / 'Alicia/Core/AppStore.swift').read_text()
-start = source.index('    func finishEpisodeWalk() async -> Bool {')
+start = source.index('    func finishEpisodeWalk(')
 end = source.index('    /// Positive, continuous AVPlayer', start)
 method = source[start:end]
 program = r'''
@@ -22,19 +22,29 @@ import Foundation
     func set(_ value: String, forKey: String) {}
 }
 struct WalkReceipt { var ok: Bool; var message: String? = nil }
-struct Message { enum Sender { case me }; var sender: Sender; var text: String }
+struct Message { enum Sender { case me }; var sender: Sender; var text: String; var recordingID: String? = nil }
 enum Section { case us, mind }
 @MainActor final class FakeService {
     var result: WalkReceipt?
     var sent: [[String: String]] = []
     var duringSave: (() -> Void)?
-    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt? {
-        sent.append(["text": text, "episode_id": episodeID, "request_id": requestID, "prompt": prompt])
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
+        sent.append(["text": text, "episode_id": episodeID, "request_id": requestID, "prompt": prompt, "recording_id": recordingID])
         duringSave?()
         return result
     }
 }
+struct VoiceArchiveStub {
+ var available=false
+ func hasAudio(_ id:String)->Bool { available }
+ func recording(_ id:String)->Bool? { nil }
+ func addTranscript(_ text:String, kind:String, to:String) {}
+}
 @MainActor final class Store {
+ var voiceArchive=VoiceArchiveStub()
+ var walkRecordingID=""
+ func syncVoiceArchive() async {}
+ func pauseEpisodeWalk() {}
     let service = FakeService()
     var pendingWalkSave: [String: String]?
     var walkDraft = "My reflection", walkEpisodeID = "S1E01", walkRequestID = "receipt-1", walkPrompt = "The actual question"
@@ -83,7 +93,25 @@ __METHOD__
         changed.service.duringSave = { changed.walkDraft = "Newer words" }
         let changedResult = await changed.finishEpisodeWalk()
         precondition(changedResult && changed.walkDraft == "Newer words")
-        print("PASS: walk success, immutable retry, relaunch, definite rejection, size bound, concurrent edit")
+
+        let confirmation = Store()
+        confirmation.service.result = WalkReceipt(ok:true)
+        let acknowledged = await confirmation.finishEpisodeWalk(closeOnSuccess:false)
+        precondition(acknowledged && confirmation.showWalk && confirmation.selectedSection == .us)
+
+        let audio = Store()
+        audio.voiceArchive.available=true; audio.walkRecordingID="original"
+        let audioKept = await audio.finishEpisodeWalk(closeOnSuccess:false,audioOnly:true)
+        precondition(audioKept && audio.showWalk && audio.service.sent.isEmpty && audio.walkDraft == "My reflection")
+
+        let absent = Store()
+        let noAudio = await absent.finishEpisodeWalk(audioOnly:true)
+        precondition(!noAudio && absent.service.sent.isEmpty && absent.walkDraft == "My reflection")
+        let pending = Store()
+        pending.voiceArchive.available=true; pending.pendingWalkSave=snapshot
+        let cannotChange = await pending.finishEpisodeWalk(audioOnly:true)
+        precondition(!cannotChange && pending.pendingWalkSave == snapshot)
+        print("PASS: 10 walk flows including saved confirmation, audio-only, absent audio and immutable pending submission")
     }
 }
 '''.replace('__METHOD__', method)

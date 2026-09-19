@@ -8,10 +8,15 @@ struct Message: Identifiable, Hashable {
     var date: Date = .now
     /// Backend id for reacting to this reply (negative ints, iOS-minted).
     var messageID: Int? = nil
+    /// Durable response snapshot; retained by conversation-history receipts.
+    var replyID: String? = nil
+    var recordingID: String? = nil
     /// Emoji the user reacted with (shown as a badge on the bubble).
     var reaction: String? = nil
     /// TTS voice note of this reply, when voice replies are on.
     var voiceURL: URL? = nil
+    /// A confirmed voice reply recovered without its original streamed media.
+    var canReadVoiceReply = false
     /// Non-nil for proactive messages pulled from her circulation feed
     /// (e.g. "morning · ariadne") — rendered as a small caption.
     var proactiveLabel: String? = nil
@@ -21,11 +26,13 @@ struct Message: Identifiable, Hashable {
     /// True when this is one of her explicit asks — Dialogue gives it a
     /// full bubble and an "answer her" affordance (v23).
     var isAsk: Bool = false
+    var workContext: WorkDialogueContext? = nil
 }
 
 /// One event in a streamed chat reply.
 enum ChatEvent {
     case token(String)
+    case details(String)
     case voice(URL)
     case done(messageID: Int?)
 }
@@ -45,11 +52,12 @@ struct FeaturedSynthesis: Hashable, Identifiable {
     /// for it and starts on the lead chunk a few seconds later.
     var speechChunks: [SpeechChunk] = []
     var speechDuration: TimeInterval = 0
+    var stableReadingID: String? = nil
 
     /// This piece as something to press play on.
     var readable: Readable {
         Readable(title: title, body: body, kind: "synthesis",
-                 speechChunks: speechChunks, speechDuration: speechDuration)
+                 speechChunks: speechChunks, speechDuration: speechDuration, stableID: stableReadingID)
     }
 
     /// Pin identity. Keyed on the title because that's what survives the
@@ -109,7 +117,8 @@ struct Playlist: Identifiable, Hashable {
         var readable: Readable {
             Readable(title: title, body: body, kind: kind,
                      speechChunks: speechChunks, speechDuration: duration,
-                     episodeID: kind == "episode" ? source : nil)
+                     episodeID: kind == "episode" ? source : nil,
+                     stableID: source == "alicia_morning_briefing" ? "morning:" + id : nil)
         }
     }
 
@@ -353,4 +362,3 @@ extension String {
             .trimmingCharacters(in: .whitespaces)
     }
 }
-

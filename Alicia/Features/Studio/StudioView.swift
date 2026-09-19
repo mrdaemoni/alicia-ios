@@ -26,46 +26,15 @@ struct StudioView: View {
         }
     }
 
-    @State private var drawing = false
 
     var body: some View {
+        @Bindable var store = store
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    ZStack {
-                        SectionHeader(title: drawing ? "Canvas" : "Studio",
-                                      kicker: drawing ? "drawn together"
-                                                      : "everything worth listening to")
-                        HStack {
-                            Spacer()
-                            // Canvas lives inside Studio now — the pencil
-                            // toggles between listening and drawing with her.
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    drawing.toggle()
-                                }
-                            } label: {
-                                // A word with her underline, not a widget
-                                // glyph (v22).
-                                VStack(spacing: 2) {
-                                    Text(drawing ? "LISTEN" : "DRAW")
-                                        .font(.system(size: 10, design: .monospaced).weight(.bold))
-                                        .tracking(1.6)
-                                        .foregroundStyle(Theme.ink)
-                                    InkUnderline(seed: drawing ? 3 : 5, lineWidth: 1.1)
-                                        .frame(width: 30, height: 4)
-                                }
-                            }
-                            .accessibilityLabel(drawing ? "Back to Studio" : "Draw with me")
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 14)
-                    }
-                    if drawing {
-                        CanvasBody()
-                            .frame(minHeight: 560)
-                    }
-                    if !drawing {
+                    SectionHeader(title: "Studio", kicker: "everything worth listening to")
+                    Group {
+                    NextEpisodeInvitation()
                     // ── Her queues, above the podcast ────────────────────
                     // Studio is no longer only "Memories of My Future Self":
                     // it's where listening lives, and the queues he built
@@ -110,11 +79,19 @@ struct StudioView: View {
             .navigationDestination(for: Track.self) { track in
                 EpisodeDetailView(track: track)
             }
+            .navigationDestination(item: $store.workEpisode) { track in
+                EpisodeDetailView(track: track, playOnArrival: false)
+            }
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlistID: playlist.id)
             }
             .navigationDestination(for: PodcastCollection.self) { collection in
                 CollectionDetailView(collection: collection)
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { store.morningPlaylistID != nil },
+                set: { if !$0 { store.morningPlaylistID = nil } })) {
+                if let id = store.morningPlaylistID { PlaylistDetailView(playlistID: id) }
             }
             .refreshable { await store.load() }
             .task { await store.loadPlaylists() }
@@ -160,11 +137,13 @@ struct StudioView: View {
 struct EpisodeDetailView: View {
     @Environment(AppStore.self) private var store
     let track: Track
+    var playOnArrival = false
     @State private var notes: AttributedString?
     /// The shownotes as they arrived — the reader speaks the markdown, not
     /// the restyled AttributedString.
     @State private var notesMarkdown = ""
     @State private var loading = true
+    @State private var choseOnArrival = false
 
     /// Inline-markdown rendering keeps `#`/`-`/`>` markers literal — restyle
     /// them line-by-line (headings → bold, bullets → dots, quotes → “).
@@ -215,7 +194,10 @@ struct EpisodeDetailView: View {
                             InkTitle(text: track.title, size: 21)
                         }
                         Spacer()
-                        Button { store.togglePlay() } label: {
+                            Button {
+                                if store.nowPlaying?.id == track.id { store.togglePlay() }
+                                else { store.play(track) }
+                            } label: {
                             InkPlayPause(
                                 playing: store.isPlaying && store.nowPlaying?.id == track.id,
                                 size: 42,
@@ -225,11 +207,23 @@ struct EpisodeDetailView: View {
                     }
                     .padding(14)
                 }
+                EpisodeReadAlongButton(track: track)
                 StippleIllustration(seed: (track.label ?? "x").count * 7 + track.episode,
                                     dots: 500, animated: true)
                     .frame(height: 44)
                     .frame(maxWidth: .infinity)
 
+                let relatedGoalIDs = Set((store.collaboration.state?.results ?? []).filter {
+                    $0.evidence.contains { $0.episode_id == track.label }
+                }.compactMap(\.goal_id) + (store.collaboration.state?.connections ?? []).filter {
+                    $0.evidence.contains { $0.episode_id == track.label }
+                }.map(\.goal_id))
+                ForEach((store.collaboration.state?.goals ?? []).filter { relatedGoalIDs.contains($0.id) }) { goal in
+                    Button("Explore with our goal · " + goal.title) {
+                        store.collaboration.route = CollaborationRoute(goalID: goal.id)
+                    }.font(.callout).frame(minHeight: 44)
+                        .accessibilityIdentifier("workReview.studioGoal." + goal.id)
+                }
                 if loading {
                     ProgressView("Fetching shownotes…")
                         .frame(maxWidth: .infinity)
@@ -275,7 +269,10 @@ struct EpisodeDetailView: View {
             }
         }
         .task {
-            store.play(track)   // no-ops if this episode is already playing
+            if !choseOnArrival {
+                choseOnArrival = true
+                if playOnArrival { store.play(track) }
+            }
             let md = await store.episodeNotes(for: track)
             notesMarkdown = md
             notes = md.isEmpty ? nil : Self.render(md)

@@ -6,7 +6,7 @@ struct AliciaApp: App {
     /// mock otherwise — see AliciaConfig.
     @State private var store = AppStore(service: {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { return MockAliciaService() }
+        if ProcessInfo.processInfo.arguments.contains("--body-preview") || ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") || ProcessInfo.processInfo.arguments.contains("--collaboration-preview") || ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") || ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") || ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return MockAliciaService() }
 #endif
         return AliciaConfig.makeService()
     }())
@@ -41,8 +41,19 @@ struct AliciaApp: App {
         WindowGroup {
             Group {
 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--motion-lab") {
+                if ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") && ProcessInfo.processInfo.arguments.contains("--reading-bar-preview") {
+                    VStack { Spacer(); ReadingBar() }.background(Theme.paper)
+                        .task { store.reader.prepareReadingPreview() }
+                } else if ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") {
+                    ImmersiveReadingView(previewReduceMotion: ProcessInfo.processInfo.arguments.contains("--reading-reduce-motion"))
+                        .task {
+                        store.reader.prepareReadingPreview(unavailable: ProcessInfo.processInfo.arguments.contains("--reading-unavailable"))
+                    }
+                } else if ProcessInfo.processInfo.arguments.contains("--motion-lab") {
                     MotionLabView()
+                } else if ProcessInfo.processInfo.arguments.contains("--dialogue-review-sheet-preview") {
+                    DialogueReviewView(message: Message(sender: .alicia, text: DialogueReview.preview.reply,
+                                                        replyID: DialogueReview.previewID))
                 } else {
                     RootView()
                 }
@@ -59,6 +70,9 @@ struct AliciaApp: App {
                 // Same shape as --motion-lab, and gone from Release.
                 .task {
                     let args = ProcessInfo.processInfo.arguments
+                    if args.contains("--reset-drafts") { store.composerDrafts.resetForTesting() }
+                    if args.contains("--body-stale-preview") { store.bodyStore.overview = BodyPreview.staleOverview }
+                    else if args.contains("--body-preview") { store.bodyStore.overview = BodyPreview.overview }
                     if args.contains("--episode-day-preview") && args.contains("--episode-walk-preview") {
                         store.episodeDay = EpisodeDay.preview
                         store.walkPrompt = "Where would choosing less give you room to go deeper?"
@@ -82,6 +96,9 @@ struct AliciaApp: App {
                         ProactiveNotifier.schedule()
                     }
                 }
+                .onOpenURL { url in
+                    if url.scheme == "alicia", url.host == "body" { store.selectedSection = .body }
+                }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active:
@@ -97,6 +114,7 @@ struct AliciaApp: App {
                         // its job.
                         ProactiveNotifier.clearBadge()
                         Task { await store.load() }
+                        Task { await store.bodyStore.refresh() }
                         store.startProactivePolling()
                     case .background:
                         // Close the open tab's dwell and push the batch before

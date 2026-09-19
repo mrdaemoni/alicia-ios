@@ -30,6 +30,7 @@ enum TabPresence {
         case .mind:      .beatrice
         case .studio:    .muse
         case .knowledge: .ariadne
+        case .body: .psyche
         }
     }
 
@@ -49,7 +50,7 @@ enum TabPresence {
             // Warming up her voice is the most literal "thinking" the app has.
             if store.reader.isPreparing { return .thinking }
             return (store.isPlaying || store.reader.isSpeaking) ? .listening : .resting
-        case .us, .mind, .knowledge:
+        case .us, .mind, .knowledge, .body:
             return .listening
         }
     }
@@ -80,6 +81,8 @@ enum TabPresence {
             value += min(0.20, Double(store.thoughts.count) * 0.04)
         case .studio:
             if store.isPlaying || store.reader.isSpeaking { value += 0.20 }
+        case .body:
+            break
         case .knowledge:
             // A loaded shelf is a full room.
             value += min(0.20, Double(store.syntheses.count) * 0.02)
@@ -124,7 +127,8 @@ extension View {
                         voice: TabPresence.voice(for: section),
                         state: TabPresence.state(for: section, store: store),
                         attention: TabPresence.attention(for: section, store: store),
-                        isActive: store.selectedSection == section
+                        isActive: store.selectedSection == section,
+                        previewsReduceMotion: previewsCollaborationStillness
                     )
                     .frame(width: geo.size.width * 1.9,
                            height: geo.size.height * 1.9)
@@ -136,5 +140,14 @@ extension View {
             }
             .ignoresSafeArea()
         }
+    }
+
+    private var previewsCollaborationStillness: Bool {
+#if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        return args.contains("--collaboration-preview") && args.contains("--collaboration-reduce-motion-preview")
+#else
+        return false
+#endif
     }
 }

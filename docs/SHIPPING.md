@@ -150,6 +150,19 @@ no reason for a ship to touch git.
 This also resolves the `/ship-ios` tension: an unattended ship from Dispatch
 neither commits nor pushes, and `main` is untouched by construction.
 
+### 2.5 Unattended signing authentication
+
+`ship.sh` passes the configured App Store Connect key to both Xcode archive
+and export, as well as using it for the upload. The private key stays in
+`~/.appstoreconnect/private_keys/`; no key contents are printed or copied into
+the repository. This avoids relying on an interactive Xcode account whose
+cached login may have expired. A missing key fails before allocating a build.
+
+A failed archive or export leaves its build number reserved. Retry with the
+next number; do not rewind the allocator. After changing the shipping script,
+run `--verify-only` before uploading, including the distribution-signature and
+bundled-configuration checks.
+
 ## 3. Rules
 
 ### R1 — Never push to `main` to test something
