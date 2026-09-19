@@ -108,6 +108,24 @@ voice findings. Device read-aloud is removed. Podcast read-along uses a labelled
 machine transcript from the original audio, never shownotes as a script. Backend
 A2-036/A2-038 deploy first; task RELEASE.md owns actual shipping status.
 
+## CL-20260918-context-graph-behaviours — "In the middle of"
+
+Us gains one section between the mind/body overview and the goals summary:
+two to three lines of Hector's context graph (`WhereYouAreSection`), each with
+its mark — `STATED · PROJECT`, `UNCONFIRMED READING · TENSION` — and a hand-drawn
+underline seeded by the node id. The kicker opens `ContextGraphRoom` (the whole
+graph grouped by kind, unconfirmed readings first, the day's elevation with its
+reason when it refused); a node opens `ContextNodeView` with body, receipts,
+vault links, related nodes and the three acts — **Keep**, **Correct** (his
+words, becomes stated), **Let go** (asked once) — as `ContextGraphMutation`s
+kept verbatim on the phone until confirmed, one receipt id per unchanged
+payload. Under the episode's questions, `ForWhereYouAreSection` renders what
+was elevated and names the node it came from; nothing renders when nothing
+cleared the threshold. The Alicia tab links into the same room next to "About
+you"; a reply's inspector lists the nodes it drew on ("DREW ON YOUR CONTEXT").
+The kicker is not "Where you are" — that name belongs to place awareness.
+`--episode-day-preview` (or any `--context-graph-*` flag) serves fixtures.
+
 # CLAUDE.md — Alicia iOS
 
 **Read `AGENTS.md` before doing anything.** It is the repository-wide contract
@@ -223,7 +241,8 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `POST /api/reply` | reply to a proactive message; reviewed Mac voice adds the same receipt/source IDs and retains original `proactive_id` and `episode_id`, without requesting new reply audio |
 | `GET /api/greeting` | legacy greeting endpoint; not loaded by the current Us screen |
 | `GET /api/context` · `/api/context/<id>` | retained orbit/receipt API; old Us orbit is unmounted |
-| `GET /api/context_graph?q=&kind=` · `GET /api/context_graph/<id>` · `POST /api/context_graph` | Hector's context graph — his situation as typed, ranked nodes (stated is his, inferred is unconfirmed); node body + receipts + related; acts `confirm` / `correct` / `retire` / `propose` / `worth`. No app screen yet (CL-20260918-context-graph-behaviours) |
+| `GET /api/context_graph?q=&kind=` · `GET /api/context_graph/<id>` · `POST /api/context_graph` | Hector's context graph — his situation as typed, ranked nodes (stated is his, inferred is unconfirmed); node body + receipts + related; acts `confirm` / `correct` / `retire` / `propose` / `worth`, and `translate` (text → the one node it bears on). Rendered on Us as "In the middle of" (`ContextGraphViews.swift`) |
+| `GET /api/context_graph/elevate` · `GET /api/context_graph/translate?title=` | What Us elevates for his situation (thinkers, passages, goals with the line each was drawn from; `status` preparing/ready/refreshing) and a vault note translated into the one node it bears on |
 | `GET /api/home` | retained home/library context; no longer the Us framing source |
 | `GET /api/timeline` | every lived day since she began (Timeline sheet) |
 | `GET /api/featured` · `/api/syntheses` · `/api/quote` | the day's synthesis, the shelf, the rotating quote |

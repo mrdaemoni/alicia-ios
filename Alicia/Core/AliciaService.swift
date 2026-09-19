@@ -170,6 +170,12 @@ protocol AliciaService {
     /// backend already has the m4a, `.rendering` while it makes one.
     /// The live orbit of what we actually talk about (`/api/context`).
     func sharedContext() async -> SharedContext?
+    /// Hector's context graph (CL-20260918-context-graph-behaviours).
+    func contextGraph() async -> ContextGraph?
+    func contextNode(id: String) async -> (node: ContextNode, related: [ContextNode])?
+    func contextGraphAct(_ mutation: ContextGraphMutation) async -> ContextGraphMutationResult?
+    func contextElevation() async -> ContextElevation?
+    func contextTranslate(title: String) async -> ContextTranslation?
 
     /// Her morning/evening self-reflections (`/api/reflections`).
     func reflections() async -> [Reflection]?
@@ -195,6 +201,11 @@ protocol AliciaService {
 }
 
 extension AliciaService {
+    func contextGraph() async -> ContextGraph? { nil }
+    func contextNode(id: String) async -> (node: ContextNode, related: [ContextNode])? { nil }
+    func contextGraphAct(_ mutation: ContextGraphMutation) async -> ContextGraphMutationResult? { nil }
+    func contextElevation() async -> ContextElevation? { nil }
+    func contextTranslate(title: String) async -> ContextTranslation? { nil }
     func morningBriefing() async -> MorningBriefing? { nil }
     func collaboration() async -> CollaborationState? {
 #if DEBUG
@@ -424,6 +435,32 @@ struct MockAliciaService: AliciaService {
     }
 
     func sharedContext() async -> SharedContext? { SampleData.sharedContext }
+    func contextGraph() async -> ContextGraph? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--context-graph-") || $0 == "--episode-day-preview" }) { return SampleData.contextGraph }
+#endif
+        return nil
+    }
+    func contextNode(id: String) async -> (node: ContextNode, related: [ContextNode])? {
+        guard let node = SampleData.contextGraph.nodes.first(where: { $0.id == id }) else { return nil }
+        return (node, SampleData.contextGraph.nodes.filter { node.related.contains($0.id) })
+    }
+    func contextGraphAct(_ mutation: ContextGraphMutation) async -> ContextGraphMutationResult? {
+        guard var node = SampleData.contextGraph.nodes.first(where: { $0.id == mutation.id }) else { return nil }
+        switch mutation.action {
+        case "confirm": node.status = "confirmed"; node.needs_review = false
+        case "correct": node.status = "stated"; node.needs_review = false; node.body = mutation.text
+        case "retire": node.status = "retired"
+        default: break
+        }
+        return ContextGraphMutationResult(ok: true, node: node, error: nil, updated: nil)
+    }
+    func contextElevation() async -> ContextElevation? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--context-graph-") || $0 == "--episode-day-preview" }) { return SampleData.contextElevation }
+#endif
+        return nil
+    }
     func reflections() async -> [Reflection]? { SampleData.reflections }
     func thoughts() async -> [Thought]? { SampleData.thoughts }
     func tracks() async -> [Track]? {

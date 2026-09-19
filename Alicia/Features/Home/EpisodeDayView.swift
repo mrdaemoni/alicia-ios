@@ -30,6 +30,9 @@ struct EpisodeHomeView: View {
                         onOpenPlaylist: store.openMorningPlaylist,
                         onRefresh: { Task { await store.refreshMorningBriefing() } })
                     MindBodyOverview()
+                    // Option A (CL-20260918-context-graph-behaviours): his situation,
+                    // above the goals, opening into the room with the whole graph.
+                    WhereYouAreSection()
                     NextEpisodeInvitation()
                     CollaborationSummary()
                     if let day = store.episodeDay, let episode = day.episode {
@@ -66,6 +69,7 @@ struct EpisodeHomeView: View {
                                 Rectangle().fill(Theme.stroke).frame(height: 0.7)
                             }
                         }
+                        ForWhereYouAreSection()
                         Button("CONTINUE IN DIALOGUE") { store.selectedSection = .dialogue }
                             .font(.system(size: 11, design: .monospaced)).tracking(1.3)
                     } else {
@@ -100,7 +104,10 @@ struct EpisodeHomeView: View {
                 .padding(.bottom, 20)
             }
             .task { await store.refreshMorningBriefing(); await store.bodyStore.refresh() }
-            .refreshable { await store.refreshMorningBriefing(); await store.refreshEpisodeDay(); await store.bodyStore.refresh() }
+            // The graph and its elevation load on their own task so a slow body
+            // refresh never holds the section back.
+            .task { await store.refreshContextGraph(); await store.refreshContextElevation() }
+            .refreshable { await store.refreshMorningBriefing(); await store.refreshEpisodeDay(); await store.bodyStore.refresh(); await store.refreshContextGraph(); await store.refreshContextElevation() }
             .presenceBackground(.us, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showHistory) { EpisodeHistoryView() }
@@ -304,6 +311,8 @@ struct EpisodeMindView: View {
                     CollaborationSummary()
                     NavigationLink("About you · enrich Alicia’s context") { ContextEnrichmentView() }
                         .font(.callout).frame(minHeight: 44)
+                    NavigationLink("In the middle of · your context graph") { ContextGraphRoom() }
+                        .font(.callout).frame(minHeight: 44).accessibilityIdentifier("alicia.contextGraph.open")
                     WorkSessionsEntry()
                     PlaceAwareness()
                     if let day = store.episodeDay, let episode = day.episode {

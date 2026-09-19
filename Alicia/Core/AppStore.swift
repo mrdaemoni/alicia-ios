@@ -187,6 +187,23 @@ final class AppStore {
         await service.contextEnrichment(replyID: replyID)
     }
 
+    func refreshContextGraph() async {
+        if let fresh = await service.contextGraph() { contextGraph = fresh; contextGraphError = "" }
+        else if contextGraph == nil { contextGraphError = "Your context graph could not be reached." }
+    }
+    func refreshContextElevation() async {
+        if let fresh = await service.contextElevation() { contextElevation = fresh }
+    }
+    func contextNode(_ id: String) async -> (node: ContextNode, related: [ContextNode])? {
+        await service.contextNode(id: id)
+    }
+    func contextGraphAct(_ mutation: ContextGraphMutation) async -> ContextGraphMutationResult? {
+        await service.contextGraphAct(mutation)
+    }
+    func contextTranslate(title: String) async -> ContextTranslation? {
+        await service.contextTranslate(title: title)
+    }
+
     func contextSource(_ replyID: String, itemID: String) async -> ContextSource? {
         await service.contextSource(replyID: replyID, itemID: itemID)
     }
@@ -1010,6 +1027,11 @@ final class AppStore {
     var homeContext: HomeContext?
     /// The live orbit of what we actually talk about (`/api/context`).
     var sharedContext: SharedContext?
+    // Hector's context graph and what Us elevates from it. Last-known data
+    // survives a failed fetch; the error is shown only when nothing is held.
+    var contextGraph: ContextGraph?
+    var contextElevation: ContextElevation?
+    var contextGraphError = ""
     /// Her morning/evening self-reflections (`/api/reflections`).
     var reflections: [Reflection] = []
 

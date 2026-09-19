@@ -899,6 +899,117 @@ struct LiveAliciaService: AliciaService {
         var first_seen: String?; var last_seen: String?; var days_since: Int?
         var channels: [String: Int]?; var examples: [MomentDTO]?
     }
+    // MARK: Context graph — CL-20260918-context-graph-behaviours
+    // Every DTO field is optional on purpose: an older backend, or a node
+    // with a missing key, must never take the whole graph down.
+    private struct GraphReceiptDTO: Decodable { var source, ref, observed_at, excerpt: String? }
+    private struct GraphNodeDTO: Decodable {
+        var id, kind, title, status, summary, body, updated, superseded_by: String?
+        var importance, worth_hits, worth_misses: Int?
+        var needs_review: Bool?
+        var themes, links, related, why: [String]?
+        var receipts: [GraphReceiptDTO]?
+    }
+    private struct ContextGraphDTO: Decodable {
+        struct Manifest: Decodable { var nodes, needs_review: Int? }
+        var generated_at, notice: String?
+        var nodes, core: [GraphNodeDTO]?
+        var manifest: Manifest?
+    }
+    private struct GraphNodeDetailDTO: Decodable {
+        var id, kind, title, status, summary, body, updated, superseded_by: String?
+        var importance, worth_hits, worth_misses: Int?
+        var needs_review: Bool?
+        var themes, links, related, why: [String]?
+        var receipts: [GraphReceiptDTO]?
+        var related_nodes: [GraphNodeDTO]?
+    }
+    private struct ContextElevationDTO: Decodable {
+        struct Item: Decodable {
+            struct Evidence: Decodable { var source, ref, excerpt: String? }
+            var kind, title, why, node_id, node_title, node_kind, episode_id: String?
+            var score: Double?
+            var evidence: Evidence?
+        }
+        struct Episode: Decodable { var id: String? }
+        var generated_at, status, reason, notice: String?
+        var refused: Bool?
+        var items: [Item]?
+        var episode: Episode?
+    }
+    private struct ContextTranslationDTO: Decodable {
+        var refused: Bool?
+        var reason, title, why, passage_excerpt, node_excerpt: String?
+        var node: GraphNodeDTO?
+        var shared_terms: [String]?
+    }
+    private struct ContextGraphMutationDTO: Decodable {
+        var ok: Bool?
+        var node: GraphNodeDTO?
+        var error: String?
+        var updated: Int?
+    }
+
+    private func contextNode(_ d: GraphNodeDTO) -> ContextNode? {
+        guard let id = d.id, let title = d.title, !title.isEmpty else { return nil }
+        return ContextNode(id: id, kind: d.kind ?? "situation", title: title, status: d.status ?? "inferred",
+                           summary: d.summary ?? "", body: d.body ?? d.summary ?? "", updated: String((d.updated ?? "").prefix(10)),
+                           importance: d.importance ?? 5, needs_review: d.needs_review ?? (d.status == "inferred"),
+                           themes: d.themes ?? [], links: d.links ?? [], related: d.related ?? [],
+                           receipts: (d.receipts ?? []).map { .init(source: $0.source ?? "", ref: $0.ref ?? "", observed_at: $0.observed_at ?? "", excerpt: $0.excerpt ?? "") },
+                           worth_hits: d.worth_hits ?? 0, worth_misses: d.worth_misses ?? 0,
+                           superseded_by: d.superseded_by ?? "", why: d.why ?? [])
+    }
+
+    func contextGraph() async -> ContextGraph? {
+        guard let d: ContextGraphDTO = await fetchOne("/api/context_graph") else { return nil }
+        let nodes = (d.nodes ?? []).compactMap(contextNode)
+        let core = (d.core ?? []).compactMap(contextNode)
+        // {} from a failing backend must not wipe the last good graph.
+        if nodes.isEmpty && core.isEmpty && d.manifest == nil { return nil }
+        return ContextGraph(generatedAt: d.generated_at ?? "", nodes: nodes, core: core,
+                            notice: d.notice ?? "", needsReview: d.manifest?.needs_review ?? 0,
+                            total: d.manifest?.nodes ?? nodes.count)
+    }
+
+    func contextNode(id: String) async -> (node: ContextNode, related: [ContextNode])? {
+        guard id.range(of: "^ctx-[0-9a-f]{12}$", options: .regularExpression) != nil,
+              let d: GraphNodeDetailDTO = await fetchOne("/api/context_graph/" + id) else { return nil }
+        let base = GraphNodeDTO(id: d.id, kind: d.kind, title: d.title, status: d.status, summary: d.summary, body: d.body,
+                                  updated: d.updated, superseded_by: d.superseded_by, importance: d.importance,
+                                  worth_hits: d.worth_hits, worth_misses: d.worth_misses, needs_review: d.needs_review,
+                                  themes: d.themes, links: d.links, related: d.related, why: d.why, receipts: d.receipts)
+        guard let node = contextNode(base) else { return nil }
+        return (node, (d.related_nodes ?? []).compactMap(contextNode))
+    }
+
+    func contextGraphAct(_ mutation: ContextGraphMutation) async -> ContextGraphMutationResult? {
+        guard let d: ContextGraphMutationDTO = await post("/api/context_graph", body: mutation.body) else { return nil }
+        return ContextGraphMutationResult(ok: d.ok ?? false, node: d.node.flatMap(contextNode), error: d.error, updated: d.updated)
+    }
+
+    func contextElevation() async -> ContextElevation? {
+        guard let d: ContextElevationDTO = await fetchOne("/api/context_graph/elevate") else { return nil }
+        let items: [ContextElevation.Item] = (d.items ?? []).compactMap { i in
+            guard let kind = i.kind, let title = i.title, !title.isEmpty else { return nil }
+            return .init(kind: kind, title: title, why: i.why ?? "", score: i.score ?? 0,
+                         node_id: i.node_id ?? "", node_title: i.node_title ?? "", node_kind: i.node_kind ?? "",
+                         evidence: .init(source: i.evidence?.source ?? "", ref: i.evidence?.ref ?? "", excerpt: i.evidence?.excerpt ?? ""),
+                         episode_id: i.episode_id ?? "")
+        }
+        return ContextElevation(generatedAt: d.generated_at ?? "", status: d.status ?? "ready", reason: d.reason ?? "",
+                                notice: d.notice ?? "", refused: d.refused ?? items.isEmpty, items: items,
+                                episodeID: d.episode?.id ?? "")
+    }
+
+    func contextTranslate(title: String) async -> ContextTranslation? {
+        guard let encoded = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let d: ContextTranslationDTO = await fetchOne("/api/context_graph/translate?title=" + encoded) else { return nil }
+        return ContextTranslation(refused: d.refused ?? true, reason: d.reason ?? "", title: d.title ?? title, why: d.why ?? "",
+                                  passageExcerpt: d.passage_excerpt ?? "", nodeExcerpt: d.node_excerpt ?? "",
+                                  node: d.node.flatMap(contextNode), sharedTerms: d.shared_terms ?? [])
+    }
+
     private struct ContextDTO: Decodable {
         var nodes: [ContextNodeDTO]?; var message_count: Int?; var generated_at: String?
     }
