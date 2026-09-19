@@ -1,3 +1,20 @@
+## September 19 — blind Jev impulse study in Aves
+
+This paired backend/app release adds an auditable private study surface under
+Together → When Alicia returns. It shows whether the pinned Jev shadow observer
+is active and its aggregate observation/failure/label counts. A per-item Jev
+expression, confidence, stance and typed answers are absent from the server
+payload until Hector saves separate usefulness and stance labels. The confirmed
+response then reveals the exact trace bound by its state hash.
+
+Labels use the existing collaboration journal and durable mobile outbox; an
+uncertain save retries the identical receipt. Collaboration candidates and later
+circulation sends are deduplicated into one study unit. Jev remains shadow-only:
+it cannot create, suppress, delay, rewrite, notify or interrupt. App version tag
+is v39. Release status belongs to the paired pull requests and Apple receipt,
+not this handoff entry. The backend must deploy first. See
+`/Users/alicia/alicia/docs/JEV_IMPULSE_JUDGE.md`.
+
 ## A2-043 — mind and body integration candidate
 
 Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action. Body is private Mac/phone evidence and explicit wellness goals. Daily rituals widget saves offline and syncs when Alicia opens. Drawing is removed from Studio navigation; files remain. No release is claimed; shared A2-043 evidence owns status.

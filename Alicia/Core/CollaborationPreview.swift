@@ -5,6 +5,16 @@ import Foundation
 @MainActor final class CollaborationPreview {
     static let shared = CollaborationPreview()
     static let goalID = "preview-goal", connectionID = "preview-connection"
+    private static let impulseReveal = ImpulseResearch.Reveal(
+        outcome: "ok", model: "jev-1.13.0", question_version: "jev-impulse-v1",
+        suggested_expression: "notify", suggested_expression_confidence: 0.72,
+        stance: "offer", answers: [
+            "worth_receiving_now": .init(type: "noul", noul: 0.78),
+            "expression_mode": .init(type: "choice", choice: "notify",
+                probabilities: ["hold": 0.05, "carry": 0.08, "surface": 0.12, "notify": 0.72, "interrupt": 0.03], confidence: 0.72),
+            "stance": .init(type: "choice", choice: "offer",
+                probabilities: ["witness": 0.12, "ask": 0.08, "challenge": 0.03, "offer": 0.70, "celebrate": 0.04, "abstain": 0.03], confidence: 0.70),
+        ])
     private var value = CollaborationState(revision: 1,
         goals: [.init(id: goalID, title: "Preview · Make room for what matters", outcome: "Name the outcome before deciding what to remove.", why: "A useful test of subtraction.", status: "active", priority: "more", revision: 1, created_at: "2026-09-07T15:00:00Z", updated_at: "2026-09-07T15:00:00Z")],
         connections: [.init(id: connectionID, goal_id: goalID, title: "Preview · Subtraction needs an outcome", claim: "Removing something is useful when it makes the intended outcome clearer.", why_now: "This returns to your question about what remains after removal.", question: "What would you want to remain?", proposed_action: "Compare one choice to keep with one choice to remove.", action_owner: "together", review_condition: "When we can explain what the removal serves.", status: "proposed", evidence: [
@@ -13,6 +23,25 @@ import Foundation
         agreements: [], results: [.init(id: "preview-goal-result", agreement_id: "", title: "Preview · What the saved goal suggests", body: "A first comparison: decide what should remain before deciding what to remove. This is a draft toward your saved goal, without a new commitment.", status: "prepared", evidence: [], created_at: "2026-09-07T15:00:00Z", goal_id: goalID)], signals: [.init(id: "preview-signal", kind: "self_report", title: "Preview · You said", value: "I have space to think this through today.", source: "Your explicit context", observed_at: "2026-09-07T15:00:00Z", notice: "Fixture, not an inference from audio.")], pending: false, error: "", followups_enabled: true, telegram_returns_enabled: false)
     private var receipts = [String: CollaborationMutation]()
     init() {
+        value.impulse_research = ImpulseResearch(status: .init(
+            active: true, enabled: true, mode: "shadow", model: "jev-1.13.0",
+            question_version: "jev-impulse-v1", feedback_version: "jev-human-v1",
+            observations: 2, valid_observations: 2, failures: 0, failure_rate: 0,
+            labeled: 1, last_observed_at: "2026-09-19T18:01:00Z",
+            last_success_at: "2026-09-19T18:01:00Z", blind_until_label: true), items: [
+                .init(id: "preview-impulse-unlabeled", source: "collaboration",
+                    title: "A current result", text: "There is a new result worth seeing.",
+                    observed_at: "2026-09-19T18:01:00Z", state_hash: String(repeating: "a", count: 64),
+                    outcome: "ok", labeled: false),
+                .init(id: "preview-impulse-labeled", source: "circulation",
+                    title: "A thought Alicia sent", text: "This connection may matter to the choice you are making.",
+                    observed_at: "2026-09-19T17:01:00Z", state_hash: String(repeating: "b", count: 64),
+                    outcome: "ok", labeled: true,
+                    feedback: .init(usefulness: "useful_now", stance: "stance_fit",
+                        saved_at: "2026-09-19T17:05:00Z", feedback_version: "jev-human-v1",
+                        trace_state_hash: String(repeating: "b", count: 64)),
+                    reveal: Self.impulseReveal),
+            ])
         guard ProcessInfo.processInfo.arguments.contains("--work-review-preview") else { return }
         value.goals += [
             .init(id: "preview-goal-two", title: "Peace-time urgency", outcome: "Act with care without a crisis.", why: "A separate goal, close to enough.", status: "active", priority: "normal", revision: 1, created_at: "now", updated_at: "now"),
@@ -94,6 +123,19 @@ import Foundation
         case "settings":
             value.followups_enabled = change.followups_enabled ?? value.followups_enabled
             value.telegram_returns_enabled = change.telegram_returns_enabled ?? value.telegram_returns_enabled
+        case "impulse_feedback":
+            guard let index = value.impulse_research?.items.firstIndex(where: { $0.id == change.candidate_id }),
+                  value.impulse_research?.items[index].state_hash == change.trace_state_hash,
+                  value.impulse_research?.items[index].labeled == false,
+                  let usefulness = change.usefulness, let stance = change.stance else {
+                return .init(ok: false, error: "The research item changed. Refresh before saving.", state: value)
+            }
+            value.impulse_research?.items[index].labeled = true
+            value.impulse_research?.items[index].feedback = .init(usefulness: usefulness,
+                stance: stance, saved_at: now, feedback_version: "jev-human-v1",
+                trace_state_hash: change.trace_state_hash ?? "")
+            value.impulse_research?.items[index].reveal = Self.impulseReveal
+            value.impulse_research?.status.labeled += 1
         default: break
         }
         receipts[change.event_id] = change

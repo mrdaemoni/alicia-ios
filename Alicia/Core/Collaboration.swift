@@ -55,6 +55,7 @@ struct CollaborationState: Codable {
     var error: String
     var followups_enabled, telegram_returns_enabled: Bool
     var followup: Followup?
+    var impulse_research: ImpulseResearch? = nil
 
     func goal(for result: Result) -> Goal? {
         let goalID = result.goal_id?.isEmpty == false ? result.goal_id
@@ -73,6 +74,47 @@ struct CollaborationState: Codable {
     }
 }
 
+struct ImpulseResearch: Codable, Equatable {
+    struct Status: Codable, Equatable {
+        var active, enabled: Bool
+        var mode, model, question_version, feedback_version: String
+        var observations, valid_observations, failures: Int
+        var failure_rate: Double
+        var labeled: Int
+        var last_observed_at, last_success_at: String
+        var blind_until_label: Bool
+    }
+    struct Feedback: Codable, Equatable {
+        var usefulness, stance, saved_at, feedback_version, trace_state_hash: String
+    }
+    struct Answer: Codable, Equatable {
+        var type: String
+        var noul: Double? = nil
+        var choice: String? = nil
+        var score: Double? = nil
+        var legend: [String: String]? = nil
+        var probabilities: [String: Double]? = nil
+        var confidence: Double? = nil
+    }
+    struct Reveal: Codable, Equatable {
+        var outcome: String
+        var reason_code: String? = nil
+        var model, question_version: String
+        var suggested_expression: String? = nil
+        var suggested_expression_confidence: Double? = nil
+        var stance: String? = nil
+        var answers: [String: Answer]
+    }
+    struct Item: Codable, Equatable, Identifiable {
+        var id, source, title, text, observed_at, state_hash, outcome: String
+        var labeled: Bool
+        var feedback: Feedback? = nil
+        var reveal: Reveal? = nil
+    }
+    var status: Status
+    var items: [Item]
+}
+
 struct CollaborationMutation: Codable, Equatable {
     var action: String
     var event_id = UUID().uuidString
@@ -83,6 +125,7 @@ struct CollaborationMutation: Codable, Equatable {
     var followups_enabled, telegram_returns_enabled: Bool?
     var candidate_id: String?
     var result_id, section_id, content_hash: String?
+    var source, trace_state_hash, usefulness, stance: String?
     var body: [String: Any] {
         guard let data = try? JSONEncoder().encode(self),
               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
@@ -175,6 +218,7 @@ final class CollaborationStore {
     private(set) var pending: [CollaborationMutation] = []
     private(set) var busy = false
     private(set) var lastConfirmedID = ""
+    private(set) var impulseDrafts: [String: [String: String]] = [:]
     var error = ""
     var route: CollaborationRoute?
     var dialogueContext: WorkDialogueContext? {
@@ -193,6 +237,7 @@ final class CollaborationStore {
         if let data = defaults.data(forKey: key + "pending") { pending = (try? JSONDecoder().decode([CollaborationMutation].self, from: data)) ?? [] }
         if let data = defaults.data(forKey: key + "state") { state = try? JSONDecoder().decode(CollaborationState.self, from: data) }
         if let data = defaults.data(forKey: key + "dialogueContext") { dialogueContext = try? JSONDecoder().decode(WorkDialogueContext.self, from: data) }
+        impulseDrafts = defaults.dictionary(forKey: key + "impulseDrafts") as? [String: [String: String]] ?? [:]
     }
     func draft(_ name: String) -> [String: String]? { defaults.dictionary(forKey: key + "draft." + name) as? [String: String] }
     func rememberDialogueContext(_ context: WorkDialogueContext, replyID: String) {
@@ -225,6 +270,15 @@ final class CollaborationStore {
         }
     }
     private func persistQueue() { defaults.set(try? JSONEncoder().encode(pending), forKey: key + "pending") }
+    func impulseDraft(_ id: String, field: String) -> String { impulseDrafts[id]?[field] ?? "" }
+    func setImpulseDraft(_ id: String, field: String, value: String) {
+        impulseDrafts[id, default: [:]][field] = value
+        defaults.set(impulseDrafts, forKey: key + "impulseDrafts")
+    }
+    private func clearImpulseDraft(_ id: String) {
+        impulseDrafts.removeValue(forKey: id)
+        defaults.set(impulseDrafts, forKey: key + "impulseDrafts")
+    }
     @discardableResult func accept(_ fresh: CollaborationState) -> Bool {
         guard fresh.revision >= (state?.revision ?? -1) else { return false }
         if state?.revision != fresh.revision, notifications { CollaborationNotifier.cancel() }
@@ -300,6 +354,9 @@ final class CollaborationStore {
             }
             pending.removeFirst(); persistQueue()
             clearConfirmedDrafts(request.event_id)
+            if request.action == "impulse_feedback", let candidateID = request.candidate_id {
+                clearImpulseDraft(candidateID)
+            }
             lastConfirmedID = request.event_id
             _ = accept(fresh)
             if request.action == "settings", request.followups_enabled == true,
