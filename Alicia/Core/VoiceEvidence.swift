@@ -10,6 +10,7 @@ struct VoiceContext: Codable {
     var season, previous_season, next_season: Int?
     var source_paths: [String]?
     var proactive_id: String?
+    var surface_context: SurfaceContext? = nil
 }
 
 struct VoiceSegment: Codable, Identifiable {
@@ -61,8 +62,10 @@ struct VoiceRecording: Codable, Identifiable {
             && review?.destination == (proactiveID.isEmpty ? "dialogue" : "proactive")
             && review?.proactiveID == proactiveID
     }
+    var isPrivateBody: Bool { context.surface_context?.section == "body" }
     var duration: Double { segments.reduce(0) { $0 + $1.duration } }
     var syncSummary: String {
+        if isPrivateBody { return deleted ? "Private audio deleted from this phone." : "Private original saved on this phone · no cloud transcription" }
         let uploaded = segments.filter { $0.uploaded == true }.count
         if deleted { return deletionUploaded == true ? "Audio deleted." : "Audio deletion is pending on your Mac." }
         if segments.isEmpty { return "Waiting for the first audio segment to finish." }
@@ -277,6 +280,7 @@ final class VoiceArchive {
         guard captureSinks[id]?.isClosed != false else { throw CocoaError(.fileWriteNoPermission) }
         if let old = recording(id) {
             guard !old.deleted, old.finalization == nil, old.context.episode_id == context.episode_id,
+                  old.context.surface_context == context.surface_context,
                   review == nil || old.macProcessing == true else { throw CocoaError(.fileWriteNoPermission) }
         } else {
             var record = VoiceRecording(id: id, context: context)
@@ -333,7 +337,7 @@ final class VoiceArchive {
             }
         }
         for id in recordings.map(\.id) {
-            guard var record = recording(id) else { continue }
+            guard var record = recording(id), !record.isPrivateBody else { continue }
             if record.deleted {
                 if record.deletionUploaded != true {
                     let result = await service.voiceAction(["action": "delete_audio", "recording_id": id])
@@ -438,7 +442,7 @@ final class VoiceArchive {
     /// Called only after the microphone has stopped and its sink has drained.
     @discardableResult
     func finalize(_ id: String) -> Bool {
-        guard var record = recording(id), record.macProcessing == true, !record.deleted else { return false }
+        guard var record = recording(id), !record.isPrivateBody, record.macProcessing == true, !record.deleted else { return false }
         if record.finalization != nil { return true }
         guard captureSinks[id]?.isClosed != false else {
             lastError = "Pause the microphone before processing this recording."; return false
@@ -496,7 +500,7 @@ final class VoiceArchive {
     }
 
     func retryTranscription(_ id: String) {
-        guard var record = recording(id), !record.deleted, record.submission == nil,
+        guard var record = recording(id), !record.isPrivateBody, !record.deleted, record.submission == nil,
               let seal = record.finalization, record.transcription?.canRetryExplicitly == true else { return }
         if record.pendingTranscriptionRetry == nil {
             record.pendingTranscriptionRetry = VoiceTranscriptionRetry(recording_id: id,
@@ -507,7 +511,7 @@ final class VoiceArchive {
 
     @discardableResult
     func prepareSubmission(_ id: String, voice: Bool) -> Bool {
-        guard var record = recording(id), !record.deleted, record.submission == nil,
+        guard var record = recording(id), !record.isPrivateBody, !record.deleted, record.submission == nil,
               let state = record.transcription, state.ready, let transcriptID = state.transcript_id,
               let review = record.review else { return false }
         let text = review.text // Exact reviewed text, never re-read after an await.
@@ -533,7 +537,7 @@ final class VoiceArchive {
         processing = true; defer { processing = false }
         for id in recordings.map(\.id) {
             if Task.isCancelled { return }
-            guard let record = recording(id), !record.deleted, let seal = record.finalization,
+            guard let record = recording(id), !record.isPrivateBody, !record.deleted, let seal = record.finalization,
                   record.contextUploaded == true else { continue }
             if record.submissionRejected == true || ["completed", "failed", "outcome_unknown"].contains(record.submissionStatus?.state ?? "") { continue }
             if record.transcription?.ready == true, record.submission == nil { continue }
@@ -634,6 +638,7 @@ final class VoiceArchive {
             guard recording(id)?.deleted == false else { return [] }
             let file = fileURL(id, segment.id)
             if !FileManager.default.fileExists(atPath: file.path) {
+                guard !record.isPrivateBody else { lastError = "The private original is unavailable on this phone."; return [] }
                 guard let bytes = await service.downloadVoice(recordingID: id, segmentID: segment.id),
                       bytes.count == segment.bytes,
                       SHA256.hash(data: bytes).map({ String(format: "%02x", $0) }).joined() == segment.sha256,

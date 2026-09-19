@@ -47,7 +47,6 @@ struct TalkView: View {
                         .frame(minHeight: 44).accessibilityIdentifier("voice.recordings")
                 }.padding(.horizontal, 18).padding(.bottom, 12)
                 messageList
-                composer
             }
             // Sister field to Us: calmer, sparser — quiet water under words.
             .presenceBackground(.dialogue, store: store)
@@ -69,7 +68,7 @@ struct TalkView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    ForEach(store.messages) { message in
+                    ForEach(store.composerSection == .body ? store.privateBodyMessages : store.messages) { message in
                         MessageBubble(message: message, inspect: { inspectedMessage = $0 }).id(message.id)
                         if let context = message.workContext {
                             Button("RETURN TO · " + context.goalTitle) {
@@ -99,172 +98,7 @@ struct TalkView: View {
         }
     }
 
-    private var composer: some View {
-        VStack(spacing: 6) {
-            // v23: answering one of her asks — the send routes to her
-            // capture loops, and this strip says so.
-            if let context = store.collaboration.dialogueContext {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .top) {
-                        Button {
-                            cancelMicrophoneStart(); speech.stop(); focused = false
-                            store.collaboration.route = CollaborationRoute(goalID: context.goal_id, resultID: context.result_id, sectionID: context.section_id, originalQuote: context.quote)
-                        } label: {
-                            Text("ABOUT · " + context.goalTitle).font(.caption.monospaced()).multilineTextAlignment(.leading)
-                        }.frame(minHeight: 44).accessibilityIdentifier("workReview.dialogueContext")
-                        Spacer()
-                        Button("Clear") { store.collaboration.dialogueContext = nil }.frame(minHeight: 44)
-                            .accessibilityIdentifier("workReview.clearContext")
-                    }
-                    Text(context.quote).font(.caption).lineLimit(2)
-                    Text("Type or use keyboard dictation to discuss this passage.")
-                        .font(.caption).foregroundStyle(Theme.paper.opacity(0.7))
-                }.foregroundStyle(Theme.paper).padding(.horizontal, 4)
-            }
-            if store.answeringAskID != nil {
-                HStack(spacing: 7) {
-                    InkChevron(pointing: .right, size: 10,
-                               color: Theme.paper.opacity(0.8), seed: 47)
-                    Text("ANSWERING · " + store.answeringAskExcerpt.uppercased())
-                        .font(.system(size: 8, design: .monospaced).weight(.semibold))
-                        .tracking(1.2)
-                        .foregroundStyle(Theme.paper.opacity(0.8))
-                        .lineLimit(1)
-                    Spacer()
-                    Button { store.cancelAnswering() } label: {
-                        Text("CANCEL")
-                            .font(.system(size: 8, design: .monospaced).weight(.semibold))
-                            .tracking(1.2)
-                            .underline()
-                            .foregroundStyle(Theme.paper.opacity(0.65))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 4)
-            }
-            if speech.isRecording || microphoneStarting {
-                ListeningPresence(isRecording: speech.isRecording && !speech.isFinishing, isStarting: microphoneStarting,
-                    seconds: speech.recordedSeconds, level: speech.inputLevel,
-                    microphoneName: speech.microphoneName, liveTextAvailable: speech.liveTextAvailable, transcribesOnMac: true)
-                    .padding(12).background(Theme.paper, in: RoundedRectangle(cornerRadius: 12))
-            }
-            if let recording = store.voiceArchive.recording(recordingID), recording.macProcessing == true, !speech.isRecording {
-                Button(recording.finalization == nil ? "FINISH RECORDING & TRANSCRIBE" : "REVIEW MAC TRANSCRIPT") {
-                    cancelMicrophoneStart(); speech.stop()
-                    if store.finalizeVoice(recordingID, speech: speech) { openRecordingReview() }
-                }.font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.paper).frame(minHeight: 44)
-            }
-            composerRow
-            if let error = speech.lastError ?? (microphoneError.isEmpty ? nil : microphoneError) {
-                Text(error).font(.caption).foregroundStyle(Theme.paper)
-            } else if !speech.isRecording,
-                      let recording = store.voiceArchive.recording(recordingID.isEmpty ? lastSavedRecordingID : recordingID) {
-                Text(recording.syncSummary).font(.caption).foregroundStyle(Theme.paper)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        // One piece with the word-bar: the composer sits IN the ink frame.
-        .background(Theme.ink)
-        // Choosing an ask to answer pulls the keyboard up ready to write.
-        .onChange(of: store.answeringAskID) { _, id in
-            if id != nil { focused = true }
-        }
-    }
-
-    private var composerRow: some View {
-        HStack(spacing: 8) {
-            TextField(speech.isRecording ? "Listening…"
-                      : store.answeringAskID != nil ? "Answer her…"
-                      : store.isWalking ? "Walking — talk or type…"
-                                        : "Message Alicia…",
-                      text: $draft, axis: .vertical)
-                .font(.subheadline)
-                .lineLimit(1...5)
-                .focused($focused)
-                .accessibilityIdentifier("dialogue.composer")
-                .disabled(speech.isRecording || speech.isFinishing)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .foregroundStyle(Theme.ink)
-                .background(Theme.paper, in: Capsule())
-
-            // Record now; the Mac draft is reviewed separately before Send.
-            Button {
-                toggleDictation()
-            } label: {
-                // Dictation in her register: wave bars while listening,
-                // the word at rest (v24).
-                Group {
-                    if speech.isRecording {
-                        InkWaveBars(size: 24, color: Theme.rose, seed: 25)
-                    } else {
-                        Text("MIC")
-                            .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                            .tracking(1.4)
-                            .foregroundStyle(Theme.paper.opacity(0.85))
-                    }
-                }
-                .frame(width: 44, height: 44)
-            }
-            .accessibilityLabel(speech.isRecording ? "Finish recording and transcribe on Mac" : "Record voice for Mac transcription")
-            .disabled(speech.isFinishing || store.collaboration.dialogueContext != nil)
-
-            Button {
-                // Typed chat remains independent. A recording can never fall through this path.
-                guard !speech.isRecording, !speech.isFinishing else { return }
-                cancelMicrophoneStart()
-                store.send(draft)
-                draft = ""
-            } label: {
-                InkSubmitArrow(size: 34, color: Theme.paper, seed: 23).frame(width: 44, height: 44)
-            }
-            .accessibilityLabel("Send typed message")
-            .disabled(store.isStreaming || speech.isRecording || speech.isFinishing || store.episodeChoiceSyncing || draft.trimmingCharacters(in: .whitespaces).isEmpty)
-            .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
-        }
-    }
-
-    private func toggleDictation() {
-        if microphoneStarting { cancelMicrophoneStart(); return }
-        if speech.isRecording {
-            let generation = microphoneGeneration
-            Task {
-                await speech.finishAndStop()
-                guard generation == microphoneGeneration, visible, scenePhase == .active else { return }
-                if store.finalizeVoice(recordingID, speech: speech) { openRecordingReview() }
-            }
-            return
-        }
-        focused = false
-        store.prepareForRecording()
-        microphoneGeneration += 1
-        let generation = microphoneGeneration
-        microphoneStarting = true
-        Task {
-            defer { if generation == microphoneGeneration { microphoneStarting = false } }
-            guard await speech.requestMicrophoneAuthorization() else { microphoneError = "Microphone permission is off."; return }
-            guard generation == microphoneGeneration, visible, scenePhase == .active, !store.showWalk, !showRecordings else { return }
-            if store.voiceArchive.recording(recordingID)?.canResumeDialogue(
-                episodeID: store.episodeDay?.episode?.id ?? "", proactiveID: store.answeringAskID ?? "") != true {
-                // A new conversation frame starts new audio. The paused original stays in Recordings.
-                recordingID = UUID().uuidString
-            }
-            do { try store.startVoiceCapture(speech, id: recordingID, walk: false); microphoneError = "" }
-            catch { microphoneError = "The original audio could not start recording. Your draft is kept." }
-        }
-    }
-
-    private func openRecordingReview() {
-        focused = false; lastSavedRecordingID = recordingID
-        selectedRecordingID = recordingID; showRecordings = true
-    }
-
-    private func cancelMicrophoneStart() {
-        microphoneGeneration += 1
-        microphoneStarting = false
-    }
+    private func cancelMicrophoneStart() { microphoneGeneration += 1; microphoneStarting = false }
 }
 
 /// A proactive message as an editorial interlude — no bubble, no wash:

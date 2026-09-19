@@ -60,6 +60,13 @@ struct RootView: View {
         // covering the composer). Content and bar are siblings — the bar
         // owns the bottom edge, period.
         VStack(spacing: 0) {
+#if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ritual-widget-preview") {
+                RitualWidgetContent(entry: RitualEntry(date: .now, events: [], pending: 0, failed: false),
+                    forceAccented: ProcessInfo.processInfo.arguments.contains("--accented-preview"))
+                    .frame(height: 160).padding(16)
+            }
+#endif
             if store.selectedSection == .dialogue {
                 TalkView()
             } else {
@@ -79,7 +86,7 @@ struct RootView: View {
             // mistake: it exists only while something is being read to you,
             // it follows you off the page you started it from, and its
             // crossed-out mark ends it in one tap.
-            if !store.composerFocused { EpisodeConversationBar() }
+            ConversationComposer()
             ReadingBar()
             EditorialTabBar()
         }
@@ -126,47 +133,6 @@ struct RootView: View {
         case .studio:   StudioView()
         case .knowledge: KnowledgeView()
         case .body: BodyView()
-        }
-    }
-}
-
-/// A quiet invitation follows the chosen topic through all five sections.
-/// This is a conversation action, separate from Studio's playback controls.
-private struct EpisodeConversationBar: View {
-    @Environment(AppStore.self) private var store
-    var body: some View {
-        if let episode = store.episodeDay?.episode {
-            VStack(alignment: .leading, spacing: 0) {
-                Rectangle().fill(Theme.stroke).frame(height: 0.7)
-                HStack(spacing: 14) {
-                    Button { store.openWalk() } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Talk about this episode")
-                                .font(.system(size: 17, design: .serif))
-                            Text(episode.id + " · " + episode.title.strippedEmojis)
-                                .font(.system(size: 11, design: .serif)).italic()
-                                .foregroundStyle(Theme.inkSoft).lineLimit(2)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .accessibilityIdentifier("episode.talkAnywhere")
-                    Button { store.selectedSection = .dialogue } label: {
-                        Text("WRITE")
-                            .font(.system(size: 10, design: .monospaced)).tracking(1)
-                            .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                    }
-                        .accessibilityLabel("Write about " + episode.id)
-                        .accessibilityIdentifier("dialogue.open")
-                }.padding(.horizontal, 20).padding(.vertical, 5)
-            }
-            .buttonStyle(.plain).foregroundStyle(Theme.ink).background(Theme.paper)
-        } else {
-            Button("Talk with Alicia") { store.selectedSection = .dialogue }
-                .font(.system(size: 16, design: .serif))
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .foregroundStyle(Theme.ink).background(Theme.paper)
-                .accessibilityIdentifier("dialogue.open")
         }
     }
 }

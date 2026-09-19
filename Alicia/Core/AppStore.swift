@@ -351,21 +351,23 @@ final class AppStore {
         return true
     }
 
-    func startVoiceCapture(_ speech: SpeechTranscriber, id: String, walk: Bool) throws {
+    func startVoiceCapture(_ speech: SpeechTranscriber, id: String, walk: Bool, surface: SurfaceContext? = nil) throws {
         guard !isMock else { throw CocoaError(.featureUnsupported) }
-        let episodeID = walk ? walkEpisodeID : episodeDay?.episode?.id ?? ""
+        let episodeID = walk ? walkEpisodeID : surface?.episode_id ?? episodeDay?.episode?.id ?? ""
         let sameEpisode = episodeDay?.episode?.id == episodeID
-        let context = VoiceContext(session_id: id, source: walk ? "ios_walk" : "ios_dialogue",
+        var context = VoiceContext(session_id: id, source: walk ? "ios_walk" : "ios_dialogue",
             started_at: voiceTimestamp(), timezone: TimeZone.current.identifier,
             episode_id: episodeID, episode_title: sameEpisode ? episodeDay?.episode?.title ?? "" : episodeID,
             episode_basis: sameEpisode ? episodeDay?.episode_basis ?? "" : "",
             frame_id: sameEpisode ? episodeDay?.frame_id ?? "" : "", question_presented: walk ? walkPrompt : "",
             playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0,
             proactive_id: walk ? nil : answeringAskID)
+        context.surface_context = surface
+        let privateBody = surface?.section == "body"
         let review = VoiceReview(destination: walk ? "walk" : answeringAskID == nil ? "dialogue" : "proactive",
                                  proactiveID: walk ? "" : answeringAskID ?? "",
                                  proactiveExcerpt: walk ? "" : answeringAskExcerpt)
-        let sink = try voiceArchive.begin(id: id, context: context, review: review)
+        let sink = try voiceArchive.begin(id: id, context: context, review: privateBody ? nil : review)
         try speech.start(sink: sink, onSegments: { [weak self] segments in
             guard let self else { return }
             self.voiceArchive.addSegments(segments, to: id)
@@ -374,7 +376,7 @@ final class AppStore {
             guard let self else { return }
             self.voiceArchive.addTranscript(text, kind: "on_device", to: id)
             Task { await self.syncVoiceArchive() }
-        }, liveTranscription: false, onCaptureError: { [weak self] error in
+        }, liveTranscription: privateBody, onCaptureError: { [weak self] error in
             self?.voiceArchive.noteCaptureError(error, id: id)
         })
         Task { await syncVoiceArchive() }
@@ -435,7 +437,10 @@ final class AppStore {
     func voiceEnrichmentFeedback(_ feedback: VoiceEnrichmentFeedback) async -> VoiceEvidenceResult? {
         await service.voiceAction(feedback.body)
     }
-    func voiceDetail(_ id: String) async -> VoiceEvidencePayload? { await service.voiceRecordings(recordingID: id) }
+    func voiceDetail(_ id: String) async -> VoiceEvidencePayload? {
+        guard voiceArchive.recording(id)?.isPrivateBody != true else { return nil }
+        return await service.voiceRecordings(recordingID: id)
+    }
     func playOriginalVoice(_ id: String) async -> [URL] {
         prepareForRecording()
         return await voiceArchive.playbackFiles(id, using: service)
@@ -1063,7 +1068,31 @@ final class AppStore {
         play(track)
     }
     /// Programmatic tab switching (Dialogue chips → Alicia tab).
-    var selectedSection: AppSection = .us
+    var selectedSection: AppSection = .us {
+        didSet { if selectedSection != .dialogue { dialogueOrigin = selectedSection } }
+    }
+    var dialogueOrigin: AppSection = .us
+    var composerDrafts = ComposerDrafts()
+    var privateBodyMessages: [Message] = []
+    var privateBodySending = false
+    var composerSection: AppSection { selectedSection == .dialogue ? ((collaboration.dialogueContext != nil || answeringAskID != nil) ? .us : dialogueOrigin) : selectedSection }
+    func surfaceContext() -> SurfaceContext {
+        let names: [AppSection: String] = [.us: "us", .knowledge: "mind", .body: "body", .mind: "alicia", .studio: "studio", .dialogue: "dialogue"]
+        return SurfaceContext(section: names[composerSection] ?? "dialogue", captured_at: voiceTimestamp(),
+            episode_id: [.us, .studio].contains(composerSection) ? episodeDay?.episode?.id ?? "" : "")
+    }
+    func sendPrivateBody(_ text: String, recordingID: String = "") {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, !privateBodySending else { return }
+        if !recordingID.isEmpty { voiceArchive.addTranscript(clean, kind: "submitted", to: recordingID) }
+        privateBodyMessages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID))
+        privateBodySending = true
+        Task {
+            defer { privateBodySending = false }
+            let result = await bodyStore.ask(clean)
+            privateBodyMessages.append(Message(sender: .alicia, text: result?.text ?? "A private answer is unavailable. Your question stayed in the private Body lane."))
+        }
+    }
     var workEpisode: Track?
 
     /// True from the moment a reply is asked for until the stream ends.
@@ -1111,7 +1140,7 @@ final class AppStore {
         answeringAskExcerpt = ""
     }
 
-    func send(_ text: String, recordingID: String = "") {
+    func send(_ text: String, recordingID: String = "", surfaceContext: SurfaceContext? = nil) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, !isStreaming, !episodeChoiceSyncing else { return }
         noteContextActivity()
@@ -1145,7 +1174,7 @@ final class AppStore {
                 // `defer` rather than a trailing assignment: a thrown or cancelled
                 // stream must not leave her looking permanently mid-thought.
                 defer { isStreaming = false }
-                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID, workContext: workContext) {
+                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext) {
                     guard messages.indices.contains(idx) else { break }
                     switch event {
                     case .token(let t):   messages[idx].text += t

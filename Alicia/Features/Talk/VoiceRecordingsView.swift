@@ -138,14 +138,14 @@ private struct VoiceRecordingDetail: View {
                         .accessibilityIdentifier("voice.playOriginal")
                         Text("\(Int(record.duration / 60))m \(Int(record.duration) % 60)s of original audio · \(record.segments.reduce(0) { $0 + $1.bytes } / 1_000_000) MB")
                             .font(.caption)
-                        Text(record.segments.isEmpty ? "No audio segment has finalized yet." :
+                        Text(record.isPrivateBody ? "Private audio stays on this phone; no cloud transcription or enrichment." : record.segments.isEmpty ? "No audio segment has finalized yet." :
                             record.segments.allSatisfy { $0.uploaded == true } ? "Audio synced to your Mac." : "Original audio is kept on this phone. Some audio is waiting to sync.")
                             .font(.caption).foregroundStyle(Theme.inkSoft)
                     }
                     HStack {
                         Button(store.voiceArchive.syncing ? "SYNCING…" : "SYNC") {
                             Task { await store.refreshVoiceArchive(); details = await store.voiceDetail(id) }
-                        }.disabled(store.voiceArchive.syncing)
+                        }.disabled(store.voiceArchive.syncing || record.isPrivateBody)
                         Spacer()
                         if !record.deleted {
                             Button("DELETE AUDIO") { stopPlayback(); confirmDelete = true }
@@ -153,8 +153,10 @@ private struct VoiceRecordingDetail: View {
                     }
                     .font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
 
-                    VoiceProcessingView(id: id).id(id)
-                    if !record.deleted { VoiceEnrichmentView(recordingID: id) }
+                    if !record.isPrivateBody {
+                        VoiceProcessingView(id: id).id(id)
+                        if !record.deleted { VoiceEnrichmentView(recordingID: id) }
+                    }
                     DisclosureGroup("Original on-device transcript") {
                         let original = record.orderedTranscripts.filter { $0.kind == "on_device" }
                         if original.isEmpty { Text("No live transcript was captured. The recording is the source.") }

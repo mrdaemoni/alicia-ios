@@ -308,11 +308,16 @@ struct LiveAliciaService: AliciaService {
     }
 
     func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: recordingID, workContext: workContext, surfaceContext: nil)
+    }
+
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?) -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in
             let task = Task {
                 do {
                     var payload: [String: Any] = ["text": prompt, "voice": voice, "recording_id": recordingID]
                     if let workContext { payload["work_context"] = workContext.wire }
+                    if let surfaceContext { payload["surface_context"] = surfaceContext.wire }
                     let body = try JSONSerialization.data(withJSONObject: payload)
                     let (bytes, resp) = try await URLSession.shared.bytes(
                         for: request("/api/chat", method: "POST", body: body))

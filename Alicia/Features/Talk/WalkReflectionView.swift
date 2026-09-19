@@ -65,7 +65,7 @@ struct WalkReflectionView: View {
             }
             ListeningPresence(isRecording: visibleRecording, isStarting: starting || restarting,
                 seconds: speech.recordedSeconds, level: speech.inputLevel,
-                microphoneName: speech.microphoneName, liveTextAvailable: speech.liveTextAvailable, transcribesOnMac: true)
+                microphoneName: speech.microphoneName, liveTextAvailable: speech.liveTextAvailable, transcribesOnMac: true, voice: TabPresence.voice(for: store.composerSection))
             InkTitle(text: speech.isFinishing ? "Keeping your last words" : visibleRecording ? "I'm listening" : "Stay with the thought", size: 30)
             if !store.walkPrompt.isEmpty {
                 Text(store.walkPrompt.strippedEmojis).font(.system(size: 21, design: .serif))

@@ -76,6 +76,7 @@ protocol AliciaService {
     func downloadVoice(recordingID: String, segmentID: String) async -> Data?
     func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent>
     func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?) -> AsyncStream<ChatEvent>
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?) -> AsyncStream<ChatEvent>
     func contextEnrichment(replyID: String) async -> ContextEnrichment?
     func changeContext(_ change: ContextChange) async -> ContextChangeResult?
     func contextSource(replyID: String, itemID: String) async -> ContextSource?
@@ -217,6 +218,10 @@ extension AliciaService {
     func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent> {
         stream(prompt, voice: voice)
     }
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: recordingID, workContext: workContext)
+    }
+
     func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?) -> AsyncStream<ChatEvent> {
         guard let workContext else { return stream(prompt, voice: voice, recordingID: recordingID) }
         return AsyncStream { continuation in
