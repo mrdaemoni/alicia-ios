@@ -360,7 +360,10 @@ final class VoiceArchive {
         guard captureSinks[id]?.isClosed != false else { throw CocoaError(.fileWriteNoPermission) }
         if let old = recording(id) {
             guard !old.deleted, old.finalization == nil, old.context.episode_id == context.episode_id,
-                  old.context.surface_context == context.surface_context,
+                  // A resume observes a later time/place. Keep the original
+                  // receipt below; only a different subject rejects this ID.
+                  old.context.surface_context?.section == context.surface_context?.section,
+                  old.context.surface_context?.episode_id == context.surface_context?.episode_id,
                   review == nil || old.macProcessing == true else { throw CocoaError(.fileWriteNoPermission) }
         } else {
             var record = VoiceRecording(id: id, context: context)
