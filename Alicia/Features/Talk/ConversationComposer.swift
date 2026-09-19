@@ -52,7 +52,7 @@ struct ConversationComposer: View {
             }
             HStack(spacing: 10) {
                 field
-                talkButton
+                walkButton
             }
             if let error = store.composerDrafts.error {
                 Text(error).font(.caption).foregroundStyle(Theme.paper.opacity(0.75))
@@ -139,18 +139,14 @@ struct ConversationComposer: View {
                 .foregroundStyle(Theme.paper.opacity(0.55))
                 .accessibilityIdentifier("composer.context")
             Spacer(minLength: 8)
+            // When something is playing, WALK is about that; the chip says so
+            // rather than offering a second button that does the same thing.
             if let episode {
-                Button { store.openListening(episode: true) } label: {
-                    Text("TALK ABOUT " + episode.id)
-                        .font(.system(size: 9, design: .monospaced)).tracking(0.8)
-                        .foregroundStyle(Theme.paper.opacity(0.78))
-                        .lineLimit(1)
-                        .padding(.horizontal, 9).padding(.vertical, 5)
-                        .overlay(RoundedRectangle(cornerRadius: 9)
-                            .stroke(Theme.paper.opacity(0.28), lineWidth: 0.8))
-                }
-                .accessibilityLabel("Talk about " + episode.id)
-                .accessibilityIdentifier("episode.talkAnywhere")
+                Text("WALK IS ABOUT " + episode.id)
+                    .font(.system(size: 9, design: .monospaced)).tracking(0.8)
+                    .foregroundStyle(Theme.paper.opacity(0.6))
+                    .lineLimit(1)
+                    .accessibilityIdentifier("episode.talkAnywhere")
             }
         }
     }
@@ -183,15 +179,27 @@ struct ConversationComposer: View {
         .accessibilityIdentifier("dialogue.composer")
     }
 
-    private var talkButton: some View {
-        Button { store.openListening(episode: false) } label: {
-            Text("TALK")
+    /// There is one spoken path now, and it is the walk.
+    ///
+    /// Hector: *"let's remove the voice input and only have the arrow up to
+    /// submit, and next to it, let's have a button that says walk … where I
+    /// can just probably speak for a long time in an open-ended manner."*
+    ///
+    /// The short-remark microphone is gone. A walk started here is the same
+    /// kind of thing as one started from an episode or the morning — original
+    /// audio kept, Mac transcript, his review before anything is sent — and it
+    /// carries the section he started it from as its subject.
+    private var walkButton: some View {
+        Button { store.openWalk(surface: section) } label: {
+            Text("WALK")
                 .font(.system(size: 10, design: .monospaced).weight(.semibold)).tracking(1)
                 .foregroundStyle(Theme.ink)
                 .frame(minWidth: 58, minHeight: 44)
                 .background(Theme.paper, in: RoundedRectangle(cornerRadius: 12))
         }
-        .accessibilityLabel("Talk to Alicia about " + section.title)
-        .accessibilityIdentifier("composer.microphone")
+        .accessibilityLabel(episode == nil
+            ? "Walk and think aloud about " + section.title
+            : "Walk and think aloud about " + (episode?.id ?? ""))
+        .accessibilityIdentifier("composer.walk")
     }
 }

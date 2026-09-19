@@ -143,6 +143,9 @@ final class AppStore {
         didSet { UserDefaults.standard.set(walkPrompt, forKey: "alicia.walkPrompt") }
     }
     var walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? ""
+    /// The section a walk was started from, when it was not started from an
+    /// episode. Empty for an episode walk.
+    var walkSurface = UserDefaults.standard.string(forKey: "alicia.walkSurface") ?? ""
     var walkDraft = UserDefaults.standard.string(forKey: "alicia.walkDraft") ?? "" {
         didSet { UserDefaults.standard.set(walkDraft, forKey: "alicia.walkDraft") }
     }
@@ -302,9 +305,26 @@ final class AppStore {
         return true
     }
 
-    func openWalk(probe: String = "") {
+    /// A walk is no longer only an episode's walk.
+    ///
+    /// Hector asked for WALK on the composer band: *"if I type the walk, it
+    /// will be able to send me to the walk mode, where I can just probably
+    /// speak for a long time in an open-ended manner … and treat it as all the
+    /// other walks that are triggered when I listen to either a morning
+    /// session or an episode."*
+    ///
+    /// So a walk now has a subject: the episode when one is playing, otherwise
+    /// the section he started it from. The lifecycle is identical either way —
+    /// original audio kept, Mac transcript, his review, explicit send. Only
+    /// what it is *about* changes, and `walkSurface` is what carries that to
+    /// the backend.
+    func openWalk(probe: String = "", surface: SurfaceContext? = nil) {
         guard let episode = episodeDay?.episode else {
-            episodeError = "Play an episode in Studio to begin."
+            guard let surface else {
+                episodeError = "Play an episode in Studio to begin."
+                return
+            }
+            openSurfaceWalk(surface, probe: probe)
             return
         }
         if let pending = pendingWalkSave, pending["episode_id"] != episode.id {
@@ -332,11 +352,59 @@ final class AppStore {
             walkRecordingID = walkRequestID
         }
         walkEpisodeID = episode.id
+        walkSurface = surface?.section ?? ""
         UserDefaults.standard.set(walkEpisodeID, forKey: "alicia.walkEpisodeID")
         UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+        UserDefaults.standard.set(walkSurface, forKey: "alicia.walkSurface")
         episodeError = ""
         noteContextActivity()
         showWalk = true
+    }
+
+    /// The section he started from is the subject. Drafts are kept per subject
+    /// exactly as they are per episode, so an unfinished Mind walk is still
+    /// there after a Body walk, and neither becomes the other.
+    private func openSurfaceWalk(_ surface: SurfaceContext, probe: String) {
+        let key = "surface:" + surface.section
+        if let pending = pendingWalkSave, pending["episode_id"] != "" || pending["surface"] != surface.section {
+            episodeError = "A reflection still needs its save confirmed. Retry it before starting another."
+            walkEpisodeID = pending["episode_id"] ?? ""
+            walkSurface = pending["surface"] ?? walkSurface
+            walkRecordingID = pending["recording_id"] ?? walkRecordingID
+            showWalk = true
+            return
+        }
+        if walkSubjectKey != key {
+            var drafts = UserDefaults.standard.dictionary(forKey: "alicia.episodeWalkDrafts") as? [String: [String: String]] ?? [:]
+            if (!walkDraft.isEmpty || voiceArchive.hasAudio(walkRecordingID)), !walkSubjectKey.isEmpty {
+                drafts[walkSubjectKey] = ["text": walkDraft, "prompt": walkPrompt,
+                                          "request_id": walkRequestID, "recording_id": walkRecordingID]
+            }
+            let restored = drafts.removeValue(forKey: key)
+            UserDefaults.standard.set(drafts, forKey: "alicia.episodeWalkDrafts")
+            walkDraft = restored?["text"] ?? ""
+            walkPrompt = restored?["prompt"] ?? probe
+            walkRequestID = restored?["request_id"] ?? UUID().uuidString
+            walkRecordingID = restored?["recording_id"] ?? walkRequestID
+        } else if walkDraft.isEmpty, pendingWalkSave == nil, !voiceArchive.hasAudio(walkRecordingID) {
+            walkPrompt = probe
+            walkRequestID = UUID().uuidString
+            walkRecordingID = walkRequestID
+        }
+        walkEpisodeID = ""
+        walkSurface = surface.section
+        UserDefaults.standard.set("", forKey: "alicia.walkEpisodeID")
+        UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+        UserDefaults.standard.set(walkSurface, forKey: "alicia.walkSurface")
+        episodeError = ""
+        noteContextActivity()
+        showWalk = true
+    }
+
+    /// Which subject the current walk draft belongs to — an episode id, or
+    /// `surface:<section>`. One key, so the draft store cannot confuse them.
+    var walkSubjectKey: String {
+        walkEpisodeID.isEmpty ? (walkSurface.isEmpty ? "" : "surface:" + walkSurface) : walkEpisodeID
     }
 
     func beginWalkRecording() async -> Bool {
@@ -361,6 +429,10 @@ final class AppStore {
                            surface: SurfaceContext? = nil, liveText: Bool = false) throws {
         guard !isMock else { throw CocoaError(.featureUnsupported) }
         let episodeID = walk ? walkEpisodeID : surface?.episode_id ?? episodeDay?.episode?.id ?? ""
+        // A walk started from a section carries that section, the same way an
+        // episode walk carries its episode. Both are never empty at once.
+        let walkSurfaceContext = walk && walkEpisodeID.isEmpty && !walkSurface.isEmpty
+            ? SurfaceContext(section: walkSurface, captured_at: voiceTimestamp()) : nil
         let sameEpisode = episodeDay?.episode?.id == episodeID
         var context = VoiceContext(session_id: id, source: walk ? "ios_walk" : "ios_dialogue",
             started_at: voiceTimestamp(), timezone: TimeZone.current.identifier,
@@ -369,7 +441,7 @@ final class AppStore {
             frame_id: sameEpisode ? episodeDay?.frame_id ?? "" : "", question_presented: walk ? walkPrompt : "",
             playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0,
             proactive_id: walk ? nil : answeringAskID)
-        context.surface_context = surface
+        context.surface_context = surface ?? walkSurfaceContext
         let privateBody = surface?.section == "body"
         let review = VoiceReview(destination: walk ? "walk" : answeringAskID == nil ? "dialogue" : "proactive",
                                  proactiveID: walk ? "" : answeringAskID ?? "",
@@ -497,7 +569,7 @@ final class AppStore {
         }
         let pending = pendingWalkSave ?? ["text": walkDraft.trimmingCharacters(in: .whitespacesAndNewlines),
                                           "episode_id": walkEpisodeID, "request_id": walkRequestID, "prompt": walkPrompt,
-                                          "recording_id": walkRecordingID]
+                                          "recording_id": walkRecordingID, "surface": walkSurface]
         let text = pending["text"] ?? ""
         guard !text.isEmpty, !isSavingWalk else { return false }
         guard text.unicodeScalars.count <= 60000 else {
@@ -510,7 +582,8 @@ final class AppStore {
         defer { isSavingWalk = false }
         guard let receipt = await service.finishWalk(text: text, episodeID: pending["episode_id"] ?? walkEpisodeID,
                                                       requestID: pending["request_id"] ?? walkRequestID, prompt: pending["prompt"] ?? "",
-                                                      recordingID: pending["recording_id"] ?? "") else {
+                                                      recordingID: pending["recording_id"] ?? "",
+                                                      surface: pending["surface"] ?? walkSurface) else {
             episodeError = "I couldn't confirm the save. The submitted words are kept here; tap Retry save."
             return false
         }
@@ -1118,11 +1191,6 @@ final class AppStore {
     /// carries `surfaceContext()` in with it and hands the page back on close,
     /// which is why this is a presentation flag rather than a tab.
     var showConversation = false
-    /// The microphone, full screen. Both the composer's TALK and "Talk about
-    /// this episode" raise this; `listeningEpisode` says which one, because an
-    /// episode reflection is saved and reviewed differently from a remark.
-    var showListening = false
-    var listeningEpisode = false
 
     /// The most recent reflection that is waiting on him, if any.
     ///
@@ -1160,23 +1228,10 @@ final class AppStore {
     private(set) var conversationContext = SurfaceContext(section: "us", captured_at: "")
 
     func openConversation() {
-        showListening = false
         conversationContext = surfaceContext()
         showConversation = true
     }
 
-    /// Open the microphone over the current section. `episode` routes the
-    /// capture through the walk lifecycle (original audio kept, Mac transcript,
-    /// an explicit review before anything is sent).
-    func openListening(episode: Bool) {
-        showConversation = false
-        listeningEpisode = episode
-        if episode {
-            openWalk()
-        } else {
-            showListening = true
-        }
-    }
     var isWalking: Bool { thinkingMode == "walk" }
 
     /// Start or end a walk. Her acknowledgment lands in the timeline.

@@ -293,6 +293,7 @@ struct EpisodeMindView: View {
                     CollaborationSummary()
                     NavigationLink("About you · enrich Alicia’s context") { ContextEnrichmentView() }
                         .font(.callout).frame(minHeight: 44)
+                    WorkSessionsEntry()
                     if let day = store.episodeDay, let episode = day.episode {
                         EpisodeHeading(episode: episode)
                         if !day.understanding.isEmpty {
@@ -399,5 +400,49 @@ struct EpisodeHistoryView: View {
             .background(Theme.paper)
             .toolbar { Button("Close") { dismiss() } }
         }
+    }
+}
+
+/// The way in to every spoken session and its state. It lives in Alicia
+/// because that is where the work she is doing with his words belongs, and it
+/// carries its own count so the number waiting on him is visible without
+/// opening anything.
+struct WorkSessionsEntry: View {
+    @Environment(AppStore.self) private var store
+    @State private var open = false
+
+    private var waiting: Int {
+        store.voiceArchive.recordings
+            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage.needsYou }.count
+    }
+    private var total: Int {
+        store.voiceArchive.recordings.filter { !$0.deleted && !$0.isPrivateBody }.count
+    }
+
+    var body: some View {
+        Button { open = true } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Your spoken sessions").font(.callout)
+                    Text(waiting > 0
+                         ? "\(waiting) waiting for you · \(total) in all"
+                         : total > 0 ? "\(total) recorded · none waiting on you"
+                                     : "Nothing spoken yet")
+                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                }
+                Spacer(minLength: 0)
+                if waiting > 0 {
+                    Circle().fill(Theme.amber).frame(width: 7, height: 7)
+                }
+                InkChevron().frame(width: 9, height: 14).foregroundStyle(Theme.inkSoft)
+            }
+            .frame(minHeight: 44).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("sessions.open")
+        .accessibilityLabel(waiting > 0
+            ? "Your spoken sessions, \(waiting) waiting for you"
+            : "Your spoken sessions")
+        .sheet(isPresented: $open) { WorkSessionsView() }
     }
 }

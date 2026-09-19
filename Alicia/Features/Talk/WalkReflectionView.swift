@@ -65,7 +65,7 @@ struct WalkReflectionView: View {
                 episodeListening
             } else {
             HStack {
-                Text(store.walkEpisodeID).font(.system(size: 11, design: .monospaced)).tracking(1.5)
+                Text(subjectKicker).font(.system(size: 11, design: .monospaced)).tracking(1.5)
                 Spacer()
                 Button("CLOSE") { pause(); store.pauseEpisodeWalk(); store.showWalk = false }
                     .font(.system(size: 10, design: .monospaced)).tracking(1.2)
@@ -184,12 +184,11 @@ struct WalkReflectionView: View {
 
     private var episodeListening: some View {
         ListeningStage(
-            voice: .forSurface("alicia"),
+            voice: .forSurface(store.walkSurface.isEmpty ? "alicia" : store.walkSurface),
             isRecording: visibleRecording,
             isStarting: starting || restarting,
             level: speech.inputLevel,
-            kicker: store.walkEpisodeID.isEmpty ? "TALKING ABOUT THIS EPISODE"
-                                                : "TALKING ABOUT · " + store.walkEpisodeID,
+            kicker: subjectKicker,
             seconds: speech.recordedSeconds,
             words: spokenWords,
             placeholder: speech.isFinishing ? "Keeping your last words…"
@@ -210,6 +209,15 @@ struct WalkReflectionView: View {
         let live = speech.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         if !live.isEmpty { return live }
         return store.walkDraft
+    }
+
+    /// What this walk is about, in his words: the episode when one is playing,
+    /// otherwise the section he started it from.
+    private var subjectKicker: String {
+        if !store.walkEpisodeID.isEmpty { return "WALKING WITH · " + store.walkEpisodeID }
+        let title = SurfaceContext(section: store.walkSurface, captured_at: "").title
+        return store.walkSurface.isEmpty ? "WALKING WITH ALICIA"
+                                         : "WALKING FROM · " + title.uppercased()
     }
 
     private var listeningNote: String {

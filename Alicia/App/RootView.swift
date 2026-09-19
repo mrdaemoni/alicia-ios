@@ -137,9 +137,6 @@ struct RootView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
-        // The microphone takes the whole screen while it is open, so he can
-        // read his own words at arm's length and see that she is taking them.
-        .fullScreenCover(isPresented: $store.showListening) { ListeningRoom() }
         // The way back to a reflection, from wherever he happens to be.
         .sheet(item: $store.reviewRecording) { target in
             VoiceRecordingsView(recordingID: target.id)

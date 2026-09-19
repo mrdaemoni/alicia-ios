@@ -158,20 +158,23 @@ struct ConversationSheet: View {
                 .disabled(!canSend)
                 .accessibilityLabel("Send to Alicia")
                 .accessibilityIdentifier("conversation.send")
+                // Speaking is the walk, and only the walk. Leaving here keeps
+                // the draft exactly as it stands; the two are separate records.
+                Button {
+                    focused = false
+                    dismiss()
+                    store.openWalk(surface: section)
+                } label: {
+                    Text("WALK")
+                        .font(.system(size: 10, design: .monospaced).weight(.semibold)).tracking(1)
+                        .foregroundStyle(Theme.paper)
+                        .frame(minWidth: 58, minHeight: 44)
+                        .background(Theme.ink, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .accessibilityLabel("Walk and think aloud about " + section.title)
+                .accessibilityIdentifier("conversation.walk")
             }
-            // Speaking is one tap away from writing; it should not cost him a
-            // trip back to the band underneath this sheet.
-            Button {
-                focused = false
-                dismiss()
-                store.openListening(episode: false)
-            } label: {
-                Text("TALK INSTEAD")
-                    .font(.system(size: 9, design: .monospaced)).tracking(1)
-                    .foregroundStyle(Theme.inkSoft)
-                    .frame(minHeight: 32)
-            }
-            .accessibilityIdentifier("conversation.talkInstead")
+
         }
         .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 14)
         .background(Theme.paper)

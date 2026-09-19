@@ -218,9 +218,14 @@ struct LiveAliciaService: AliciaService {
     }
 
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
+        await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt,
+                         recordingID: recordingID, surface: "")
+    }
+
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String, surface: String) async -> WalkReceipt? {
         await post("/api/mode", body: ["action": "end_walk", "text": text,
                                      "episode_id": episodeID, "request_id": requestID, "topic": prompt,
-                                     "recording_id": recordingID])
+                                     "recording_id": recordingID, "surface": surface])
     }
 
     func conversationHistory() async -> ConversationHistory? {

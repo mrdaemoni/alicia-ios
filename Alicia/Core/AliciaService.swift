@@ -84,6 +84,9 @@ protocol AliciaService {
     func episodeAction(_ body: [String: Any]) async -> EpisodeDayResponse?
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String) async -> WalkReceipt?
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt?
+    /// `surface` names the section a walk was started from when it was not
+    /// started from an episode. Both are never empty at once.
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String, surface: String) async -> WalkReceipt?
     func conversationHistory() async -> ConversationHistory?
     func dialogueReview(replyID: String) async -> DialogueReview?
     func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult?
@@ -204,6 +207,9 @@ extension AliciaService {
     }
 
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
+        await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt)
+    }
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String, surface: String) async -> WalkReceipt? {
         await finishWalk(text: text, episodeID: episodeID, requestID: requestID, prompt: prompt)
     }
     func finalizeVoice(_ finalization: VoiceFinalization) async -> VoiceTransport<VoiceProcessingResponse> { .unavailable }

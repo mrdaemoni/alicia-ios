@@ -56,7 +56,7 @@ struct VoiceRecordingsView: View {
     }
 }
 
-private func voiceDateLabel(_ context: VoiceContext) -> String {
+func voiceDateLabel(_ context: VoiceContext) -> String {
     let parser = ISO8601DateFormatter()
     parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     guard let date = parser.date(from: context.started_at) else { return context.started_at }

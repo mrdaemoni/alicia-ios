@@ -64,7 +64,7 @@ final class HomeConversationUITests: XCTestCase {
   for name in ["US","MIND","BODY","ALICIA","STUDIO"] {
    app.buttons[name].tap()
    XCTAssertTrue(app.buttons["dialogue.composer"].exists,"the band vanished on \(name)")
-   XCTAssertTrue(app.buttons["composer.microphone"].exists,"TALK vanished on \(name)")
+   XCTAssertTrue(app.buttons["composer.walk"].exists,"WALK vanished on \(name)")
    XCTAssertTrue(app.buttons["US"].exists,"the navigation vanished on \(name)")
   }
   capture("band-and-navigation-on-studio",app)
@@ -108,11 +108,12 @@ final class HomeConversationUITests: XCTestCase {
 
  /// "the whole microphone should take the entire screen … I can see that
  /// word's big, so I can see as I'm talking if it's actually taking it well."
+ /// WALK is the only spoken path now, and it opens that room.
  func testTalkOpensAFullScreenRoomWithTheWordsInFront() {
-  let app=launch("us")
-  app.buttons["composer.microphone"].tap()
+  let app=launch("us",["--episode-walk-preview"])
+  app.buttons["composer.walk"].tap()
   XCTAssertTrue(app.staticTexts["listening.transcript"].waitForExistence(timeout:15))
-  XCTAssertTrue(app.buttons["listening.finish"].exists)
+  XCTAssertTrue(app.buttons["episode.finishWalk"].exists)
   // Type-agnostic: a combined accessibility element's XCUI type depends on
   // what SwiftUI folded into it, and the identifier is the stable contract.
   let state=app.descendants(matching:.any).matching(identifier:"walk.microphoneState").firstMatch
@@ -132,6 +133,7 @@ final class HomeConversationUITests: XCTestCase {
   capture("listening-room",app)
   app.buttons["listening.close"].tap()
   XCTAssertTrue(app.buttons["US"].waitForExistence(timeout:10))
+  XCTAssertFalse(app.buttons["composer.microphone"].exists,"the retired short-remark mic is back")
  }
 
  /// "the aura evidence is stale" — the sentence he reads must say how old it
