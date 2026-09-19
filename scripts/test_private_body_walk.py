@@ -24,7 +24,7 @@ import Foundation
     func set(_ value: String, forKey: String) {}
 }
 struct Message { enum Sender { case me, alicia }; var sender: Sender; var text: String; var recordingID: String? = nil }
-struct BodyAnswer { var text: String }
+struct BodyAnswer { var text: String; var status: String = "ready" }
 
 // ---- Context derivation: the exact rule startVoiceCapture now applies ----
 struct SurfaceContext { var section: String }
@@ -45,10 +45,12 @@ struct VoiceRecording {
 }
 @MainActor final class VoiceArchiveStub {
     var records: [VoiceRecording] = []
+    var rejectWrites = false
     func recording(_ id: String) -> VoiceRecording? { records.first { $0.id == id } }
-    func addTranscript(_ text: String, kind: String, to id: String) {
-        guard let i = records.firstIndex(where: { $0.id == id }) else { return }
+    @discardableResult func addTranscript(_ text: String, kind: String, to id: String) -> Bool {
+        guard !rejectWrites, let i = records.firstIndex(where: { $0.id == id }) else { return false }
         records[i].transcripts.append((text, kind))
+        return true
     }
     // Verbatim from VoiceEvidence.swift.
     func shouldStartFreshRecording(_ id: String) -> Bool {
@@ -94,7 +96,7 @@ __SEND__
         ok.walkDraft = "  How did I sleep last night?  "
         ok.walkRecordingID = "r1"
         ok.voiceArchive.records = [VoiceRecording(id: "r1", surfaceSection: "body")]
-        ok.bodyStore.answer = BodyAnswer(text: "A private reply.")
+        ok.bodyStore.answer = BodyAnswer(text: "A private reply.", status: "ready")
         let sent = await ok.sendPrivateBodyWalk("r1", text: ok.walkDraft)
         precondition(sent)
         precondition(ok.bodyStore.asked == ["How did I sleep last night?"])
@@ -115,6 +117,58 @@ __SEND__
         precondition(bad.walkDraft == "Private words" && bad.walkRecordingID == "r2")
         precondition(!bad.episodeError.isEmpty)
 
+        // Non-ready status over HTTP 200 is NOT acceptance: keep words, no submit.
+        for badStatus in ["private_context_unavailable", "invalid_question", "oversized"] {
+            let nr = Store()
+            nr.walkDraft = "My complete private reflection"
+            nr.walkRecordingID = "rn"
+            nr.voiceArchive.records = [VoiceRecording(id: "rn", surfaceSection: "body")]
+            nr.bodyStore.answer = BodyAnswer(text: "Not available", status: badStatus)
+            let accepted = await nr.sendPrivateBodyWalk("rn", text: nr.walkDraft)
+            precondition(!accepted, "\(badStatus) must not be treated as saved")
+            precondition(nr.walkDraft == "My complete private reflection")
+            precondition(nr.walkRecordingID == "rn")
+            precondition(nr.voiceArchive.recording("rn")!.transcripts.isEmpty)
+            precondition(nr.privateBodyMessages.isEmpty)
+            precondition(!nr.episodeError.isEmpty)
+        }
+
+        // Local persistence failure of the submitted transcript keeps words editable.
+        let disk = Store()
+        disk.walkDraft = "Keep these words after a disk error"
+        disk.walkRecordingID = "rd"
+        disk.voiceArchive.records = [VoiceRecording(id: "rd", surfaceSection: "body")]
+        disk.voiceArchive.rejectWrites = true
+        disk.bodyStore.answer = BodyAnswer(text: "Ready reply", status: "ready")
+        let stored = await disk.sendPrivateBodyWalk("rd", text: disk.walkDraft)
+        precondition(!stored)
+        precondition(disk.walkDraft == "Keep these words after a disk error")
+        precondition(disk.walkRecordingID == "rd")
+        precondition(disk.privateBodyMessages.isEmpty)
+        precondition(!disk.episodeError.isEmpty)
+
+        // The 4000-character private limit is explicit; never silently truncated.
+        let big = Store()
+        let long = String(repeating: "x", count: 4001)
+        big.walkDraft = long
+        big.walkRecordingID = "rb"
+        big.voiceArchive.records = [VoiceRecording(id: "rb", surfaceSection: "body")]
+        big.bodyStore.answer = BodyAnswer(text: "Ready reply", status: "ready")
+        let over = await big.sendPrivateBodyWalk("rb", text: long)
+        precondition(!over)
+        precondition(big.walkDraft == long, "original words untouched, not shortened")
+        precondition(big.bodyStore.asked.isEmpty, "over-limit words are never sent")
+        precondition(big.episodeError.contains("4000"))
+        // Exactly at the limit with a ready reply is accepted.
+        let edge = Store()
+        let atLimit = String(repeating: "y", count: 4000)
+        edge.walkDraft = atLimit
+        edge.walkRecordingID = "re"
+        edge.voiceArchive.records = [VoiceRecording(id: "re", surfaceSection: "body")]
+        edge.bodyStore.answer = BodyAnswer(text: "Ready reply", status: "ready")
+        let edgeSent = await edge.sendPrivateBodyWalk("re", text: atLimit)
+        precondition(edgeSent)
+
         // Wrong lane: a non-private recording cannot be sent through the Body lane.
         let wrong = Store()
         wrong.walkRecordingID = "r3"
@@ -123,7 +177,7 @@ __SEND__
         let refused = await wrong.sendPrivateBodyWalk("r3", text: "Episode words")
         precondition(!refused && wrong.bodyStore.asked.isEmpty)
 
-        print("PASS: private Body walk — context, resume, private route, no cloud transport, review/send result")
+        print("PASS: private Body walk — context, resume, private route, ready-status, durable submit, local-write and 4000-char failures")
     }
 }
 '''.replace('__SEND__', send_method)

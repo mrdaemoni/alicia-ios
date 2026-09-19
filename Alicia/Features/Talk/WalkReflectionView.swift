@@ -159,7 +159,15 @@ struct WalkReflectionView: View {
                 return
             }
 #endif
-            if store.voiceArchive.recording(store.walkRecordingID)?.finalization == nil { await begin() }
+            // A private Body walk with kept words and audio re-opens in its
+            // editable review — never auto-restarting the mic over his words.
+            if privateBodyWalk,
+               store.voiceArchive.hasAudio(store.walkRecordingID),
+               !store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                reviewingWords = true
+            } else if store.voiceArchive.recording(store.walkRecordingID)?.finalization == nil {
+                await begin()
+            }
         }
         .onAppear { keepScreenAwake() }
         .onDisappear { pause(); restoreScreenSleep() }
@@ -202,8 +210,13 @@ struct WalkReflectionView: View {
         return store.walkEpisodeID.isEmpty && store.walkSurface == "body"
     }
 
+    /// The private Body walk is in its editable review phase (stopped, not
+    /// recording), so the room shows a correctable field instead of read-only text.
+    private var privateReviewing: Bool { privateBodyWalk && reviewingWords && !visibleRecording }
+
     private var episodeListening: some View {
-        ListeningStage(
+        @Bindable var store = store
+        return ListeningStage(
             voice: .forSurface(store.walkSurface.isEmpty ? "alicia" : store.walkSurface),
             isRecording: visibleRecording,
             isStarting: starting || restarting,
@@ -217,6 +230,10 @@ struct WalkReflectionView: View {
                     : store.walkPrompt.strippedEmojis)
                 : "Stay with the thought. Tap Keep talking when you're ready.",
             note: listeningNote,
+            // The private review is an editable field: on-device corrections or
+            // typing when live text was off, with the visible 4000-char limit.
+            editableWords: privateReviewing ? $store.walkDraft : nil,
+            characterLimit: privateReviewing ? 4000 : nil,
             close: { pause(); store.pauseEpisodeWalk(); store.showWalk = false },
             controls: { episodeControls }
         )
@@ -249,16 +266,20 @@ struct WalkReflectionView: View {
 
     private var listeningNote: String {
         if let error = speech.lastError { return error }
-        if !status.isEmpty { return status }
+        // Private Body guidance takes precedence over generic recorder status, so
+        // the private/review promise stays visible after begin and pause too. A
+        // real error above still wins; a paused status is folded in below.
         if privateBodyWalk {
             if reviewingWords {
-                return "Review these words. They go only to your private Body lane; the original recording never leaves this phone."
+                return "Review and edit these words — correct anything, or type if live text was off. They go only to your private Body lane; the original recording never leaves this phone."
             }
             if visibleRecording, !speech.liveTextAvailable {
                 return "Live transcription is unavailable, so nothing appears here — the audio is recording on this phone and stays private."
             }
-            return "Your original recording stays on this phone. Nothing is sent to your Mac; your reviewed words go only to your private Body lane."
+            let privateLine = "Your original recording stays on this phone. Nothing is sent to your Mac; your reviewed words go only to your private Body lane."
+            return status.isEmpty ? privateLine : status + " " + privateLine
         }
+        if !status.isEmpty { return status }
         if visibleRecording, !speech.liveTextAvailable {
             return "Live text is off, so nothing appears here — the audio is still recording and your Mac writes the transcript."
         }
@@ -298,7 +319,8 @@ struct WalkReflectionView: View {
                 .frame(maxWidth: .infinity, minHeight: 52)
                 .background(Theme.ink, in: RoundedRectangle(cornerRadius: 14))
                 .disabled(store.isSavingWalk || speech.isFinishing
-                          || (!listening && !store.voiceArchive.hasAudio(store.walkRecordingID)))
+                          || (!listening && !store.voiceArchive.hasAudio(store.walkRecordingID))
+                          || (privateReviewing && store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).count > 4000))
                 .accessibilityIdentifier("episode.finishWalk")
             }
             if store.voiceArchive.hasAudio(store.walkRecordingID), !listening {
@@ -318,7 +340,7 @@ struct WalkReflectionView: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(savedAudioOnly ? "Your recording is kept" : "Your reflection is saved")
             Text(savedAudioOnly ? "The audio is kept for review. No transcript was sent as your reflection."
-                 : savedPrivate ? "Your words stayed in your private Body lane. The original recording stays on this phone for your review."
+                 : savedPrivate ? "Your question was answered privately in your Body lane — it isn't added to a saved conversation. The original recording stays on this phone for your review."
                  : "Your words reached Alicia. The original recording stays available for review.")
                 .font(.system(size: 20, design: .serif))
             if let recording = store.voiceArchive.recording(savedRecordingID) {
