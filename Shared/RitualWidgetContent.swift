@@ -37,7 +37,12 @@ struct RitualWidgetContent: View {
     var forceAccented = false
     @Environment(\.widgetRenderingMode) private var renderingMode
     private var accented: Bool { forceAccented || renderingMode == .accented }
-    private var ink: Color { accented ? .white : Color(red: 0.12, green: 0.15, blue: 0.13) }
+    // Was a near-black of its own — (0.12, 0.15, 0.13), greener than the
+    // app's ink — because this file could not see Theme. It reads the shared
+    // palette now. Accented (tinted) widgets force white labels, so the ink
+    // inverts there and her underline inverts with it: dark on paper, light
+    // on the plate, never a tint.
+    private var ink: Color { accented ? .white : InkPalette.ink }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -52,9 +57,9 @@ struct RitualWidgetContent: View {
                         VStack(spacing: 6) {
                             Text(BodyCapture.rituals.first { $0.0 == kind.rawValue }!.1).fontWeight(.semibold)
                             Text(done ? "Recorded" : "Log it").font(.caption)
+                                .inkUnderlined(seed: kind.rawValue, color: ink, gap: 4)
                         }.frame(maxWidth: .infinity, minHeight: 52)
                     }.buttonStyle(.plain)
-                    .overlay(Rectangle().stroke(ink.opacity(0.55), lineWidth: 1))
                     .accessibilityLabel("Log completed " + kind.rawValue.replacingOccurrences(of: "_", with: " "))
                     .accessibilityValue(done ? "Recorded today" : "Not recorded")
                 }
@@ -65,7 +70,7 @@ struct RitualWidgetContent: View {
         .font(.system(size: 14, design: .serif)).foregroundStyle(ink)
         .padding(accented ? 10 : 0)
         .background { if accented { contrastPlate } }
-        .containerBackground(Color(red: 0.953, green: 0.933, blue: 0.890), for: .widget)
+        .containerBackground(InkPalette.paper, for: .widget)
     }
     @ViewBuilder private var contrastPlate: some View {
         if #available(iOS 18.0, *) {

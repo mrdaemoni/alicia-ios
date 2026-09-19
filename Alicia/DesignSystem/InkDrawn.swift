@@ -9,29 +9,8 @@ import SwiftUI
 /// DETERMINISTICALLY seeded (no @State, no lifecycle) — the same card
 /// always wears the same stroke, and nothing shimmers on scroll.
 
-// MARK: - Seeded randomness
-
-/// Tiny deterministic PRNG (xorshift) — stable strokes per seed.
-struct InkRand {
-    private var state: UInt64
-    init(_ seed: Int) {
-        state = UInt64(bitPattern: Int64(seed)) &* 2654435761 &+ 0x9E3779B97F4A7C15
-        if state == 0 { state = 0xBADC0FFEE }
-    }
-    mutating func next() -> Double {
-        state ^= state << 13; state ^= state >> 7; state ^= state << 17
-        return Double(state % 100_000) / 100_000
-    }
-    mutating func range(_ lo: Double, _ hi: Double) -> Double {
-        lo + next() * (hi - lo)
-    }
-}
-
 extension String {
-    /// Stable per-name seed (hashValue is randomized per launch — don't).
-    var inkSeed: Int {
-        unicodeScalars.reduce(5381) { ($0 << 5) &+ $0 &+ Int($1.value) }
-    }
+    /// `inkSeed` is in `Shared/InkStroke.swift` with the pen it seeds.
 
     /// Case- and diacritic-blind comparison key ("Sönke" == "Sonke").
     var inkFolded: String {
@@ -51,39 +30,10 @@ extension String {
 
 // MARK: - Stroke helpers
 
-enum InkPen {
-    /// A trembling line from a→b: overshoots both ends, bows at the middle,
-    /// wobbles along its length. One pass of a human wrist.
-    static func stroke(from a: CGPoint, to b: CGPoint,
-                       rand: inout InkRand,
-                       overshoot: CGFloat = 5,
-                       bow: CGFloat = 2.5,
-                       wobble: CGFloat = 0.7,
-                       segments: Int = 14) -> Path {
-        var path = Path()
-        let dx = b.x - a.x, dy = b.y - a.y
-        let len = max(1, hypot(dx, dy))
-        let ux = dx / len, uy = dy / len          // along
-        let px = -uy, py = ux                     // perpendicular
-        let o0 = CGFloat(rand.range(0.2, 1.0)) * overshoot
-        let o1 = CGFloat(rand.range(0.2, 1.0)) * overshoot
-        let start = CGPoint(x: a.x - ux * o0, y: a.y - uy * o0)
-        let end   = CGPoint(x: b.x + ux * o1, y: b.y + uy * o1)
-        let bowAmt = CGFloat(rand.range(-1, 1)) * bow
-        let phase = rand.range(0, .pi * 2)
-        path.move(to: start)
-        for i in 1...segments {
-            let t = CGFloat(i) / CGFloat(segments)
-            let arc = sin(.pi * t) * bowAmt       // single bow
-            let tremble = CGFloat(sin(Double(t) * 9 + phase)) * wobble
-                        + CGFloat(rand.range(-0.4, 0.4))
-            let x = start.x + (end.x - start.x) * t + px * (arc + tremble)
-            let y = start.y + (end.y - start.y) * t + py * (arc + tremble)
-            path.addLine(to: CGPoint(x: x, y: y))
-        }
-        return path
-    }
-
+/// `InkPen.stroke` and the PRNG behind it now live in
+/// `Shared/InkStroke.swift`, so the home-screen widget can draw with the
+/// same wrist. The rest of the pen is app-side.
+extension InkPen {
     /// An imperfect circle/ellipse arc around `center` — radius breathes,
     /// the ends don't have to meet. Alicia circling something that matters.
     static func ring(center: CGPoint, radius: CGFloat,
@@ -147,29 +97,6 @@ struct HandDrawnBorder: View {
                 ctx.stroke(path, with: .color(color.opacity(opacity * 0.4)),
                            style: StrokeStyle(lineWidth: 0.55, lineCap: .round))
             }
-        }
-        .allowsHitTesting(false)
-    }
-}
-
-// MARK: - Hand-drawn underline
-
-/// A trembling underline — selection, emphasis, presence.
-struct InkUnderline: View {
-    var color: Color = Theme.ink
-    var seed: Int = 1
-    var lineWidth: CGFloat = 1.6
-
-    var body: some View {
-        Canvas { ctx, size in
-            var rand = InkRand(seed &+ Int(size.width))
-            let y = size.height * 0.55
-            let path = InkPen.stroke(
-                from: CGPoint(x: 1, y: y),
-                to: CGPoint(x: size.width - 1, y: y),
-                rand: &rand, overshoot: 2.5, bow: 1.8, wobble: 0.6)
-            ctx.stroke(path, with: .color(color),
-                       style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
         }
         .allowsHitTesting(false)
     }

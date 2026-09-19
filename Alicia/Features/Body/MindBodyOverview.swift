@@ -58,16 +58,20 @@ struct MindBodyOverview: View {
             Text(question).font(.system(size: 21, design: .serif))
             Text("A connection to explore · your experience tells us whether it fits.").font(.caption).foregroundStyle(Theme.inkSoft)
             Button(expanded ? "Close reflection" : "Connect this to my day") { expanded.toggle(); saved = false }
-                .frame(minHeight: 44).accessibilityIdentifier("body.connectDay")
+                .inkAction("connect").accessibilityIdentifier("body.connectDay")
             if expanded {
+                // These two read the tint the same way a bare Button does,
+                // and were the last sea-slate left on the surface. The
+                // segmented control below is deliberately not tinted: ink
+                // behind its selected segment would swallow the label.
                 Picker("Mind goal", selection: $mindGoalID) {
                     Text("Today's episode / open reflection").tag("")
                     ForEach(mindGoals) { goal in Text(goal.title).tag(goal.id) }
-                }
+                }.tint(Theme.ink)
                 Picker("Wellness goal", selection: $wellnessGoalID) {
                     Text("My general wellbeing").tag("")
                     ForEach(bodyGoals) { goal in Text(goal.text).tag(goal.goal_id) }
-                }
+                }.tint(Theme.ink)
                 Picker("Does this connection fit?", selection: $verdict) {
                     Text("Choose").tag(""); Text("Fits").tag("Fits")
                     Text("Not sure").tag("Not sure"); Text("Doesn't fit").tag("Doesn't fit")
@@ -88,7 +92,7 @@ struct MindBodyOverview: View {
                     event.episode_id = store.episodeDay?.episode?.id ?? ""
                     saving = true
                     Task { saved = await store.bodyStore.capture(event); saving = false; if saved { note = ""; verdict = "" } }
-                }.frame(minHeight: 44).disabled(saving || (verdict.isEmpty && note.isEmpty) || note.count > 3900)
+                }.inkAction("keep").disabled(saving || (verdict.isEmpty && note.isEmpty) || note.count > 3900)
                 if saved { Text("Saved on this phone" + (store.bodyStore.pendingIDs.isEmpty ? " and with Alicia." : "; waiting to sync.")).font(.caption) }
                 Text("This reflection stays in your private Body record, linked to the selected goals and episode.").font(.caption)
             }
