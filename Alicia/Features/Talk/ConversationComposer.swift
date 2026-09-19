@@ -38,17 +38,18 @@ struct ConversationComposer: View {
         VStack(alignment: .leading, spacing: 7) {
             context
             reflectionLine
+            // v40: one height, everywhere. This used to grow a two-line
+            // preview of her last reply, so the band was short in Body and
+            // tall in Mind and Studio depending on what she had last said —
+            // and on a real phone that reply was a fragment of an internal
+            // instruction, set in her voice, permanently across the bottom of
+            // the screen. Hector: "The input box should always be like in the
+            // body section (small)." Her reply belongs in the conversation,
+            // which is one tap away.
             if busy {
                 Text(privateBody ? "Thinking privately on your Mac…" : "Alicia is thinking…")
                     .font(.caption).foregroundStyle(Theme.paper.opacity(0.7))
-            } else if let latestReply, draft.isEmpty {
-                Button { store.openConversation() } label: {
-                    Text(latestReply.text)
-                        .font(.system(size: 14, design: .serif))
-                        .foregroundStyle(Theme.paper.opacity(0.72))
-                        .lineLimit(2).multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }.accessibilityIdentifier("composer.lastReply")
+                    .lineLimit(1)
             }
             HStack(spacing: 10) {
                 field

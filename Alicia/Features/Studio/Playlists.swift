@@ -73,7 +73,8 @@ struct PlaylistDetailView: View {
                 .frame(maxWidth: .infinity, minHeight: 320)
             }
         }
-        .sectionBackground()
+        // v40: a queue opened from Studio stays in Studio's room.
+        .presenceBackground(.studio, store: store)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -411,7 +412,8 @@ struct AddToPlaylistSheet: View {
                 }
                 .padding(24)
             }
-            .sectionBackground()
+            // v40: a queue opened from Studio stays in Studio's room.
+        .presenceBackground(.studio, store: store)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {

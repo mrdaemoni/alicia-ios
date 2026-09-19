@@ -132,6 +132,9 @@ struct RootView: View {
         // Writing to her is contextual: it belongs on top of the page he is
         // already on, carrying that page in with it, and it gives the page
         // back when he closes it. Dialogue stays a place he can also go.
+        .sheet(isPresented: $store.showArc) {
+            OurArcView().presentationDetents([.large])
+        }
         .sheet(isPresented: $store.showConversation) {
             ConversationSheet()
                 .presentationDetents([.large])

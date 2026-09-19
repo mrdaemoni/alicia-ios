@@ -1,3 +1,23 @@
+## A2-055 — the polish pass from the first device build
+
+First real evidence from Pandaiux (TestFlight 19), and five things it showed.
+
+**The band is one height everywhere.** It used to grow a two-line preview of
+her last reply, so it was short in Body and tall in Mind and Studio — and on
+the phone that reply was a fragment of an internal instruction set in her
+voice, parked across the bottom of every screen. `composer.lastReply` is gone.
+
+**Every screen is a room.** `PlaylistDetailView` and `VoiceRecordingsView` were
+flat bone paper with no tint and no field; they now carry Studio's and Mind's
+respectively. `VoiceProcessingView` forces `.buttonStyle(.plain)` and ink — its
+controls were all system-blue links, which broke the one hard rule the app has
+on the screen he sees most after speaking.
+
+**The Us title opens `OurArcView` again** — what she's holding about him now,
+then every day since she began, with a key happening and where he was beside
+the date. The endpoints never stopped working; the surface had been unmounted
+with the old orbit. Days before the phone reported a place show none.
+
 ## A2-052 — she walks through every room
 
 Body carries `.presenceBackground(.body, store:)` like every other section, so

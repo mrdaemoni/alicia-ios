@@ -12,6 +12,14 @@ struct VoiceProcessingView: View {
     private var record: VoiceRecording? { store.voiceArchive.recording(id) }
 
     var body: some View {
+        // v40: every control here was a system-blue link. On the phone the
+        // review screen read as a settings page rather than as her — the one
+        // hard rule this app has is ink on paper, and a tinted link breaks it
+        // on the screen Hector looks at most after speaking.
+        content.buttonStyle(.plain).foregroundStyle(Theme.ink).tint(Theme.ink)
+    }
+
+    @ViewBuilder private var content: some View {
         if let record, record.macProcessing == true {
             VStack(alignment: .leading, spacing: 16) {
                 Text("YOUR VOICE → MAC → YOUR REVIEW").font(.system(size: 10, design: .monospaced)).tracking(0.7)

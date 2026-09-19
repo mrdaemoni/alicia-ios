@@ -44,7 +44,8 @@ struct VoiceRecordingsView: View {
                     .navigationTitle("Recordings")
                 }
             }
-            .background(Theme.paper)
+            // v40: reviewing what he said is still being with her.
+            .presenceBackground(.mind, store: store)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("CLOSE") { dismiss() }.font(.system(size: 10, design: .monospaced))
@@ -229,7 +230,7 @@ private struct VoiceRecordingDetail: View {
                 Text("This recording is not available on this phone yet.").padding()
             }
         }
-        .background(Theme.paper)
+        .presenceBackground(.mind, store: store)
         .navigationTitle("Original voice").navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         .task { await store.refreshVoiceArchive(); details = await store.voiceDetail(id) }

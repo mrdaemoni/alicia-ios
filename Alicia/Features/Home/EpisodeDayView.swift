@@ -8,7 +8,18 @@ struct EpisodeHomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
-                    SectionHeader(title: "Us", kicker: Date.now.formatted(date: .complete, time: .omitted))
+                    // v40: the title is the way in again. Tapping it brings
+                    // back what she is holding about him and the whole arc
+                    // since she began — unmounted when the old orbit came out
+                    // of Us, though both endpoints kept working the whole time.
+                    Button { store.showArc = true } label: {
+                        SectionHeader(title: "Us", kicker: Date.now.formatted(date: .complete, time: .omitted))
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Us — open what she's holding and the whole arc")
+                    .accessibilityIdentifier("us.openArc")
                     MorningBriefingView(briefing: store.morningBriefing,
                         playingBriefingID: store.playingMorningBriefingID,
                         loadingBriefingID: store.reader.isLoadingMedia ? store.currentMorningBriefingID : nil,
