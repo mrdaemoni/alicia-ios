@@ -119,6 +119,21 @@ final class ContextUITests: XCTestCase {
   let stop=app.buttons["collaboration.stop"];reveal(stop,app:app);stop.tap()
   XCTAssertTrue(app.staticTexts["Stopped on this phone. Any pending server change stays queued below."].waitForExistence(timeout:10));capture("stop-purposeful-returns",app:app)
  }
+ func testBlindImpulseLabelThenReveal(){
+  let app=launch();let open=app.buttons["collaboration.open"];XCTAssertTrue(open.waitForExistence(timeout:15));open.tap()
+  let settings=app.buttons["When Alicia returns"];reveal(settings,app:app);settings.tap()
+  let study=app.buttons["impulseResearch.open"];reveal(study,app:app);XCTAssertTrue(study.isHittable);study.tap()
+  XCTAssertTrue(app.staticTexts["impulseResearch.status"].waitForExistence(timeout:10))
+  let useful=app.buttons["impulseResearch.usefulness.useful_now"];reveal(useful,app:app);XCTAssertTrue(useful.exists)
+  XCTAssertFalse(app.staticTexts["impulseResearch.reveal.preview-impulse-unlabeled"].exists)
+  capture("impulse-study-blind-before-label",app:app)
+  useful.tap()
+  let fit=app.buttons["impulseResearch.stance.stance_fit"];reveal(fit,app:app);fit.tap()
+  let save=app.buttons["impulseResearch.save.preview-impulse-unlabeled"];reveal(save,app:app);XCTAssertTrue(save.isEnabled);save.tap()
+  XCTAssertTrue(app.staticTexts["impulseResearch.saved.preview-impulse-unlabeled"].waitForExistence(timeout:10))
+  let revealed=app.staticTexts["impulseResearch.reveal.preview-impulse-unlabeled"];reveal(revealed,app:app);XCTAssertTrue(revealed.exists)
+  XCTAssertTrue(app.staticTexts["Expression · Notify"].exists);capture("impulse-study-revealed-after-save",app:app)
+ }
  func testExactTarget(){let app=launch(["--collaboration-target-preview"]);XCTAssertTrue(app.navigationBars["The connection"].waitForExistence(timeout:20));capture("exact-notification-target",app:app)}
  func testDirectGoalWork(){let app=launch();let open=app.buttons["collaboration.open"];XCTAssertTrue(open.waitForExistence(timeout:15));open.tap();let work=app.buttons["collaboration.result.preview-goal-result"];XCTAssertTrue(work.waitForExistence(timeout:10));reveal(work,app:app);work.tap();XCTAssertTrue(app.staticTexts["Mark what matters, or answer in your own words."].waitForExistence(timeout:10));capture("prepared-toward-goal-without-agreement",app:app)}
  func testContextPendingKeepsExactWords(){
@@ -135,6 +150,6 @@ final class ContextUITests: XCTestCase {
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
 result=pathlib.Path(os.environ.get('ALICIA_TEST_EVIDENCE_DIR',str(work)))/('collaboration-ui-'+work.name+'.xcresult')
 selected=[name for name in os.environ.get('ALICIA_UI_TESTS','').split(',') if name]
-assert all(name in {'testUseClarifyCommitAndOutcome','testGoalAndEvidence','testQuietSettingsAndReduceMotion','testExactTarget','testDirectGoalWork','testContextPendingKeepsExactWords','testThreeConcurrentGoalsAndIndependentEdit'} for name in selected)
+assert all(name in {'testUseClarifyCommitAndOutcome','testGoalAndEvidence','testQuietSettingsAndReduceMotion','testBlindImpulseLabelThenReveal','testExactTarget','testDirectGoalWork','testContextPendingKeepsExactWords','testThreeConcurrentGoalsAndIndependentEdit'} for name in selected)
 filters=['-only-testing:ContextUITests/ContextUITests/'+name for name in selected]
 subprocess.run(['xcodebuild','-project',str(project),'-scheme','Alicia','-destination','platform=iOS Simulator,id=F36E7803-4EEE-47D1-8D8A-7C930515EB27','-derivedDataPath',str(work/'DerivedData'),'-resultBundlePath',str(result),'-parallel-testing-enabled','NO','CODE_SIGNING_ALLOWED=NO','test']+filters,env=env,check=True)

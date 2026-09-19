@@ -155,6 +155,12 @@ struct CollaborationView: View {
                                     Task { await shared.submit(CollaborationMutation(action: "settings", followups_enabled: state.followups_enabled && !shared.locallyStopped, telegram_returns_enabled: !state.telegram_returns_enabled)) }
                                 }.disabled(!shared.canEdit)
                                 Button("iPhone notification permission") { ProactiveNotifier.requestPermission() }
+                                if let research = state.impulse_research {
+                                    Divider()
+                                    ImpulseResearchStatusCard(research: research)
+                                    NavigationLink("Review blind judgments") { ImpulseResearchView() }
+                                        .accessibilityIdentifier("impulseResearch.open")
+                                }
                             }.padding(.top, 12)
                         }
                         Button("Revisit the evidence") { Task { await shared.submit(CollaborationMutation(action: "refresh")) } }
@@ -239,6 +245,212 @@ struct CollaborationView: View {
         }.id(goal.id)
     }
 
+}
+
+private struct ImpulseResearchStatusCard: View {
+    let research: ImpulseResearch
+    private var status: ImpulseResearch.Status { research.status }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("JEV IMPULSE STUDY").font(.caption.monospaced()).tracking(1.1)
+            Text(status.active ? "Active · shadow only" : status.enabled ? "Enabled · observer unavailable" : "Paused")
+                .font(.headline).accessibilityIdentifier("impulseResearch.status")
+            Text("\(status.observations) observations · \(status.labeled) labeled · \(status.failures) failed or unavailable")
+                .font(.caption).foregroundStyle(Theme.inkSoft)
+            Text("Individual Jev judgments stay hidden until your label is saved.")
+                .font(.caption).foregroundStyle(Theme.inkSoft)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct ImpulseResearchView: View {
+    @Environment(AppStore.self) private var store
+    private var shared: CollaborationStore { store.collaboration }
+    private var research: ImpulseResearch? { shared.state?.impulse_research }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                Text("A blind check on Alicia's impulse to speak")
+                    .font(.system(size: 29, design: .serif))
+                Text("First judge whether the communication was useful and whether its stance fit. Only after the save is confirmed does Aves reveal what Jev recommended. Jev remains an observer; it does not decide whether Alicia contacts you.")
+                    .font(.callout)
+                if let research {
+                    ImpulseResearchStatusCard(research: research)
+                    if research.items.isEmpty {
+                        Text("No eligible observations yet. The active status above is the audit receipt; this list grows only when Alicia forms or sends an eligible return.")
+                            .font(.callout).foregroundStyle(Theme.inkSoft)
+                    }
+                    ForEach(research.items) { item in
+                        ImpulseResearchItemView(itemID: item.id)
+                    }
+                } else {
+                    Text("The research status could not be loaded. No judgment has been inferred from this screen.")
+                        .font(.callout)
+                }
+                CollaborationSaveStatus()
+                Button("Refresh study") { Task { await shared.load() } }
+                    .accessibilityIdentifier("impulseResearch.refresh")
+            }.padding(22)
+        }
+        .background(Theme.paper).foregroundStyle(Theme.ink)
+        .navigationTitle("Impulse study").navigationBarTitleDisplayMode(.inline)
+        .task { await shared.load() }
+    }
+}
+
+private struct ImpulseResearchItemView: View {
+    @Environment(AppStore.self) private var store
+    let itemID: String
+
+    private var shared: CollaborationStore { store.collaboration }
+    private var usefulness: String { shared.impulseDraft(itemID, field: "usefulness") }
+    private var stance: String { shared.impulseDraft(itemID, field: "stance") }
+    private var item: ImpulseResearch.Item? {
+        shared.state?.impulse_research?.items.first { $0.id == itemID }
+    }
+    private let usefulnessChoices = [
+        ("useful_now", "Useful now"), ("useful_later", "Useful later"),
+        ("not_useful", "Not useful"), ("wrong_connection", "Wrong connection"),
+        ("unwanted_interruption", "Unwanted interruption"),
+    ]
+    private let stanceChoices = [("stance_fit", "Stance fit"), ("stance_mismatch", "Stance missed")]
+
+    var body: some View {
+        if let item {
+            VStack(alignment: .leading, spacing: 13) {
+                Text(item.source == "circulation" ? "SENT COMMUNICATION" : "CANDIDATE COMMUNICATION")
+                    .font(.caption.monospaced()).tracking(1)
+                Text(item.title.strippedEmojis).font(.title3)
+                Text(item.text.strippedEmojis).font(.body).textSelection(.enabled)
+                Text(String(item.observed_at.prefix(19)).replacingOccurrences(of: "T", with: " · "))
+                    .font(.caption).foregroundStyle(Theme.inkSoft)
+                if item.labeled, let feedback = item.feedback {
+                    Text("Your saved label").font(.headline)
+                    Text(label(feedback.usefulness) + " · " + label(feedback.stance))
+                        .accessibilityIdentifier("impulseResearch.saved." + item.id)
+                    Divider()
+                    ImpulseResearchRevealView(item: item)
+                } else {
+                    Text("1. Was this communication useful?").font(.headline)
+                    ImpulseChoiceList(choices: usefulnessChoices, selection: usefulness,
+                                      identifier: "impulseResearch.usefulness.") { value in
+                        shared.setImpulseDraft(item.id, field: "usefulness", value: value)
+                    }
+                    Text("2. Did Alicia's stance fit?").font(.headline)
+                    ImpulseChoiceList(choices: stanceChoices, selection: stance,
+                                      identifier: "impulseResearch.stance.") { value in
+                        shared.setImpulseDraft(item.id, field: "stance", value: value)
+                    }
+                    Button("Save my judgment, then reveal Jev") {
+                        let mutation = CollaborationMutation(action: "impulse_feedback",
+                            candidate_id: item.id, source: item.source,
+                            trace_state_hash: item.state_hash, usefulness: usefulness, stance: stance)
+                        Task { await shared.submit(mutation) }
+                    }
+                    .disabled(!shared.canEdit || usefulness.isEmpty || stance.isEmpty)
+                    .accessibilityIdentifier("impulseResearch.save." + item.id)
+                    Text("The model answer is not in this item until the server confirms your label.")
+                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                }
+            }
+            .padding(16)
+            .background(Theme.ink.opacity(0.045), in: RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    private func label(_ raw: String) -> String {
+        switch raw {
+        case "useful_now": "Useful now"
+        case "useful_later": "Useful later"
+        case "not_useful": "Not useful"
+        case "wrong_connection": "Wrong connection"
+        case "unwanted_interruption": "Unwanted interruption"
+        case "stance_fit": "Stance fit"
+        case "stance_mismatch": "Stance missed"
+        default: raw.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+}
+
+private struct ImpulseChoiceList: View {
+    let choices: [(String, String)]
+    let selection: String
+    let identifier: String
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(choices, id: \.0) { value, title in
+                Button {
+                    onSelect(value)
+                } label: {
+                    HStack {
+                        Text(title)
+                        Spacer()
+                        Text(selection == value ? "Selected" : "Choose")
+                            .font(.caption).foregroundStyle(Theme.inkSoft)
+                    }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .background(selection == value ? Theme.ink.opacity(0.10) : Theme.ink.opacity(0.035),
+                            in: RoundedRectangle(cornerRadius: 10))
+                .simultaneousGesture(TapGesture().onEnded { onSelect(value) })
+                .accessibilityIdentifier(identifier + value)
+            }
+        }
+    }
+}
+
+private struct ImpulseResearchRevealView: View {
+    let item: ImpulseResearch.Item
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("Jev's hidden judgment").font(.headline)
+            if let reveal = item.reveal, reveal.outcome == "ok" {
+                Text("Expression · " + (reveal.suggested_expression ?? "Unavailable").capitalized)
+                if let confidence = reveal.suggested_expression_confidence {
+                    Text("Expression confidence · \(Int((confidence * 100).rounded()))%")
+                        .font(.caption)
+                }
+                Text("Stance · " + (reveal.stance ?? "Unavailable").capitalized)
+                DisclosureGroup("Inspect the typed answers") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(reveal.answers.keys.sorted(), id: \.self) { key in
+                            if let answer = reveal.answers[key] {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(key.replacingOccurrences(of: "_", with: " ").capitalized).font(.caption)
+                                    Text(answerText(answer)).font(.callout)
+                                }
+                            }
+                        }
+                    }.padding(.top, 8)
+                }
+                Text(reveal.model + " · " + reveal.question_version)
+                    .font(.caption.monospaced()).foregroundStyle(Theme.inkSoft)
+            } else if let reveal = item.reveal {
+                Text("No valid Jev judgment was available for this observation (\(reveal.reason_code ?? reveal.outcome)).")
+                    .font(.callout)
+            } else {
+                Text("Your label is saved, but the reveal receipt is unavailable. Refresh before drawing a comparison.")
+                    .font(.callout)
+            }
+            Text("Research evidence only. This answer did not change delivery.")
+                .font(.caption).foregroundStyle(Theme.inkSoft)
+        }.accessibilityIdentifier("impulseResearch.reveal." + item.id)
+    }
+
+    private func answerText(_ answer: ImpulseResearch.Answer) -> String {
+        if let choice = answer.choice { return choice.capitalized + confidence(answer.confidence) }
+        if let score = answer.score { return String(format: "%.2f", score) + confidence(answer.confidence) }
+        if let probability = answer.noul { return "Yes probability \(Int((probability * 100).rounded()))%" }
+        return "Unavailable"
+    }
+    private func confidence(_ value: Double?) -> String {
+        guard let value else { return "" }
+        return " · \(Int((value * 100).rounded()))% confidence"
+    }
 }
 
 private struct CollaborationConnectionView: View {

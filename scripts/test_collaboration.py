@@ -95,6 +95,15 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
   precondition(answer.body["content_hash"] as? String == "hash" && answer.expected_revision == 4)
   let roundTripAnswer = try JSONDecoder().decode(CollaborationMutation.self,from:JSONEncoder().encode(answer))
   precondition(roundTripAnswer == answer)
+  let blindResearch = Data(#"{"status":{"active":true,"enabled":true,"mode":"shadow","model":"jev-1.13.0","question_version":"jev-impulse-v1","feedback_version":"jev-human-v1","observations":1,"valid_observations":1,"failures":0,"failure_rate":0,"labeled":0,"last_observed_at":"2026-09-19T18:00:00Z","last_success_at":"2026-09-19T18:00:00Z","blind_until_label":true},"items":[{"id":"candidate","source":"collaboration","title":"Candidate","text":"A proposed message","observed_at":"2026-09-19T18:00:00Z","state_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","outcome":"ok","labeled":false}]}"#.utf8)
+  let research = try JSONDecoder().decode(ImpulseResearch.self,from:blindResearch)
+  precondition(research.status.active && research.items[0].reveal == nil && research.items[0].feedback == nil)
+  let judgment = CollaborationMutation(action:"impulse_feedback",candidate_id:"candidate",source:"collaboration",trace_state_hash:research.items[0].state_hash,usefulness:"useful_now",stance:"stance_fit")
+  precondition(judgment.body["candidate_id"] as? String == "candidate" && judgment.body["usefulness"] as? String == "useful_now")
+  let roundTripJudgment = try JSONDecoder().decode(CollaborationMutation.self,from:JSONEncoder().encode(judgment))
+  precondition(roundTripJudgment == judgment)
+  restored.setImpulseDraft("candidate",field:"usefulness",value:"useful_now")
+  precondition(CollaborationStore(service:fake,defaults:defaults,notifications:false).impulseDraft("candidate",field:"usefulness") == "useful_now")
   restored.saveDraft(["text":"My entire answer", "mode":"answer", "revision":"4"],name:"work.result.q7.answer")
   restored.saveDraft(["text":"A distinct edit", "mode":"edit", "revision":"4"],name:"work.result.q7.edit")
   fake.result = nil
@@ -205,7 +214,7 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
   let decodedRoute=try JSONDecoder().decode(CollaborationRoute.self,from:JSONEncoder().encode(createRoute))
   precondition(decodedRoute.newGoal==true && decodedRoute.goalID.isEmpty)
   print("5 concurrent-goal checks passed: sorted active goals, retained paused goals, creation does not target an existing goal, historical route decode, direct new-goal route")
-  print("30 collaboration checks passed: wire, revision guard, uncertain save, immutable restore, reentrancy, malformed success, acknowledgment, rejection, drafts, later stop, quiet deferral, expiry, same-day purposeful returns, stale notification cancellation, confirmed draft cleanup, late draft callback, legacy result decode, stale scheduler snapshot, cancelled candidate can return, HTTP400 rejection, HTTP200 acknowledgment, auth and server uncertainty, malformed validation uncertainty, HTTP500 keeps receipt, failed reload retains draft, fresh reload advances revision, foreground stop migration, deliberate allow after migration, background stop migration, background allow after migration")
+  print("33 collaboration checks passed: wire, revision guard, uncertain save, immutable restore, reentrancy, malformed success, acknowledgment, rejection, drafts, later stop, quiet deferral, expiry, same-day purposeful returns, stale notification cancellation, confirmed draft cleanup, late draft callback, legacy result decode, stale scheduler snapshot, cancelled candidate can return, HTTP400 rejection, HTTP200 acknowledgment, auth and server uncertainty, malformed validation uncertainty, HTTP500 keeps receipt, failed reload retains draft, fresh reload advances revision, foreground stop migration, deliberate allow after migration, background stop migration, background allow after migration, blind research decode, hidden answer, exact impulse mutation")
  }
 }
 '''
