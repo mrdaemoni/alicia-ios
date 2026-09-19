@@ -1,5 +1,23 @@
 # Voice capture, revisions and save feedback
 
+## A2-057 candidate — private Body walk (revision 2)
+
+A no-episode walk started from Body is private end to end: original audio stays
+on the phone, no Mac transcript or cloud upload, and reviewed words go only to
+the private Body lane (`bodyStore.ask`). After stop, the listening room shows an
+**editable** review field (same serif language, listening particles kept while
+recording) so on-device mistakes can be corrected or typed when live text was
+unavailable; the mic is not auto-restarted while reviewing, and the kept words
+re-open in review on close/relaunch or after reviewing the original audio.
+`sendPrivateBodyWalk` treats the send as successful only when `body_answer`
+reports `status == "ready"` AND the submitted transcript is durably stored —
+`private_context_unavailable`/`invalid_question`/`oversized` return HTTP 200 but
+are not acceptance, and any network/status/local-write failure keeps his exact
+words and recording editable and retryable. The 4000-character private limit is
+shown and enforced without silently shortening his text. Backend and the
+Body/private boundaries are unchanged. Native regressions:
+`scripts/test_private_body_walk.py`.
+
 ## A2-016 candidate — Mac transcription
 
 New recordings use capture-only mode. Speech recognition permission and live

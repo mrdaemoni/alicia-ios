@@ -442,7 +442,14 @@ final class AppStore {
             playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0,
             proactive_id: walk ? nil : answeringAskID)
         context.surface_context = surface ?? walkSurfaceContext
-        let privateBody = surface?.section == "body"
+        // The private Body lane owns any walk whose subject is the Body section,
+        // whether that came from an explicit surface or the section a no-episode
+        // walk was started from. `WalkReflectionView` opens without an explicit
+        // surface, so deriving this from the resolved context — not just the
+        // argument — is what keeps a Body walk private end to end. A private
+        // walk keeps its original audio on the phone, never enters Mac/cloud
+        // transcription, and is reviewed then sent only through the Body lane.
+        let privateBody = context.surface_context?.section == "body"
         let review = VoiceReview(destination: walk ? "walk" : answeringAskID == nil ? "dialogue" : "proactive",
                                  proactiveID: walk ? "" : answeringAskID ?? "",
                                  proactiveExcerpt: walk ? "" : answeringAskExcerpt)
@@ -492,6 +499,61 @@ final class AppStore {
         await syncVoiceArchive()
         await reconcileVoiceReplies()
         await refreshEpisodeDay()
+    }
+
+    /// Send a reviewed private Body walk. His words go only to the private Body
+    /// lane — never to `/walk`, conversation history, or the ordinary model —
+    /// and the original recording stays on this phone. Success requires the
+    /// backend to actually answer (`status == "ready"`); `health_context`
+    /// `body_answer` returns HTTP 200 with `private_context_unavailable`,
+    /// `invalid_question` or `oversized`, and those are NOT acceptance. The
+    /// transcript is marked submitted only after that ready reply is durably
+    /// stored on this phone, so any failure — network, non-ready status, or a
+    /// local write error — keeps his exact words and recording editable and
+    /// retryable, and is never confirmed as saved. Returns whether the private
+    /// request succeeded.
+    @discardableResult
+    func sendPrivateBodyWalk(_ id: String, text: String) async -> Bool {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, !isSavingWalk else { return false }
+        // The private Body lane accepts up to 4000 characters. Never shorten his
+        // words silently: refuse, keep them editable, and say what is over.
+        guard clean.count <= 4000 else {
+            episodeError = "This private reflection is \(clean.count) characters; the private Body lane accepts up to 4000. Your words are kept here — shorten it, then send again."
+            return false
+        }
+        guard voiceArchive.recording(id)?.isPrivateBody == true else {
+            episodeError = "This reflection isn't in the private Body lane."
+            return false
+        }
+        isSavingWalk = true
+        defer { isSavingWalk = false }
+        guard let answer = await bodyStore.ask(clean) else {
+            episodeError = "I couldn't reach your private Body lane. Your words are kept here; tap Retry save."
+            return false
+        }
+        // HTTP 200 is not Body acceptance. A non-ready status means the private
+        // lane declined to answer; keep his words and recording, do not submit.
+        guard answer.status == "ready" else {
+            episodeError = answer.text.isEmpty
+                ? "Your private Body lane couldn't answer this yet. Your words are kept here; tap Retry save."
+                : "\(answer.text) Your words are kept here; tap Retry save."
+            return false
+        }
+        // The submitted transcript must be durably stored before we confirm and
+        // clear the draft. If the local write fails, keep his words editable.
+        guard voiceArchive.addTranscript(clean, kind: "submitted", to: id) else {
+            episodeError = "Your private reply arrived, but the text couldn't be saved on this phone. Your words are kept here; tap Retry save."
+            return false
+        }
+        privateBodyMessages.append(Message(sender: .me, text: clean, recordingID: id.isEmpty ? nil : id))
+        privateBodyMessages.append(Message(sender: .alicia, text: answer.text))
+        if walkDraft.trimmingCharacters(in: .whitespacesAndNewlines) == clean { walkDraft = "" }
+        walkRecordingID = ""
+        walkRequestID = UUID().uuidString
+        UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+        episodeError = ""
+        return true
     }
     private func reconcileVoiceReplies() async {
         // Read history only when a voice receipt completed. The backend is the source of message IDs.

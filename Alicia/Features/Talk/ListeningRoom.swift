@@ -22,6 +22,12 @@ struct ListeningStage<Controls: View>: View {
     var words: String
     var placeholder: String
     var note: String
+    /// When set, the transcript becomes an editable private-review field bound to
+    /// these words — so on-device mistakes can be corrected, or typed when live
+    /// recognition was unavailable, before sending. The mic is not restarted.
+    var editableWords: Binding<String>? = nil
+    /// Visible character budget for the editable review (no silent truncation).
+    var characterLimit: Int? = nil
     var close: () -> Void
     @ViewBuilder var controls: () -> Controls
 
@@ -121,29 +127,57 @@ struct ListeningStage<Controls: View>: View {
     }
 
     /// His own words, as large as they can be and still hold a paragraph, and
-    /// pinned to the bottom so the newest line is where his eye already is.
-    private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    Spacer(minLength: 0)
-                    Text(words.isEmpty ? placeholder : words)
-                        .font(.system(size: words.count > 420 ? 24 : words.count > 160 ? 30 : 38,
-                                      design: .serif))
-                        .foregroundStyle(words.isEmpty ? Theme.inkSoft : Theme.ink)
-                        .lineSpacing(4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .animation(.easeOut(duration: 0.18), value: words.count > 160)
-                        .id("words")
-                        .accessibilityIdentifier("listening.transcript")
+    /// pinned to the bottom so the newest line is where his eye already is. In
+    /// the private review it becomes an editor with the same visual language.
+    @ViewBuilder private var transcript: some View {
+        if let editable = editableWords {
+            reviewEditor(editable)
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Spacer(minLength: 0)
+                        Text(words.isEmpty ? placeholder : words)
+                            .font(.system(size: words.count > 420 ? 24 : words.count > 160 ? 30 : 38,
+                                          design: .serif))
+                            .foregroundStyle(words.isEmpty ? Theme.inkSoft : Theme.ink)
+                            .lineSpacing(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .animation(.easeOut(duration: 0.18), value: words.count > 160)
+                            .id("words")
+                            .accessibilityIdentifier("listening.transcript")
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 320, alignment: .bottomLeading)
+                    .padding(.horizontal, 24).padding(.vertical, 18)
                 }
-                .frame(maxWidth: .infinity, minHeight: 320, alignment: .bottomLeading)
-                .padding(.horizontal, 24).padding(.vertical, 18)
-            }
-            .onChange(of: words) { _, _ in
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("words", anchor: .bottom) }
+                .onChange(of: words) { _, _ in
+                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("words", anchor: .bottom) }
+                }
             }
         }
+    }
+
+    /// The editable private review: same serif field, correctable on-device, with
+    /// a visible character count against the private Body limit. No mic restart.
+    private func reviewEditor(_ text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextEditor(text: text)
+                .font(.system(size: text.wrappedValue.count > 420 ? 24 : text.wrappedValue.count > 160 ? 30 : 38,
+                              design: .serif))
+                .foregroundStyle(Theme.ink)
+                .lineSpacing(4)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 100, maxHeight: .infinity, alignment: .topLeading)
+                .accessibilityIdentifier("listening.reviewEditor")
+                .accessibilityLabel("Your private reflection")
+            if let limit = characterLimit {
+                Text("\(text.wrappedValue.count) / \(limit)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(text.wrappedValue.count > limit ? Theme.rose : Theme.inkSoft)
+                    .accessibilityIdentifier("listening.reviewCount")
+            }
+        }
+        .padding(.horizontal, 24).padding(.vertical, 18)
     }
 }
 

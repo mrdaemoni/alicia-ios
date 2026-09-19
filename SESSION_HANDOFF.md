@@ -1,3 +1,25 @@
+## A2-057 — private Body walk review
+
+A Body walk without an episode keeps its original audio on the phone and opens an editable review before the private Body request. Non-ready replies, connection errors and local transcript-write failures retain the draft; success requires a ready reply and a saved submitted transcript. The existing private question limit is visible at 4000 characters; words are never shortened automatically. The review editor resizes for the keyboard so audio review and send remain reachable. Episode walks retain Mac transcription. Source and release evidence: shared A2-057 task; this note alone is not a release claim.
+
+## A2-057 — private Body walk (revision 2, Codex changes-requested resolved)
+
+Read [docs/VOICE_CAPTURE.md](docs/VOICE_CAPTURE.md). A no-episode Body walk stays
+private end to end. This revision fixes the three independent Codex findings:
+`sendPrivateBodyWalk` now confirms success only on `body_answer` `status ==
+"ready"` and a durably stored submitted transcript (HTTP-200 non-ready payloads
+and local-write failures keep his exact words/recording editable and retryable);
+the listening room gains an editable, durable private review after stop (correct
+on-device or type when live text was off, particles kept while recording, no mic
+auto-restart, words survive close/relaunch and original-audio review); and the
+private/review guidance stays visible even when generic recorder status is set,
+with saved wording that distinguishes phone retention from an answered private
+request. The 4000-character limit is shown and enforced without shortening his
+text. No backend or Body/private boundary changes. Native regressions in
+`scripts/test_private_body_walk.py`; iPhone 17 simulator build succeeded. Not
+phone-validated; shared A2-057 task owns review status — this note is not a
+release receipt.
+
 ## A2-045 recording resume follow-up
 
 A section walk can resume after a pause even when its current time/place differs. VoiceArchive keeps the original capture receipt and still rejects a different section or episode. A generated-audio regression failed before the fix; exact tests and release receipts live in the shared A2-045 task. This is a follow-up to build22, not a claim that build22 includes it.
