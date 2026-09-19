@@ -6,6 +6,10 @@ not apply; do not leave placeholders.
 
 ## Ownership
 
+- Shared task ID and folder under `/Users/alicia/Documents/Alicia-development/tasks/`:
+- Designated reviewer:
+- Machine-readable `handoff.toml` with full head SHAs and evidence references:
+
 - Agent:
 - Branch:
 - Worktree:
