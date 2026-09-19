@@ -12,7 +12,8 @@ uncertain save retries the identical receipt. Collaboration candidates and later
 circulation sends are deduplicated into one study unit. Jev remains shadow-only:
 it cannot create, suppress, delay, rewrite, notify or interrupt. App version tag
 is v39. Release status belongs to the paired pull requests and Apple receipt,
-not this handoff entry. The backend must deploy first. See
+not this handoff entry: backend PR #72 and app PR #35. The backend must deploy
+first. See
 `/Users/alicia/alicia/docs/JEV_IMPULSE_JUDGE.md`.
 
 ## A2-043 — mind and body integration candidate
