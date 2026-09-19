@@ -6,7 +6,8 @@ import Foundation
 enum ConnectionState {
     case ok
     case unauthorized   // 401/403 — rotated or wrong token
-    case unreachable    // network error / non-200
+    case reaching       // a request failed and is being retried
+    case unreachable    // retries exhausted
 }
 
 /// Tiny shared signal set by the live fetch layer and read by the UI
@@ -19,11 +20,23 @@ final class ConnectionStatus {
 
     /// Callable from any thread (URLSession callbacks) — hops to the main
     /// actor before mutating.
+    ///
+    /// A success outranks everything: several fetches run at once on a load,
+    /// and one slow call finishing after a fast one must not put the banner
+    /// back up over a screen that is visibly full of her. `.ok` therefore
+    /// always wins, and only a fetch that has exhausted its retries may set
+    /// `.unreachable`.
     nonisolated static func note(_ new: ConnectionState) {
         Task { @MainActor in
+            if new == .reaching, shared.state == .ok, shared.lastSuccess.timeIntervalSinceNow > -2 {
+                return      // a blip inside a working load is not worth saying
+            }
+            if new == .ok { shared.lastSuccess = .now }
             if shared.state != new { shared.state = new }
         }
     }
+
+    private var lastSuccess = Date.distantPast
 }
 
 /// One rendered piece of a reading, in speaking order.

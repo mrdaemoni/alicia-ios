@@ -1,3 +1,20 @@
+## A2-056 — a lost route retries instead of accusing her
+
+Reads through `LiveAliciaService.fetchOne` attempt three times over ~2.4s
+(400ms, then 2s) before reporting `.unreachable`. A 401/403 never retries —
+the same token will be rejected three times — and a decode failure never
+retries either, because she answered and the shape disagreed. `ConnectionState`
+gained `.reaching`, drawn in ink rather than rose: still trying is not bad news.
+A success always outranks a concurrent failure, so one slow call finishing late
+cannot put the banner back over a screen already full of her.
+
+Why: on 2026-09-18 the phone left the Wi-Fi, Tailscale fell from a direct route
+to a relay (34ms → 400ms), and the single request lost to that transition left
+"she's unreachable" on screen until Hector pulled to refresh.
+
+Evidence: `scripts/test_reconnect_ui.py`, driven against a dead endpoint
+through the UserDefaults override, so the app runs live and every read fails.
+
 ## A2-055 — the polish pass from the first device build
 
 First real evidence from Pandaiux (TestFlight 19), and five things it showed.

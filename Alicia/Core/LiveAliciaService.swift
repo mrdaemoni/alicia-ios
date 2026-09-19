@@ -85,28 +85,69 @@ struct LiveAliciaService: AliciaService {
     /// dead backend or rotated token is visible instead of rendering as an
     /// empty-but-alive-looking app. Decode failures log in DEBUG so field
     /// drift between `skills/ios_api.py` and these DTOs is diagnosable.
+    /// How many times a read is attempted before the app says she cannot be
+    /// reached, and how long it waits between attempts.
+    ///
+    /// On 2026-09-18 the phone left the Wi-Fi and Tailscale fell back from a
+    /// direct route to a relay — 34ms became 400ms. One request lost to that
+    /// transition put "she's unreachable" on the screen, and because the
+    /// banner only cleared on a later success and nothing retried, it stayed
+    /// there until Hector pulled to refresh. A transient network change should
+    /// not need him to do anything.
+    ///
+    /// Three attempts over roughly three seconds: enough to ride out a route
+    /// change or a relay hiccup, short enough that a genuinely dead backend is
+    /// still reported promptly rather than hidden behind a spinner.
+    private static let readAttempts = 3
+    private static let retryDelays: [Duration] = [.milliseconds(400), .seconds(2)]
+
     private func fetchOne<D: Decodable>(_ path: String) async -> D? {
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: request(path))
-            let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
-            guard status == 200 else {
-                ConnectionStatus.note(
-                    status == 401 || status == 403 ? .unauthorized : .unreachable)
-                return nil
-            }
-            ConnectionStatus.note(.ok)   // reachable + authorized
+        for attempt in 0..<Self.readAttempts {
             do {
-                return try JSONDecoder().decode(D.self, from: data)
+                let (data, resp) = try await URLSession.shared.data(for: request(path))
+                let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
+                if status == 401 || status == 403 {
+                    // A rejected token is not a network problem, and trying
+                    // again with the same token is just three rejections.
+                    ConnectionStatus.note(.unauthorized)
+                    return nil
+                }
+                guard status == 200 else {
+                    if await retry(attempt, path: path, because: "HTTP \(status)") { continue }
+                    ConnectionStatus.note(.unreachable)
+                    return nil
+                }
+                ConnectionStatus.note(.ok)   // reachable + authorized
+                do {
+                    return try JSONDecoder().decode(D.self, from: data)
+                } catch {
+                    // Reached her and she answered; the shape disagreed. That
+                    // is drift between this DTO and skills/ios_api.py, not a
+                    // connection problem, and retrying would only repeat it.
+                    #if DEBUG
+                    print("[LiveAliciaService] decode failed for \(path): \(error)")
+                    #endif
+                    return nil
+                }
             } catch {
-                #if DEBUG
-                print("[LiveAliciaService] decode failed for \(path): \(error)")
-                #endif
+                if await retry(attempt, path: path, because: error.localizedDescription) { continue }
+                ConnectionStatus.note(.unreachable)
                 return nil
             }
-        } catch {
-            ConnectionStatus.note(.unreachable)
-            return nil
         }
+        ConnectionStatus.note(.unreachable)
+        return nil
+    }
+
+    /// True when another attempt is due; sleeps first and says we are trying.
+    private func retry(_ attempt: Int, path: String, because reason: String) async -> Bool {
+        guard attempt < Self.readAttempts - 1 else { return false }
+        #if DEBUG
+        print("[LiveAliciaService] \(path) attempt \(attempt + 1) failed: \(reason)")
+        #endif
+        ConnectionStatus.note(.reaching)
+        try? await Task.sleep(for: Self.retryDelays[min(attempt, Self.retryDelays.count - 1)])
+        return true
     }
 
     private func fetch<D: Decodable>(_ path: String, as type: [D].Type) async -> [D]? {
