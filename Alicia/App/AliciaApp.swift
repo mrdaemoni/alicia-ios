@@ -49,6 +49,12 @@ struct AliciaApp: App {
                         .task {
                         store.reader.prepareReadingPreview(unavailable: ProcessInfo.processInfo.arguments.contains("--reading-unavailable"))
                     }
+                } else if ProcessInfo.processInfo.arguments.contains("--ritual-widget-preview") {
+                    // The home-screen widget draws from Shared, so the app can
+                    // render it. Both rendering modes at once: her underline
+                    // has to be dark on paper and light on the tinted plate,
+                    // and only seeing them together proves it inverts.
+                    RitualWidgetPreview()
                 } else if ProcessInfo.processInfo.arguments.contains("--motion-lab") {
                     MotionLabView()
                 } else if ProcessInfo.processInfo.arguments.contains("--dialogue-review-sheet-preview") {

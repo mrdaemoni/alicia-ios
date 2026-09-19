@@ -58,7 +58,7 @@ struct MindBodyOverview: View {
             Text(question).font(.system(size: 21, design: .serif))
             Text("A connection to explore · your experience tells us whether it fits.").font(.caption).foregroundStyle(Theme.inkSoft)
             Button(expanded ? "Close reflection" : "Connect this to my day") { expanded.toggle(); saved = false }
-                .inkAction().accessibilityIdentifier("body.connectDay")
+                .inkAction("connect").accessibilityIdentifier("body.connectDay")
             if expanded {
                 // These two read the tint the same way a bare Button does,
                 // and were the last sea-slate left on the surface. The
@@ -92,7 +92,7 @@ struct MindBodyOverview: View {
                     event.episode_id = store.episodeDay?.episode?.id ?? ""
                     saving = true
                     Task { saved = await store.bodyStore.capture(event); saving = false; if saved { note = ""; verdict = "" } }
-                }.inkAction().disabled(saving || (verdict.isEmpty && note.isEmpty) || note.count > 3900)
+                }.inkAction("keep").disabled(saving || (verdict.isEmpty && note.isEmpty) || note.count > 3900)
                 if saved { Text("Saved on this phone" + (store.bodyStore.pendingIDs.isEmpty ? " and with Alicia." : "; waiting to sync.")).font(.caption) }
                 Text("This reflection stays in your private Body record, linked to the selected goals and episode.").font(.caption)
             }

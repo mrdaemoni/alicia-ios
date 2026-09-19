@@ -15,7 +15,7 @@ struct BodyView: View {
                         .font(.system(size: 22, design: .serif))
                     InkTabs(items: ["Today", "Goals", "Evidence"], selection: $segment)
                     BodyStatus()
-                    Button("Ask Alicia about my wellbeing") { ask = true }.inkAction()
+                    Button("Ask Alicia about my wellbeing") { ask = true }.inkAction("ask")
                     if segment == 0 {
                         RitualCaptureView()
                         // Only a bridge the backend actually accepted draws
@@ -35,7 +35,8 @@ struct BodyView: View {
                                             Text(metric.label).font(.subheadline)
                                             Text(metric.display(metric.value)).font(.system(size: 20, design: .serif))
                                             Text(metric.date ?? "No measurement").font(.caption).foregroundStyle(Theme.inkSoft)
-                                            Text("View history").font(.caption).underline()
+                                            Text("View history").font(.caption)
+                                                .inkUnderlined(seed: metric.id, color: Theme.ink)
                                         }.frame(maxWidth: .infinity, minHeight: 110, alignment: .leading)
                                     }.buttonStyle(.plain)
                                 }
@@ -53,7 +54,8 @@ struct BodyView: View {
                                     Text(source.title).font(.headline)
                                     Text(source.category + " · " + (source.report_date ?? "Report date unknown"))
                                         .font(.caption).foregroundStyle(Theme.inkSoft)
-                                    Text("Read evidence").font(.caption).underline()
+                                    Text("Read evidence").font(.caption)
+                                        .inkUnderlined(seed: source.id, color: Theme.ink)
                                 }.frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
                             }.buttonStyle(.plain)
                             Divider()
@@ -63,7 +65,7 @@ struct BodyView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Not accepted by Alicia: " + (event.text.isEmpty ? event.ritual : event.text)).font(.subheadline)
                             Text("Discard this rejected edit to edit the current version. The original capture remains in your local files.").font(.caption)
-                            Button("Discard rejected edit") { store.bodyStore.discardRejected(event) }.inkAction(quiet: true)
+                            Button("Discard rejected edit") { store.bodyStore.discardRejected(event) }.inkAction("discard", quiet: true)
                         }
                     }
                     if !store.bodyStore.pendingIDs.isEmpty {
@@ -92,7 +94,7 @@ struct BodyView: View {
                 Text("Wellness goals").font(.title2)
                 Spacer()
                 Button("Add goal") { editor = BodyEvent(kind: "goal", goal_id: UUID().uuidString) }
-                    .inkAction().accessibilityIdentifier("body.addGoal")
+                    .inkAction("add goal").accessibilityIdentifier("body.addGoal")
             }
             Text("Choose what better means. Measurements inform the work; you decide whether the outcome is achieved.")
                 .font(.subheadline).foregroundStyle(Theme.inkSoft)
@@ -108,7 +110,7 @@ struct BodyView: View {
                             .font(.caption)
                     }
                     HStack {
-                        Button("Review or edit") { editor = goal }.inkAction()
+                        Button("Review or edit") { editor = goal }.inkAction("review " + goal.goal_id)
                             .disabled(store.bodyStore.pendingIDs.contains(goal.id))
                         Spacer()
                         Text("\(goal.source_ids.count) source(s)").font(.caption)
@@ -121,8 +123,9 @@ struct BodyView: View {
                             // affordance — the underline already under "View
                             // history" and "Read evidence".
                             NavigationLink(source.title) { BodySourceView(source: source) }
-                                .buttonStyle(.plain).font(.caption).underline()
+                                .buttonStyle(.plain).font(.caption)
                                 .foregroundStyle(Theme.ink)
+                                .inkUnderlined(seed: source.id, color: Theme.ink)
                         }
                     }
                     let notes = store.bodyStore.events.filter { $0.kind == "reflection" && $0.goal_id == goal.goal_id }
@@ -168,7 +171,7 @@ struct BodyStatus: View {
                 Text(store.bodyStore.refreshing ? "Reading your private evidence…" : "Connect to your Mac to load Body.").font(.subheadline)
             }
             if store.bodyStore.error != nil || store.bodyStore.overview?.status != "ready" {
-                Button("Refresh Body") { Task { await store.bodyStore.refresh() } }.inkAction()
+                Button("Refresh Body") { Task { await store.bodyStore.refresh() } }.inkAction("refresh")
             }
         }
     }
@@ -193,7 +196,7 @@ struct RitualCaptureView: View {
                         saving = true
                         Task { await store.bodyStore.capture(event); saving = false }
                     }
-                    .inkAction().disabled(saving).frame(minWidth: 100)
+                    .inkAction(ritual.0).disabled(saving).frame(minWidth: 100)
                     .accessibilityIdentifier("body.ritual." + ritual.0)
                 }
                 Divider()
@@ -305,14 +308,14 @@ struct BodySourceView: View {
                 if let page, page.status == "ready" {
                     ForEach(page.passages ?? []) { passage in Text(passage.excerpt).textSelection(.enabled) }
                     HStack {
-                        if offset > 0 { Button("Previous passages") { offset = max(0, offset - 5) }.inkAction(quiet: true) }
+                        if offset > 0 { Button("Previous passages") { offset = max(0, offset - 5) }.inkAction("previous", quiet: true) }
                         Spacer()
-                        if let next = page.next_offset { Button("More passages") { offset = next }.inkAction(quiet: true) }
+                        if let next = page.next_offset { Button("More passages") { offset = next }.inkAction("more", quiet: true) }
                     }.frame(minHeight: 44)
                     if page.passages?.isEmpty == true { Text("No extracted text is available for this source.") }
                 } else {
                     Text(loading ? "Reading the local report…" : "Report text unavailable. The original source remains on your Mac.")
-                    Button("Retry") { Task { await load() } }.inkAction()
+                    Button("Retry") { Task { await load() } }.inkAction("retry")
                 }
                 Divider()
                 Text("Local evidence · extracted text may contain errors. Historical findings are not automatically current findings.").font(.caption)
@@ -341,7 +344,7 @@ private struct BodyQuestionView: View {
                     Button(working ? "Thinking on your Mac…" : "Ask privately") {
                         working = true
                         Task { answer = await store.bodyStore.ask(question) ?? .init(status: "unavailable", text: "Cannot reach your private answer. Please retry."); working = false }
-                    }.inkAction().disabled(working || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || question.count > 4000)
+                    }.inkAction("ask privately").disabled(working || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || question.count > 4000)
                     if let answer {
                         Text(answer.text).font(.system(size: 20, design: .serif)).textSelection(.enabled)
                         if let model = answer.model { Text("Local model · " + model).font(.caption) }
