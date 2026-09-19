@@ -168,17 +168,20 @@ private struct ConnectionBanner: View {
         if let text = label(for: ConnectionStatus.shared.state) {
             Text(text)
                 .font(.system(size: 11, design: .serif).italic())
-                .foregroundStyle(Theme.rose)
+                // Still trying is not yet bad news: it reads as quiet, not as
+                // an alarm, so a route change does not look like a failure.
+                .foregroundStyle(ConnectionStatus.shared.state == .reaching ? Theme.inkSoft : Theme.rose)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
                 .background(Capsule().fill(Theme.paper.opacity(0.92)))
-                .overlay(Capsule().stroke(Theme.rose.opacity(0.35), lineWidth: 0.7))
+                .overlay(Capsule().stroke((ConnectionStatus.shared.state == .reaching ? Theme.inkSoft : Theme.rose).opacity(0.35), lineWidth: 0.7))
         }
     }
 
     private func label(for state: ConnectionState) -> String? {
         switch state {
         case .ok:           return nil
+        case .reaching:     return "reaching her…"
         case .unreachable:  return "she's unreachable right now"
         case .unauthorized: return "token rejected — check Secrets.plist"
         }
