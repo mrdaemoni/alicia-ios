@@ -5,10 +5,18 @@ struct SurfaceContext: Codable, Equatable {
     var section: String
     var captured_at: String
     var episode_id: String = ""
+    /// Where he was when he said it — a locality and whether that was home,
+    /// the office or away. Never a coordinate. Absent when he has not granted
+    /// location or the place has not resolved, which is an ordinary state.
+    var place: [String: String]? = nil
     var title: String {
         ["us": "Us · home", "mind": "Mind", "body": "Body · private", "alicia": "Alicia", "studio": "Studio", "dialogue": "Dialogue"][section] ?? "Dialogue"
     }
-    var wire: [String: String] { ["section": section, "captured_at": captured_at, "episode_id": episode_id] }
+    var wire: [String: String] {
+        var out = ["section": section, "captured_at": captured_at, "episode_id": episode_id]
+        for (key, value) in place ?? [:] { out["place_" + key] = value }
+        return out
+    }
 }
 
 /// Separate durable drafts prevent a Body draft becoming a Mind message on a tab change.

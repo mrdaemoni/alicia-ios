@@ -294,6 +294,7 @@ struct EpisodeMindView: View {
                     NavigationLink("About you · enrich Alicia’s context") { ContextEnrichmentView() }
                         .font(.callout).frame(minHeight: 44)
                     WorkSessionsEntry()
+                    PlaceAwareness()
                     if let day = store.episodeDay, let episode = day.episode {
                         EpisodeHeading(episode: episode)
                         if !day.understanding.isEmpty {
@@ -444,5 +445,44 @@ struct WorkSessionsEntry: View {
             ? "Your spoken sessions, \(waiting) waiting for you"
             : "Your spoken sessions")
         .sheet(isPresented: $open) { WorkSessionsView() }
+    }
+}
+
+/// Where Alicia thinks he is, and the one place he grants or refuses it.
+///
+/// The permission prompt is raised from here rather than at launch, so the
+/// system dialog arrives attached to a sentence explaining why. What she is
+/// told is shown verbatim — a city and whether that is home, the office or
+/// away — because a location feature he cannot inspect is one he cannot trust.
+struct PlaceAwareness: View {
+    @State private var tracker = PlaceTracker.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("WHERE YOU ARE").font(.system(size: 10, design: .monospaced)).tracking(2)
+                .foregroundStyle(Theme.inkSoft)
+            Text(tracker.summary)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("place.summary")
+            switch tracker.authorization {
+            case .notDetermined:
+                Text("She's told the city and whether it's home, the office or away — never a coordinate.")
+                    .font(.caption).foregroundStyle(Theme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Let Alicia know where I am") { tracker.requestAccess() }
+                    .font(.callout).foregroundStyle(Theme.ink)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("place.grant")
+            case .denied, .restricted:
+                Text("Turn it on in Settings if you want her to know. Everything else works without it.")
+                    .font(.caption).foregroundStyle(Theme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            default:
+                EmptyView()
+            }
+        }
+        .buttonStyle(.plain)
+        .task { tracker.begin() }
     }
 }

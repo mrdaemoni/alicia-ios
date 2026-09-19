@@ -85,12 +85,26 @@ final class PresenceTracker {
         append(kind: "screen_view", ref: name, ms: ms)
     }
 
+    /// Where he is, as a place rather than a position. Sent once when it
+    /// changes — a locality, a region and whether that is home, the office or
+    /// away. No coordinate reaches this buffer; see `PlaceTracker`.
+    private var lastPlace = ""
+
+    func place(_ meta: [String: String]) {
+        let identity = (meta["locality"] ?? "") + "|" + (meta["named"] ?? "")
+        guard identity != lastPlace, !identity.hasPrefix("|") else { return }
+        lastPlace = identity
+        append(kind: "place", ref: meta["locality"] ?? "", meta: meta)
+        flush()
+    }
+
     // MARK: plumbing
 
-    private func append(kind: String, ref: String = "", ms: Int = 0) {
+    private func append(kind: String, ref: String = "", ms: Int = 0, meta: [String: String] = [:]) {
         var event: [String: Any] = ["kind": kind]
         if !ref.isEmpty { event["ref"] = ref }
         if ms > 0 { event["ms"] = ms }
+        if !meta.isEmpty { event["meta"] = meta }
         buffer.append(event)
         if buffer.count >= flushThreshold { flush() }
     }

@@ -31,6 +31,8 @@
 	     like "backend down". Tailscale doesn't need it, LAN does. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Alicia connects to her backend on your Mac Mini over your home network or tailnet.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>So Alicia knows which city you're in — home, the office, or travelling. She's told the place, never a coordinate.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Talk to Alicia — the mic in the composer dictates straight into your message.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
