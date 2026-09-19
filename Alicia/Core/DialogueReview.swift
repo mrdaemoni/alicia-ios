@@ -23,6 +23,7 @@ struct DialogueReview: Codable, Identifiable {
     var comparison_reason: String
     var sources: [Source]
     var context_modules, tools: [String]
+    var context_graph_nodes: [ContextGraphRef]?
     var feedback: [String: Feedback]
     var comparison: Comparison
     var preference: Preference?

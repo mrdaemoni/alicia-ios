@@ -122,6 +122,20 @@ struct DialogueReviewView: View {
 
     @ViewBuilder
     private func inspection(_ value: DialogueReview) -> some View {
+        if let nodes = value.context_graph_nodes, !nodes.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("DREW ON YOUR CONTEXT")
+                    .font(.system(size: 11, design: .monospaced)).tracking(2)
+                    .foregroundStyle(Theme.accentSoft)
+                ForEach(nodes) { n in
+                    NavigationLink { ContextNodeView(nodeID: n.id) } label: {
+                        Text((n.title.isEmpty ? n.id : n.title) + " · " + (n.status == "inferred" ? "unconfirmed reading" : n.status))
+                            .font(.system(size: 14, design: .serif)).foregroundStyle(Theme.inkSoft)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityIdentifier("review.contextNode." + n.id)
+                }
+            }
+        }
         modelAnswers(value)
         if selectedAnswer == "original" || value.comparison.status == "ready" {
             section("Quick feedback") {
