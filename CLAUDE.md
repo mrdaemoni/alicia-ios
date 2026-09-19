@@ -108,6 +108,16 @@ voice findings. Device read-aloud is removed. Podcast read-along uses a labelled
 machine transcript from the original audio, never shownotes as a script. Backend
 A2-036/A2-038 deploy first; task RELEASE.md owns actual shipping status.
 
+## CL-20260919-context-arrangement — the day arranged around his nodes
+
+"In the middle of" now renders `GET /api/context_graph/arrangement`: under each
+node line, the items that bear on it today — question · thinker · passage ·
+goal · finding · your words · place — as `ArrangedItemLine`s with their why.
+The separate "For where you are" strip is gone; its items sit under their
+nodes. The room opens with "Arranged today"; a node shows "Around this today"
+with the evidence line and source. When the arrangement is not ready the plain
+node lines show and nothing waits. Fixtures under the same preview flags.
+
 ## CL-20260918-context-graph-behaviours — "In the middle of"
 
 Us gains one section between the mind/body overview and the goals summary:
@@ -242,6 +252,7 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/greeting` | legacy greeting endpoint; not loaded by the current Us screen |
 | `GET /api/context` · `/api/context/<id>` | retained orbit/receipt API; old Us orbit is unmounted |
 | `GET /api/context_graph?q=&kind=` · `GET /api/context_graph/<id>` · `POST /api/context_graph` | Hector's context graph — his situation as typed, ranked nodes (stated is his, inferred is unconfirmed); node body + receipts + related; acts `confirm` / `correct` / `retire` / `propose` / `worth`, and `translate` (text → the one node it bears on). Rendered on Us as "In the middle of" (`ContextGraphViews.swift`) |
+| `GET /api/context_graph/arrangement` | The day arranged around his active nodes: per node, the episode's questions, elevated items, mind/body findings, his place and his own words that bear on it, each with the line it was drawn from; `status` preparing/ready/refreshing. Rendered under each node of "In the middle of" (CL-20260919-context-arrangement) |
 | `GET /api/context_graph/elevate` · `GET /api/context_graph/translate?title=` | What Us elevates for his situation (thinkers, passages, goals with the line each was drawn from; `status` preparing/ready/refreshing) and a vault note translated into the one node it bears on |
 | `GET /api/home` | retained home/library context; no longer the Us framing source |
 | `GET /api/timeline` | every lived day since she began (Timeline sheet) |

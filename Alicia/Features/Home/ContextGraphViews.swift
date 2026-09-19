@@ -30,16 +30,70 @@ struct WhereYouAreSection: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("us.contextGraph.open")
-                ForEach(graph.whereYouAre) { node in
-                    NavigationLink { ContextNodeView(nodeID: node.id) } label: {
-                        ContextNodeLine(node: node)
+                // The arrangement, when it is ready: each node with what today
+                // bears on it beneath. Otherwise the plain lines, never a wait.
+                if let arrangement = store.contextArrangement, arrangement.isReady, !arrangement.groups.isEmpty {
+                    ForEach(arrangement.groups) { group in
+                        VStack(alignment: .leading, spacing: 8) {
+                            NavigationLink { ContextNodeView(nodeID: group.node.id) } label: {
+                                ContextNodeLine(node: graph.whereYouAre.first { $0.id == group.node.id }
+                                                ?? graph.nodes.first { $0.id == group.node.id }
+                                                ?? ContextNode.placeholder(from: group.node))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("us.contextGraph.node." + group.node.id)
+                            ForEach(group.items) { item in
+                                NavigationLink { ContextNodeView(nodeID: group.node.id, around: item) } label: {
+                                    ArrangedItemLine(item: item)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("us.arranged." + item.id)
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("us.contextGraph.node." + node.id)
+                } else {
+                    ForEach(graph.whereYouAre) { node in
+                        NavigationLink { ContextNodeView(nodeID: node.id) } label: {
+                            ContextNodeLine(node: node)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("us.contextGraph.node." + node.id)
+                    }
                 }
                 Rectangle().fill(Theme.stroke).frame(height: 0.7)
             }
         }
+    }
+}
+
+/// One thing arranged around a node: a kicker for what it is, the line
+/// itself, and the why in a smaller hand. Indented under the node it bears on.
+struct ArrangedItemLine: View {
+    let item: ContextArrangement.Item
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Rectangle().fill(Theme.stroke).frame(width: 0.7).padding(.vertical, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.label)
+                    .font(.system(size: 9, design: .monospaced)).tracking(1.6)
+                    .foregroundStyle(item.kind == "words" ? Theme.ink : Theme.accentSoft)
+                Text(item.title.strippedEmojis)
+                    .font(.system(size: 15, design: .serif))
+                    .foregroundStyle(item.kind == "finding" ? Theme.inkSoft : Theme.ink)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !item.why.isEmpty && item.kind != "words" {
+                    Text(item.why.strippedEmojis)
+                        .font(.system(size: 12, design: .serif)).italic()
+                        .foregroundStyle(Theme.inkSoft.opacity(0.85))
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(.leading, 6)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 
@@ -77,54 +131,6 @@ struct ContextNodeLine: View {
         }
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .contentShape(Rectangle())
-    }
-}
-
-// MARK: - Us: "For where you are" (elevation under the episode questions)
-
-struct ForWhereYouAreSection: View {
-    @Environment(AppStore.self) private var store
-
-    var body: some View {
-        if let elevation = store.contextElevation, elevation.isReady, !elevation.items.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("FOR WHERE YOU ARE")
-                    .font(.system(size: 10, design: .monospaced)).tracking(2)
-                    .foregroundStyle(Theme.inkSoft)
-                ForEach(elevation.items) { item in
-                    NavigationLink {
-                        ContextNodeView(nodeID: item.node_id, elevated: item)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(item.kind.uppercased())
-                                .font(.system(size: 9, design: .monospaced)).tracking(1.6)
-                                .foregroundStyle(Theme.accentSoft)
-                            Text(item.title.strippedEmojis)
-                                .font(.system(size: 19, design: .serif))
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text(item.why.strippedEmojis)
-                                .font(.system(size: 14, design: .serif))
-                                .foregroundStyle(Theme.inkSoft)
-                                .lineLimit(4)
-                                .fixedSize(horizontal: false, vertical: true)
-                            if !item.node_title.isEmpty {
-                                Text(("because you are in the middle of · " + item.node_title).uppercased())
-                                    .font(.system(size: 9, design: .monospaced)).tracking(1.2)
-                                    .foregroundStyle(Theme.inkSoft.opacity(0.8))
-                                    .lineLimit(2)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("us.elevated." + item.id)
-                }
-                Text(elevation.notice)
-                    .font(.system(size: 11, design: .serif)).italic()
-                    .foregroundStyle(Theme.inkSoft.opacity(0.8))
-            }
-        }
     }
 }
 
@@ -180,12 +186,38 @@ struct ContextGraphRoom: View {
             ToolbarItem(placement: .topBarLeading) { InkBackButton() }
             ToolbarItem(placement: .principal) { InkTitleLine(text: "In the middle of", size: 16) }
         }
-        .task { await store.refreshContextGraph(); await store.refreshContextElevation() }
-        .refreshable { await store.refreshContextGraph(); await store.refreshContextElevation() }
+        .task { await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
+        .refreshable { await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
     }
 
     @ViewBuilder private var elevated: some View {
-        if let elevation = store.contextElevation {
+        if let arrangement = store.contextArrangement, arrangement.isReady, arrangement.arrangedCount > 0 {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("ARRANGED TODAY")
+                    .font(.system(size: 10, design: .monospaced)).tracking(2)
+                    .foregroundStyle(Theme.inkSoft)
+                if !arrangement.episodeID.isEmpty {
+                    Text(("around " + arrangement.episodeID).uppercased())
+                        .font(.system(size: 9, design: .monospaced)).tracking(1.4)
+                        .foregroundStyle(Theme.inkSoft.opacity(0.8))
+                }
+                ForEach(arrangement.groups.filter { $0.arranged }) { group in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(group.node.title.strippedEmojis)
+                            .font(.system(size: 15, design: .serif))
+                        ForEach(group.items) { item in
+                            NavigationLink { ContextNodeView(nodeID: group.node.id, around: item) } label: {
+                                ArrangedItemLine(item: item)
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }
+                Text(arrangement.notice)
+                    .font(.system(size: 11, design: .serif)).italic()
+                    .foregroundStyle(Theme.inkSoft.opacity(0.8))
+            }
+            Rectangle().fill(Theme.stroke).frame(height: 0.7)
+        } else if let elevation = store.contextElevation {
             VStack(alignment: .leading, spacing: 10) {
                 Text("ELEVATED TODAY")
                     .font(.system(size: 10, design: .monospaced)).tracking(2)
@@ -229,6 +261,7 @@ struct ContextNodeView: View {
     @Environment(AppStore.self) private var store
     let nodeID: String
     var elevated: ContextElevation.Item? = nil
+    var around: ContextArrangement.Item? = nil
     @State private var node: ContextNode?
     @State private var related: [ContextNode] = []
     @State private var error = ""
@@ -307,6 +340,32 @@ struct ContextNodeView: View {
             .font(.system(size: 17, design: .serif))
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
+        if let group = store.contextArrangement?.group(for: node.id), !group.items.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("AROUND THIS TODAY")
+                    .font(.system(size: 10, design: .monospaced)).tracking(2)
+                    .foregroundStyle(Theme.inkSoft)
+                ForEach(group.items) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        ArrangedItemLine(item: item)
+                        if item.id == around?.id || group.items.count <= 2 {
+                            if !item.evidence.excerpt.isEmpty, item.evidence.excerpt != item.title {
+                                Text("“" + item.evidence.excerpt.strippedEmojis + "”")
+                                    .font(.system(size: 13, design: .serif)).italic()
+                                    .foregroundStyle(Theme.inkSoft.opacity(0.9))
+                                    .padding(.leading, 18)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Text((item.evidence.source + (item.date.isEmpty ? "" : " · " + item.date)).uppercased())
+                                .font(.system(size: 9, design: .monospaced)).tracking(1.2)
+                                .foregroundStyle(Theme.inkSoft.opacity(0.7))
+                                .padding(.leading, 18)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            }
+        }
         if node.status != "retired" {
             acts(node)
         } else {

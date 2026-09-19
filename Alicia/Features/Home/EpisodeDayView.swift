@@ -69,7 +69,6 @@ struct EpisodeHomeView: View {
                                 Rectangle().fill(Theme.stroke).frame(height: 0.7)
                             }
                         }
-                        ForWhereYouAreSection()
                         Button("CONTINUE IN DIALOGUE") { store.selectedSection = .dialogue }
                             .font(.system(size: 11, design: .monospaced)).tracking(1.3)
                     } else {
@@ -106,8 +105,8 @@ struct EpisodeHomeView: View {
             .task { await store.refreshMorningBriefing(); await store.bodyStore.refresh() }
             // The graph and its elevation load on their own task so a slow body
             // refresh never holds the section back.
-            .task { await store.refreshContextGraph(); await store.refreshContextElevation() }
-            .refreshable { await store.refreshMorningBriefing(); await store.refreshEpisodeDay(); await store.bodyStore.refresh(); await store.refreshContextGraph(); await store.refreshContextElevation() }
+            .task { await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
+            .refreshable { await store.refreshMorningBriefing(); await store.refreshEpisodeDay(); await store.bodyStore.refresh(); await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
             .presenceBackground(.us, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showHistory) { EpisodeHistoryView() }

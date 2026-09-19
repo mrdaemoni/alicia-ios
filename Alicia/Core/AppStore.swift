@@ -194,6 +194,9 @@ final class AppStore {
     func refreshContextElevation() async {
         if let fresh = await service.contextElevation() { contextElevation = fresh }
     }
+    func refreshContextArrangement() async {
+        if let fresh = await service.contextArrangement() { contextArrangement = fresh }
+    }
     func contextNode(_ id: String) async -> (node: ContextNode, related: [ContextNode])? {
         await service.contextNode(id: id)
     }
@@ -1031,6 +1034,7 @@ final class AppStore {
     // survives a failed fetch; the error is shown only when nothing is held.
     var contextGraph: ContextGraph?
     var contextElevation: ContextElevation?
+    var contextArrangement: ContextArrangement?
     var contextGraphError = ""
     /// Her morning/evening self-reflections (`/api/reflections`).
     var reflections: [Reflection] = []
