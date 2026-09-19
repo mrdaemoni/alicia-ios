@@ -167,7 +167,7 @@ struct ListeningStage<Controls: View>: View {
                 .foregroundStyle(Theme.ink)
                 .lineSpacing(4)
                 .scrollContentBackground(.hidden)
-                .frame(maxWidth: .infinity, minHeight: 300, alignment: .topLeading)
+                .frame(minHeight: 100, maxHeight: .infinity, alignment: .topLeading)
                 .accessibilityIdentifier("listening.reviewEditor")
                 .accessibilityLabel("Your private reflection")
             if let limit = characterLimit {

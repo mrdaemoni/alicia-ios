@@ -1,3 +1,7 @@
+## A2-057 — private Body walk review
+
+A Body walk without an episode keeps its original audio on the phone and opens an editable review before the private Body request. Non-ready replies, connection errors and local transcript-write failures retain the draft; success requires a ready reply and a saved submitted transcript. The existing private question limit is visible at 4000 characters; words are never shortened automatically. The review editor resizes for the keyboard so audio review and send remain reachable. Episode walks retain Mac transcription. Source and release evidence: shared A2-057 task; this note alone is not a release claim.
+
 ## A2-057 — private Body walk (revision 2, Codex changes-requested resolved)
 
 Read [docs/VOICE_CAPTURE.md](docs/VOICE_CAPTURE.md). A no-episode Body walk stays

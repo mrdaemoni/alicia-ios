@@ -2,7 +2,7 @@
 """Compile/run the real private Body walk logic with inert dependencies.
 
 Extracts verbatim: AppStore.sendPrivateBodyWalk, VoiceArchive.shouldStartFreshRecording,
-VoiceRecording.isPrivateBody, and the private-Body context derivation. Only
+with minimal record fixtures. Only
 network/storage/UI dependencies are substituted. No device or live state writes,
 and — proven by compilation — no /walk, history, upload, or model call exists in
 the private lane.
@@ -16,6 +16,11 @@ start = appstore.index('    func sendPrivateBodyWalk(')
 end = appstore.index('\n    }\n', start) + len('\n    }')
 send_method = appstore[start:end]
 
+archive_source = (root / 'Alicia/Core/VoiceEvidence.swift').read_text()
+a = archive_source.index('    func shouldStartFreshRecording(')
+b = archive_source.index('\n    }', a) + len('\n    }')
+resume_method = archive_source[a:b]
+
 program = r'''
 import Foundation
 
@@ -26,15 +31,7 @@ import Foundation
 struct Message { enum Sender { case me, alicia }; var sender: Sender; var text: String; var recordingID: String? = nil }
 struct BodyAnswer { var text: String; var status: String = "ready" }
 
-// ---- Context derivation: the exact rule startVoiceCapture now applies ----
-struct SurfaceContext { var section: String }
-struct VoiceContext { var surface_context: SurfaceContext? }
-func derivedPrivateBody(_ context: VoiceContext) -> Bool {
-    // Mirror of `let privateBody = context.surface_context?.section == "body"`.
-    context.surface_context?.section == "body"
-}
-
-// ---- VoiceRecording.isPrivateBody and shouldStartFreshRecording (verbatim-shaped) ----
+// Minimal record fixtures; resume and send methods below come from production.
 struct VoiceRecording {
     var id: String
     var deleted = false
@@ -52,12 +49,7 @@ struct VoiceRecording {
         records[i].transcripts.append((text, kind))
         return true
     }
-    // Verbatim from VoiceEvidence.swift.
-    func shouldStartFreshRecording(_ id: String) -> Bool {
-        guard !id.isEmpty, let record = recording(id) else { return true }
-        if record.deleted { return true }
-        return record.macProcessing != true && !record.isPrivateBody
-    }
+__RESUME__
 }
 @MainActor final class BodyStoreStub {
     var answer: BodyAnswer?
@@ -74,11 +66,6 @@ __SEND__
 }
 @main struct Checks {
     @MainActor static func main() async {
-        // Context: a no-episode Body walk derives a private context; others do not.
-        precondition(derivedPrivateBody(VoiceContext(surface_context: SurfaceContext(section: "body"))))
-        precondition(!derivedPrivateBody(VoiceContext(surface_context: SurfaceContext(section: "mind"))))
-        precondition(!derivedPrivateBody(VoiceContext(surface_context: nil)))
-
         // Resume: a private original (and a Mac walk) is continued, never forked.
         let a = VoiceArchiveStub()
         a.records = [VoiceRecording(id: "priv", macProcessing: nil, surfaceSection: "body")]
@@ -177,10 +164,10 @@ __SEND__
         let refused = await wrong.sendPrivateBodyWalk("r3", text: "Episode words")
         precondition(!refused && wrong.bodyStore.asked.isEmpty)
 
-        print("PASS: private Body walk — context, resume, private route, ready-status, durable submit, local-write and 4000-char failures")
+        print("PASS: private Body walk — resume, private route, ready-status, durable submit, local-write and 4000-char failures")
     }
 }
-'''.replace('__SEND__', send_method)
+'''.replace('__SEND__', send_method).replace('__RESUME__', resume_method)
 
 env = dict(os.environ, DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
 with tempfile.TemporaryDirectory(prefix='alicia-private-body-walk-') as tmp:
