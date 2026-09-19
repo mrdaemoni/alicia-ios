@@ -72,7 +72,13 @@ struct BodyView: View {
                     }
                 }.padding(22)
             }
-            .background(Theme.paper)
+            // v40: Body was the one room she never walked into. Every other
+            // section carries the same field — the time-of-day tint and her
+            // body moving behind the page — and Body alone was flat paper, so
+            // stepping into it felt like leaving the app rather than moving
+            // through it. Hector: "it should feel like there's a continuity of
+            // her moving from one place to the other."
+            .presenceBackground(.body, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .task { await store.bodyStore.refresh() }
             .refreshable { await store.bodyStore.refresh() }

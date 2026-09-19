@@ -32,7 +32,7 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Alicia connects to her backend on your Mac Mini over your home network or tailnet.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>So Alicia knows which city you're in — home, the office, or travelling. She's told the place, never a coordinate.</string>
+	<string>So Alicia knows where you are — home in Palo Alto, the office in Seattle, or travelling. She's told the place by name, never a coordinate.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Talk to Alicia — the mic in the composer dictates straight into your message.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
