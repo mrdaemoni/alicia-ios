@@ -351,7 +351,14 @@ final class AppStore {
         return true
     }
 
-    func startVoiceCapture(_ speech: SpeechTranscriber, id: String, walk: Bool, surface: SurfaceContext? = nil) throws {
+    /// `liveText` runs Apple's on-device recognizer alongside the raw sink so
+    /// the words can be read back while he is still speaking. It is off by
+    /// default — Mac-mode capture deliberately needs microphone permission
+    /// only, and the Mac's transcript remains the authority either way. The
+    /// full-screen ListeningRoom turns it on because seeing the words land is
+    /// the entire reason Hector asked for that screen.
+    func startVoiceCapture(_ speech: SpeechTranscriber, id: String, walk: Bool,
+                           surface: SurfaceContext? = nil, liveText: Bool = false) throws {
         guard !isMock else { throw CocoaError(.featureUnsupported) }
         let episodeID = walk ? walkEpisodeID : surface?.episode_id ?? episodeDay?.episode?.id ?? ""
         let sameEpisode = episodeDay?.episode?.id == episodeID
@@ -376,7 +383,7 @@ final class AppStore {
             guard let self else { return }
             self.voiceArchive.addTranscript(text, kind: "on_device", to: id)
             Task { await self.syncVoiceArchive() }
-        }, liveTranscription: privateBody, onCaptureError: { [weak self] error in
+        }, liveTranscription: privateBody || liveText, onCaptureError: { [weak self] error in
             self?.voiceArchive.noteCaptureError(error, id: id)
         })
         Task { await syncVoiceArchive() }
@@ -1102,9 +1109,38 @@ final class AppStore {
     /// Which proactive card the Alicia tab should scroll to on arrival
     /// (set by a Dialogue whisper tap; cleared after the scroll).
     var pendingMindFocusID: String?
-    /// The Dialogue composer owns the keyboard — the editorial tab bar
-    /// steps aside while it's up.
+    /// The Dialogue composer owns the keyboard. Kept for the Dialogue tab's
+    /// own field; since v39 nothing steps aside for it — the tab bar and the
+    /// composer band are permanent, and typing happens in `showConversation`.
     var composerFocused = false
+
+    /// Writing to her, as a layer over whatever section he is on. The sheet
+    /// carries `surfaceContext()` in with it and hands the page back on close,
+    /// which is why this is a presentation flag rather than a tab.
+    var showConversation = false
+    /// The microphone, full screen. Both the composer's TALK and "Talk about
+    /// this episode" raise this; `listeningEpisode` says which one, because an
+    /// episode reflection is saved and reviewed differently from a remark.
+    var showListening = false
+    var listeningEpisode = false
+
+    func openConversation() {
+        showListening = false
+        showConversation = true
+    }
+
+    /// Open the microphone over the current section. `episode` routes the
+    /// capture through the walk lifecycle (original audio kept, Mac transcript,
+    /// an explicit review before anything is sent).
+    func openListening(episode: Bool) {
+        showConversation = false
+        listeningEpisode = episode
+        if episode {
+            openWalk()
+        } else {
+            showListening = true
+        }
+    }
     var isWalking: Bool { thinkingMode == "walk" }
 
     /// Start or end a walk. Her acknowledgment lands in the timeline.

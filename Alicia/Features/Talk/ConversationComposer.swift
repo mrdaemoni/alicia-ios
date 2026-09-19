@@ -1,188 +1,134 @@
 import SwiftUI
 
-/// One stable input owner above the tab bar. Section changes never reparent the microphone.
+/// The way to reach her, as a permanent band directly above the navigation.
+///
+/// Codex's A2-045 version made this the single input owner so a section change
+/// could never reparent the microphone or leak a Body draft into Mind. What it
+/// still did was behave like a state: it took the keyboard in place, and the
+/// tab bar folded away underneath it.
+///
+/// Hector's build-18 note: *"the interface to talking to Alicia is broken. It
+/// should always be present right above the bottom bar of navigation. It should
+/// be with black background matching the same style as the navigation."*
+///
+/// So this band is furniture. It is always on screen, it is drawn on the same
+/// ink ground as `EditorialTabBar`, and it never takes the keyboard itself —
+/// tapping it raises `ConversationSheet` over the page he is on, and TALK
+/// raises the full-screen `ListeningRoom`. Both carry this band's section with
+/// them, which is what makes "about BODY" true rather than decorative.
 struct ConversationComposer: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var speech = SpeechTranscriber()
-    @State private var starting = false
-    @State private var generation = 0
-    @State private var capture: SurfaceContext?
-    @State private var activeRecordingID = ""
-    @State private var status = ""
-    @State private var reviewID: String?
-    @State private var showReview = false
-    @FocusState private var focused: Bool
+
     private var section: SurfaceContext { store.surfaceContext() }
-    private var draft: Binding<String> {
-        Binding(get: { store.composerDrafts.text(for: section.section) },
-                set: { value in
-                    store.composerDrafts.set(value, for: section.section)
-                    if section.section == "body", value.isEmpty { UserDefaults.standard.removeObject(forKey: "alicia.bodyDraftRecordingID") }
-                })
-    }
     private var privateBody: Bool { section.section == "body" }
     private var busy: Bool { privateBody ? store.privateBodySending : store.isStreaming }
-    private var previewListening: Bool {
-#if DEBUG
-        return ProcessInfo.processInfo.arguments.contains("--composer-listening-preview") && store.isMock
-#else
-        return false
-#endif
-    }
-    private var recording: Bool { speech.isRecording || speech.isFinishing }
+
+    /// What he last typed here, per section. Shown as the field's own text so
+    /// an unsent draft is visible from the outside, not hidden in the sheet.
+    private var draft: String { store.composerDrafts.text(for: section.section) }
+
     private var latestReply: Message? {
-        (privateBody ? store.privateBodyMessages : store.messages).last(where: { $0.sender == .alicia && !$0.text.isEmpty })
+        (privateBody ? store.privateBodyMessages : store.messages)
+            .last(where: { $0.sender == .alicia && !$0.text.isEmpty })
     }
+
+    private var episode: EpisodeDay.Episode? { store.episodeDay?.episode }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text("ABOUT · " + (capture?.title ?? section.title).uppercased())
-                    .font(.system(size: 10, design: .monospaced)).tracking(0.6)
-                    .accessibilityIdentifier("composer.context")
-                Spacer()
-                Button("CONVERSATION") { focused = false; pauseCapture(); store.selectedSection = .dialogue }
-                    .font(.system(size: 9, design: .monospaced)).frame(minHeight: 32)
-                    .accessibilityIdentifier("dialogue.open")
-            }
-            if !privateBody, let work = store.collaboration.dialogueContext {
-                HStack {
-                    Text("Passage · " + work.sectionTitle).font(.caption).lineLimit(1)
-                    Spacer()
-                    Button("Clear") { store.collaboration.dialogueContext = nil }.font(.caption)
-                }.accessibilityIdentifier("workReview.dialogueContext")
-            }
-            if !privateBody, store.answeringAskID != nil {
-                HStack {
-                    Text("Replying to · " + store.answeringAskExcerpt).font(.caption).lineLimit(1)
-                    Spacer(); Button("Cancel") { store.cancelAnswering() }.font(.caption)
-                }
-            }
-            if recording || starting || previewListening {
-                ListeningPresence(isRecording: (speech.isRecording && !speech.isFinishing) || previewListening, isStarting: starting,
-                    seconds: speech.recordedSeconds, level: speech.inputLevel,
-                    microphoneName: speech.microphoneName, liveTextAvailable: speech.liveTextAvailable,
-                    transcribesOnMac: capture?.section != "body", voice: listeningVoice)
-                    .frame(maxWidth: .infinity).padding(.vertical, 5)
-            } else if let latestReply, store.selectedSection != .dialogue, !focused {
-                Button { store.selectedSection = .dialogue } label: {
-                    Text(latestReply.text).font(.system(size: 14, design: .serif)).lineLimit(2)
+        VStack(alignment: .leading, spacing: 7) {
+            context
+            if busy {
+                Text(privateBody ? "Thinking privately on your Mac…" : "Alicia is thinking…")
+                    .font(.caption).foregroundStyle(Theme.paper.opacity(0.7))
+            } else if let latestReply, draft.isEmpty {
+                Button { store.openConversation() } label: {
+                    Text(latestReply.text)
+                        .font(.system(size: 14, design: .serif))
+                        .foregroundStyle(Theme.paper.opacity(0.72))
+                        .lineLimit(2).multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }.accessibilityIdentifier("composer.lastReply")
             }
-            HStack(spacing: 8) {
-                TextField("Talk or type to Alicia…", text: draft, axis: .vertical)
-                    .lineLimit(1...4).font(.system(size: 16, design: .serif))
-                    .focused($focused).disabled(recording || starting)
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                    .background(Theme.ink.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
-                    .accessibilityIdentifier("dialogue.composer")
-                Button { toggleRecording() } label: {
-                    Text(recording ? "FINISH" : starting ? "CANCEL" : "TALK")
-                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                        .frame(minWidth: 46, minHeight: 44)
-                }.disabled(speech.isFinishing || (!privateBody && store.collaboration.dialogueContext != nil))
-                    .accessibilityLabel(recording ? "Finish recording" : "Talk to Alicia")
-                    .accessibilityIdentifier("composer.microphone")
-                Button { send() } label: {
-                    InkSubmitArrow(size: 27, color: Theme.ink, seed: 23).frame(width: 44, height: 44)
-                }.disabled(busy || recording || starting || draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.episodeChoiceSyncing)
-                    .accessibilityLabel("Send message").accessibilityIdentifier("composer.send")
+            HStack(spacing: 10) {
+                field
+                talkButton
             }
-            if busy { Text(privateBody ? "Thinking privately on your Mac…" : "Alicia is thinking…").font(.caption) }
-            if let error = store.composerDrafts.error ?? speech.lastError {
-                Text(error).font(.caption).fixedSize(horizontal: false, vertical: true)
-            } else if !status.isEmpty { Text(status).font(.caption).fixedSize(horizontal: false, vertical: true) }
-            if let record = selectedRecording, !recording, !starting {
-                Button(record.isPrivateBody ? "REVIEW PRIVATE ORIGINAL" : record.finalization == nil ? "FINISH & TRANSCRIBE SAVED AUDIO" : "REVIEW RECORDING & MAC TRANSCRIPT") {
-                    focused = false; reviewID = record.id
-                    if !record.isPrivateBody { _ = store.finalizeVoice(record.id) }
-                    showReview = true
-                }.font(.system(size: 9, design: .monospaced)).frame(minHeight: 30)
+            if let error = store.composerDrafts.error {
+                Text(error).font(.caption).foregroundStyle(Theme.paper.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.horizontal, 18).padding(.vertical, 8)
-        .foregroundStyle(Theme.ink).background(Theme.paper)
-        .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 10)
+        .background(Theme.ink)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.paper.opacity(0.12)).frame(height: 0.7) }
         .buttonStyle(.plain)
-        .onChange(of: focused) { _, value in store.composerFocused = value }
-        .onChange(of: store.selectedSection) { _, value in
-            focused = false; pauseCapture(); status = ""
-            if value != .dialogue { store.cancelAnswering(); store.collaboration.dialogueContext = nil }
-        }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { pauseCapture() } }
-        .onChange(of: store.showWalk) { _, shown in if shown { pauseCapture(); focused = false } }
-        .onDisappear { pauseCapture(); store.composerFocused = false }
-        .sheet(isPresented: $showReview) { VoiceRecordingsView(recordingID: reviewID) }
     }
-    private var selectedRecording: VoiceRecording? {
-        store.voiceArchive.recording(UserDefaults.standard.string(forKey: "alicia.surfaceRecording." + section.section) ?? "")
-    }
-    private var listeningVoice: AliciaPresence.Voice {
-        switch capture?.section ?? section.section {
-        case "mind": .ariadne
-        case "body", "dialogue": .psyche
-        case "alicia": .beatrice
-        case "studio": .muse
-        default: .musubi
-        }
-    }
-    private func send() {
-        let text = draft.wrappedValue
-        let context = section
-        guard !busy, !recording, !starting, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        if privateBody { store.sendPrivateBody(text, recordingID: UserDefaults.standard.string(forKey: "alicia.bodyDraftRecordingID") ?? "") }
-        else { store.send(text, surfaceContext: context) }
-        draft.wrappedValue = ""; focused = false; status = ""
-    }
-    private func toggleRecording() {
-        if starting { generation += 1; starting = false; capture = nil; return }
-        if speech.isRecording {
-            Task { await finishCapture(showTranscript: true) }
-            return
-        }
-        focused = false; store.prepareForRecording()
-        let context = section; let stamp = generation + 1; generation = stamp; starting = true
-        Task {
-            defer { if generation == stamp { starting = false } }
-            let granted = context.section == "body" ? await speech.requestAuthorization() : await speech.requestMicrophoneAuthorization()
-            guard granted else { status = "Microphone permission is off. Your typed draft is kept."; return }
-            guard generation == stamp, scenePhase == .active, section.section == context.section, !store.showWalk else { return }
-            let id = UUID().uuidString
-            do {
-                try store.startVoiceCapture(speech, id: id, walk: false, surface: context)
-                activeRecordingID = id; capture = context; status = ""
-                UserDefaults.standard.set(id, forKey: "alicia.surfaceRecording." + context.section)
-            } catch { capture = nil; status = "The microphone could not start. Your draft is kept." }
-        }
-    }
-    private func pauseCapture() {
-        generation += 1; starting = false
-        guard speech.isRecording else { return }
-        speech.stop()
-        completeCapture(showTranscript: false)
-    }
-    private func finishCapture(showTranscript: Bool) async {
-        await speech.finishAndStop()
-        completeCapture(showTranscript: showTranscript)
-    }
-    private func completeCapture(showTranscript: Bool) {
-        guard let original = capture, !activeRecordingID.isEmpty else { return }
-        let id = activeRecordingID
-        if original.section == "body" {
-            let words = speech.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !words.isEmpty {
-                let existing = store.composerDrafts.text(for: "body")
-                store.composerDrafts.set(existing.isEmpty ? words : existing + "\n\n" + words, for: "body")
-                UserDefaults.standard.set(id, forKey: "alicia.bodyDraftRecordingID")
+
+    /// One line that names what she would be hearing about. When an episode is
+    /// playing it says so, because "talk about this episode" was the entry
+    /// point Hector actually used and it must not disappear into a tab.
+    private var context: some View {
+        HStack(spacing: 10) {
+            Text("ABOUT · " + section.title.uppercased())
+                .font(.system(size: 9, design: .monospaced)).tracking(0.8)
+                .foregroundStyle(Theme.paper.opacity(0.55))
+                .accessibilityIdentifier("composer.context")
+            Spacer(minLength: 8)
+            if let episode {
+                Button { store.openListening(episode: true) } label: {
+                    Text("TALK ABOUT " + episode.id)
+                        .font(.system(size: 9, design: .monospaced)).tracking(0.8)
+                        .foregroundStyle(Theme.paper.opacity(0.78))
+                        .lineLimit(1)
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .overlay(RoundedRectangle(cornerRadius: 9)
+                            .stroke(Theme.paper.opacity(0.28), lineWidth: 0.8))
+                }
+                .accessibilityLabel("Talk about " + episode.id)
+                .accessibilityIdentifier("episode.talkAnywhere")
             }
-            status = "Private original saved on this phone. Review the detected words before Send."
-        } else {
-            if store.finalizeVoice(id, speech: speech) {
-                status = "Original saved · your Mac is preparing the transcript."
-                if showTranscript { reviewID = id; showReview = true }
-            } else { status = "Original saved on this phone. Finish the saved recording to transcribe." }
         }
-        capture = nil; activeRecordingID = ""
+    }
+
+    /// Not a `TextField`. Raising the sheet is the whole job, and a real field
+    /// here would pull the keyboard up against the tab bar — the layout fight
+    /// that made the old composer collapse everything around it.
+    private var field: some View {
+        Button { store.openConversation() } label: {
+            HStack(spacing: 8) {
+                Text(draft.isEmpty ? "Talk or type to Alicia…" : draft)
+                    .font(.system(size: 16, design: .serif))
+                    .foregroundStyle(draft.isEmpty ? Theme.paper.opacity(0.5) : Theme.paper)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if !draft.isEmpty {
+                    Text("DRAFT")
+                        .font(.system(size: 8, design: .monospaced)).tracking(0.8)
+                        .foregroundStyle(Theme.paper.opacity(0.55))
+                }
+            }
+            .padding(.horizontal, 13).padding(.vertical, 11)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(Theme.paper.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(draft.isEmpty
+            ? "Write to Alicia about " + section.title
+            : "Continue your draft about " + section.title)
+        .accessibilityIdentifier("dialogue.composer")
+    }
+
+    private var talkButton: some View {
+        Button { store.openListening(episode: false) } label: {
+            Text("TALK")
+                .font(.system(size: 10, design: .monospaced).weight(.semibold)).tracking(1)
+                .foregroundStyle(Theme.ink)
+                .frame(minWidth: 58, minHeight: 44)
+                .background(Theme.paper, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .accessibilityLabel("Talk to Alicia about " + section.title)
+        .accessibilityIdentifier("composer.microphone")
     }
 }

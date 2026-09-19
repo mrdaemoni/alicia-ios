@@ -86,6 +86,13 @@ struct RootView: View {
             // mistake: it exists only while something is being read to you,
             // it follows you off the page you started it from, and its
             // crossed-out mark ends it in one tap.
+            //
+            // v39: the way to reach her is furniture, not a state. It used to
+            // appear only when an episode existed, and both it and the tab bar
+            // collapsed the moment the field took focus — so the one control
+            // Hector reaches for most had three appearances and one of them
+            // was nothing at all. Three permanent bands now, always in this
+            // order: her, then what is being read to him, then where he is.
             ConversationComposer()
             ReadingBar()
             EditorialTabBar()
@@ -122,6 +129,17 @@ struct RootView: View {
         // Serif body type everywhere — the sketchbook voice.
         .fontDesign(.serif)
         .fullScreenCover(isPresented: $store.showWalk) { WalkReflectionView() }
+        // Writing to her is contextual: it belongs on top of the page he is
+        // already on, carrying that page in with it, and it gives the page
+        // back when he closes it. Dialogue stays a place he can also go.
+        .sheet(isPresented: $store.showConversation) {
+            ConversationSheet()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        // The microphone takes the whole screen while it is open, so he can
+        // read his own words at arm's length and see that she is taking them.
+        .fullScreenCover(isPresented: $store.showListening) { ListeningRoom() }
     }
 
     @ViewBuilder

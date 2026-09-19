@@ -56,6 +56,13 @@ struct WalkReflectionView: View {
                 }
             } else if didSave {
                 savedView
+            } else if macMode {
+                // v39: "talk about this episode" opens the same full-screen
+                // room the composer's TALK does. Hector could not tell from a
+                // 90-point strip whether the microphone was taking his words,
+                // so the words are now the page: her particles behind, his own
+                // sentences large in front, and nothing else competing.
+                episodeListening
             } else {
             HStack {
                 Text(store.walkEpisodeID).font(.system(size: 11, design: .monospaced)).tracking(1.5)
@@ -167,6 +174,91 @@ struct WalkReflectionView: View {
         }
     }
 
+    /// True for every recording made since Mac transcription landed: the
+    /// phone keeps the original audio and the Mac writes the transcript he
+    /// reviews. The legacy typed path below is kept for older recordings.
+    private var macMode: Bool {
+        store.voiceArchive.recording(store.walkRecordingID)?.macProcessing == true
+            || store.voiceArchive.recording(store.walkRecordingID) == nil
+    }
+
+    private var episodeListening: some View {
+        ListeningStage(
+            voice: .forSurface("alicia"),
+            isRecording: visibleRecording,
+            isStarting: starting || restarting,
+            level: speech.inputLevel,
+            kicker: store.walkEpisodeID.isEmpty ? "TALKING ABOUT THIS EPISODE"
+                                                : "TALKING ABOUT · " + store.walkEpisodeID,
+            seconds: speech.recordedSeconds,
+            words: spokenWords,
+            placeholder: speech.isFinishing ? "Keeping your last words…"
+                : visibleRecording ? (store.walkPrompt.isEmpty
+                    ? "Say what stayed with you, what you question, or where it meets your day."
+                    : store.walkPrompt.strippedEmojis)
+                : "Stay with the thought. Tap Keep talking when you're ready.",
+            note: listeningNote,
+            close: { pause(); store.pauseEpisodeWalk(); store.showWalk = false },
+            controls: { episodeControls }
+        )
+    }
+
+    /// Live recognition while he speaks, then the audio's own record once the
+    /// recognizer stops. The Mac transcript he reviews later is still the
+    /// authority; this is only so he can watch it landing.
+    private var spokenWords: String {
+        let live = speech.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !live.isEmpty { return live }
+        return store.walkDraft
+    }
+
+    private var listeningNote: String {
+        if let error = speech.lastError { return error }
+        if !status.isEmpty { return status }
+        if visibleRecording, !speech.liveTextAvailable {
+            return "Live text is off, so nothing appears here — the audio is still recording and your Mac writes the transcript."
+        }
+        return "Original audio is kept on this phone. Your Mac writes the transcript, and you review it before it is sent."
+    }
+
+    @ViewBuilder private var episodeControls: some View {
+        VStack(spacing: 10) {
+            EpisodeErrorLine()
+            HStack(spacing: 12) {
+                Button(listening ? "PAUSE" : "KEEP TALKING") {
+                    if listening { Task { await finishListening() } } else { Task { await begin() } }
+                }
+                .font(.system(size: 10, design: .monospaced)).tracking(1.2)
+                .foregroundStyle(Theme.inkSoft)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.stroke, lineWidth: 0.9))
+                .disabled(starting || speech.isFinishing || store.pendingWalkSave != nil)
+                Button(store.isSavingWalk ? "SAVING…" : store.pendingWalkSave != nil ? "RETRY SAVE" : "FINISH & REVIEW") {
+                    let wasListening = listening
+                    Task {
+                        if wasListening { await finishListening() }
+                        guard store.showWalk else { return }
+                        _ = store.finalizeVoice(store.walkRecordingID, speech: speech)
+                    }
+                }
+                .font(.system(size: 11, design: .monospaced).weight(.semibold)).tracking(1.2)
+                .foregroundStyle(Theme.paper)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(Theme.ink, in: RoundedRectangle(cornerRadius: 14))
+                .disabled(store.isSavingWalk || speech.isFinishing
+                          || (!listening && !store.voiceArchive.hasAudio(store.walkRecordingID)))
+                .accessibilityIdentifier("episode.finishWalk")
+            }
+            if store.voiceArchive.hasAudio(store.walkRecordingID), !listening {
+                Button("REVIEW ORIGINAL AUDIO") { pause(); showRecording = true }
+                    .font(.system(size: 9, design: .monospaced)).tracking(1)
+                    .foregroundStyle(Theme.inkSoft).frame(minHeight: 32)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(store.isSavingWalk)
+    }
+
     private var savedView: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("SAVED").font(.system(size: 11, design: .monospaced)).tracking(1.5)
@@ -229,7 +321,10 @@ struct WalkReflectionView: View {
         defer { if generation == startGeneration { starting = false } }
         guard await store.beginWalkRecording() else { return }
         guard canStart(generation) else { store.pauseEpisodeWalk(); return }
-        let allowed = await speech.requestMicrophoneAuthorization()
+        // Speech authorization first so the words can be read while he talks;
+        // microphone alone still records, and `listeningNote` says as much.
+        var allowed = await speech.requestAuthorization()
+        if !allowed { allowed = await speech.requestMicrophoneAuthorization() }
         guard canStart(generation) else { store.pauseEpisodeWalk(); return }
         guard allowed else {
             status = "Microphone permission is off. You can write here, or enable it in Settings."
@@ -241,7 +336,7 @@ struct WalkReflectionView: View {
                 || (store.voiceArchive.recording(store.walkRecordingID) != nil && store.voiceArchive.recording(store.walkRecordingID)?.macProcessing != true) {
                 store.walkRecordingID = UUID().uuidString
             }
-            try store.startVoiceCapture(speech, id: store.walkRecordingID, walk: true)
+            try store.startVoiceCapture(speech, id: store.walkRecordingID, walk: true, liveText: true)
             listening = true
             automaticRestarts = 0
             status = "Recording the original audio. Take your time."
