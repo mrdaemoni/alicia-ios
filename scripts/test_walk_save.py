@@ -28,8 +28,8 @@ enum Section { case us, mind }
     var result: WalkReceipt?
     var sent: [[String: String]] = []
     var duringSave: (() -> Void)?
-    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String) async -> WalkReceipt? {
-        sent.append(["text": text, "episode_id": episodeID, "request_id": requestID, "prompt": prompt, "recording_id": recordingID])
+    func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String, surface: String) async -> WalkReceipt? {
+        sent.append(["text": text, "episode_id": episodeID, "request_id": requestID, "prompt": prompt, "recording_id": recordingID, "surface": surface])
         duringSave?()
         return result
     }
@@ -47,7 +47,7 @@ struct VoiceArchiveStub {
  func pauseEpisodeWalk() {}
     let service = FakeService()
     var pendingWalkSave: [String: String]?
-    var walkDraft = "My reflection", walkEpisodeID = "S1E01", walkRequestID = "receipt-1", walkPrompt = "The actual question"
+    var walkDraft = "My reflection", walkEpisodeID = "S1E01", walkRequestID = "receipt-1", walkPrompt = "The actual question", walkSurface = ""
     var isSavingWalk = false, showWalk = true
     var episodeError = "", thinkingMode = "walk"
     var messages: [Message] = []

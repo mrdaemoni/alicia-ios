@@ -19,6 +19,7 @@ struct WalkReflectionView: View {
     @State private var savedRecordingID = ""
     @State private var savedAudioOnly = false
     @State private var didSave = false
+    @State private var savedPrivate = false
 
     private var visibleRecording: Bool {
 #if DEBUG
@@ -189,8 +190,16 @@ struct WalkReflectionView: View {
     /// phone keeps the original audio and the Mac writes the transcript he
     /// reviews. The legacy typed path below is kept for older recordings.
     private var macMode: Bool {
-        store.voiceArchive.recording(store.walkRecordingID)?.macProcessing == true
-            || store.voiceArchive.recording(store.walkRecordingID) == nil
+        let record = store.voiceArchive.recording(store.walkRecordingID)
+        return record?.macProcessing == true || record == nil || record?.isPrivateBody == true
+    }
+
+    /// A no-episode walk started from the Body section. Its words stay in the
+    /// private Body lane: no Mac transcript, no cloud upload, reviewed then sent
+    /// only through `sendPrivateBodyWalk`.
+    private var privateBodyWalk: Bool {
+        if let record = store.voiceArchive.recording(store.walkRecordingID) { return record.isPrivateBody }
+        return store.walkEpisodeID.isEmpty && store.walkSurface == "body"
     }
 
     private var episodeListening: some View {
@@ -241,6 +250,15 @@ struct WalkReflectionView: View {
     private var listeningNote: String {
         if let error = speech.lastError { return error }
         if !status.isEmpty { return status }
+        if privateBodyWalk {
+            if reviewingWords {
+                return "Review these words. They go only to your private Body lane; the original recording never leaves this phone."
+            }
+            if visibleRecording, !speech.liveTextAvailable {
+                return "Live transcription is unavailable, so nothing appears here — the audio is recording on this phone and stays private."
+            }
+            return "Your original recording stays on this phone. Nothing is sent to your Mac; your reviewed words go only to your private Body lane."
+        }
         if visibleRecording, !speech.liveTextAvailable {
             return "Live text is off, so nothing appears here — the audio is still recording and your Mac writes the transcript."
         }
@@ -259,12 +277,20 @@ struct WalkReflectionView: View {
                 .frame(maxWidth: .infinity, minHeight: 52)
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.stroke, lineWidth: 0.9))
                 .disabled(starting || speech.isFinishing || store.pendingWalkSave != nil)
-                Button(store.isSavingWalk ? "SAVING…" : store.pendingWalkSave != nil ? "RETRY SAVE" : "FINISH & REVIEW") {
+                Button(store.isSavingWalk ? "SAVING…" : store.pendingWalkSave != nil ? "RETRY SAVE"
+                        : privateBodyWalk ? (reviewingWords ? "SEND PRIVATELY" : "FINISH & REVIEW") : "FINISH & REVIEW") {
                     let wasListening = listening
                     Task {
                         if wasListening { await finishListening() }
                         guard store.showWalk else { return }
-                        _ = store.finalizeVoice(store.walkRecordingID, speech: speech)
+                        if privateBodyWalk {
+                            // Explicit review first, then the private send. Nothing
+                            // leaves the phone until he taps SEND PRIVATELY.
+                            if reviewingWords { await savePrivateBody() }
+                            else { reviewingWords = true }
+                        } else {
+                            _ = store.finalizeVoice(store.walkRecordingID, speech: speech)
+                        }
                     }
                 }
                 .font(.system(size: 11, design: .monospaced).weight(.semibold)).tracking(1.2)
@@ -291,7 +317,9 @@ struct WalkReflectionView: View {
             InkTitle(text: savedAudioOnly ? "Your recording is kept" : "Your reflection is saved", size: 30)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(savedAudioOnly ? "Your recording is kept" : "Your reflection is saved")
-            Text(savedAudioOnly ? "The audio is kept for review. No transcript was sent as your reflection." : "Your words reached Alicia. The original recording stays available for review.")
+            Text(savedAudioOnly ? "The audio is kept for review. No transcript was sent as your reflection."
+                 : savedPrivate ? "Your words stayed in your private Body lane. The original recording stays on this phone for your review."
+                 : "Your words reached Alicia. The original recording stays available for review.")
                 .font(.system(size: 20, design: .serif))
             if let recording = store.voiceArchive.recording(savedRecordingID) {
                 Text(recording.syncSummary).font(.callout).foregroundStyle(Theme.inkSoft)
@@ -300,7 +328,7 @@ struct WalkReflectionView: View {
             if !store.voiceArchive.lastError.isEmpty { Text(store.voiceArchive.lastError).font(.caption).foregroundStyle(Theme.inkSoft) }
             Button("REVIEW RECORDING") { showRecording = true }
                 .font(.system(size: 11, design: .monospaced)).frame(minHeight: 44)
-            Button("DONE") { store.showWalk = false; if !savedAudioOnly { store.selectedSection = .mind } }
+            Button("DONE") { store.showWalk = false; if savedPrivate { store.selectedSection = .body } else if !savedAudioOnly { store.selectedSection = .mind } }
                 .buttonStyle(EpisodeButtonStyle())
         }
     }
@@ -310,6 +338,18 @@ struct WalkReflectionView: View {
         let onlyAudio = audioOnly || (store.pendingWalkSave == nil && store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         if await store.finishEpisodeWalk(closeOnSuccess: false, audioOnly: audioOnly) {
             savedRecordingID = recordingID; savedAudioOnly = onlyAudio; didSave = true
+        }
+    }
+
+    /// Private Body walk send. Reviewed words go only to the private Body lane;
+    /// with no words, the original recording simply stays kept on this phone.
+    /// The saved screen only appears when the request actually succeeded.
+    private func savePrivateBody() async {
+        let words = store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if words.isEmpty { await save(audioOnly: true); return }
+        let recordingID = store.walkRecordingID
+        if await store.sendPrivateBodyWalk(recordingID, text: words) {
+            savedRecordingID = recordingID; savedAudioOnly = false; savedPrivate = true; didSave = true
         }
     }
 
@@ -358,8 +398,9 @@ struct WalkReflectionView: View {
         }
         base = store.walkDraft
         do {
-            if store.walkRecordingID.isEmpty || store.voiceArchive.recording(store.walkRecordingID)?.deleted == true
-                || (store.voiceArchive.recording(store.walkRecordingID) != nil && store.voiceArchive.recording(store.walkRecordingID)?.macProcessing != true) {
+            // A resume keeps the paused recording — a private Body original or a
+            // Mac walk must never be forked or discarded by tapping Keep talking.
+            if store.voiceArchive.shouldStartFreshRecording(store.walkRecordingID) {
                 store.walkRecordingID = UUID().uuidString
             }
             try store.startVoiceCapture(speech, id: store.walkRecordingID, walk: true, liveText: true)

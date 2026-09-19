@@ -342,6 +342,16 @@ final class VoiceArchive {
     func recording(_ id: String) -> VoiceRecording? { recordings.first { $0.id == id } }
     func hasAudio(_ id: String) -> Bool { recording(id).map { !$0.deleted && !$0.segments.isEmpty } ?? false }
 
+    /// A resume continues the exact recording it paused. Only a missing,
+    /// deleted, or legacy non-Mac / non-private recording earns a fresh id, so
+    /// pausing and resuming never forks or discards a private Body original or a
+    /// Mac-transcribed walk.
+    func shouldStartFreshRecording(_ id: String) -> Bool {
+        guard !id.isEmpty, let record = recording(id) else { return true }
+        if record.deleted { return true }
+        return record.macProcessing != true && !record.isPrivateBody
+    }
+
     private func persist(_ record: VoiceRecording) throws {
         try FileManager.default.createDirectory(at: directory(record.id), withIntermediateDirectories: true)
         let bytes = try JSONEncoder().encode(record)

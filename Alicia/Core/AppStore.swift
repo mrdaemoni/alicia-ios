@@ -442,7 +442,14 @@ final class AppStore {
             playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0,
             proactive_id: walk ? nil : answeringAskID)
         context.surface_context = surface ?? walkSurfaceContext
-        let privateBody = surface?.section == "body"
+        // The private Body lane owns any walk whose subject is the Body section,
+        // whether that came from an explicit surface or the section a no-episode
+        // walk was started from. `WalkReflectionView` opens without an explicit
+        // surface, so deriving this from the resolved context — not just the
+        // argument — is what keeps a Body walk private end to end. A private
+        // walk keeps its original audio on the phone, never enters Mac/cloud
+        // transcription, and is reviewed then sent only through the Body lane.
+        let privateBody = context.surface_context?.section == "body"
         let review = VoiceReview(destination: walk ? "walk" : answeringAskID == nil ? "dialogue" : "proactive",
                                  proactiveID: walk ? "" : answeringAskID ?? "",
                                  proactiveExcerpt: walk ? "" : answeringAskExcerpt)
@@ -492,6 +499,38 @@ final class AppStore {
         await syncVoiceArchive()
         await reconcileVoiceReplies()
         await refreshEpisodeDay()
+    }
+
+    /// Send a reviewed private Body walk. His words go only to the private Body
+    /// lane — never to `/walk`, conversation history, or the ordinary model —
+    /// and the original recording stays on this phone. The transcript is marked
+    /// submitted only after the private request actually succeeds, so a failure
+    /// stays retryable and is never confirmed as saved. Returns whether the
+    /// private request succeeded.
+    @discardableResult
+    func sendPrivateBodyWalk(_ id: String, text: String) async -> Bool {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, !isSavingWalk else { return false }
+        guard voiceArchive.recording(id)?.isPrivateBody == true else {
+            episodeError = "This reflection isn't in the private Body lane."
+            return false
+        }
+        isSavingWalk = true
+        defer { isSavingWalk = false }
+        guard let answer = await bodyStore.ask(clean) else {
+            episodeError = "I couldn't reach your private Body lane. Your words are kept here; tap Retry save."
+            return false
+        }
+        // Only now, on a real success, is the transcript recorded as submitted.
+        voiceArchive.addTranscript(clean, kind: "submitted", to: id)
+        privateBodyMessages.append(Message(sender: .me, text: clean, recordingID: id.isEmpty ? nil : id))
+        privateBodyMessages.append(Message(sender: .alicia, text: answer.text))
+        if walkDraft.trimmingCharacters(in: .whitespacesAndNewlines) == clean { walkDraft = "" }
+        walkRecordingID = ""
+        walkRequestID = UUID().uuidString
+        UserDefaults.standard.set(walkRequestID, forKey: "alicia.walkRequestID")
+        episodeError = ""
+        return true
     }
     private func reconcileVoiceReplies() async {
         // Read history only when a voice receipt completed. The backend is the source of message IDs.
