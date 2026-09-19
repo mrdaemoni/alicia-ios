@@ -259,7 +259,31 @@ struct TimelineDay: Decodable, Hashable, Identifiable {
     var goal: String?
     /// The day's dominant voice — her emblem marks the spine (v26).
     var archetype: String?
+    /// Where he was that day, when the phone reported it. Absent for every day
+    /// before 2026-09-18, which is most of the arc — a missing place is
+    /// missing, never inferred from a neighbouring day.
+    var place: Place?
     var id: String { date }
+
+    struct Place: Decodable, Hashable {
+        var locality: String
+        var district: String
+        var region: String
+        var named: String
+
+        /// "Palo Alto · home", "Seattle · Belltown · away".
+        var label: String {
+            var out = locality
+            if !district.isEmpty { out += " · " + district }
+            switch named {
+            case "home":       out += " · home"
+            case "office":     out += " · the office"
+            case "travelling": out += " · away"
+            default:           break
+            }
+            return out
+        }
+    }
 }
 
 struct KnowingClaim: Decodable, Hashable {

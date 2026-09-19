@@ -1231,6 +1231,17 @@ final class AppStore {
     /// question entirely.
     private(set) var conversationContext = SurfaceContext(section: "us", captured_at: "")
 
+    /// The whole arc, and her current picture of him — for OurArcView, which
+    /// the Us title opens. Through the store because views do not touch the
+    /// network; kept as plain reads because this surface shows state, it does
+    /// not own any.
+    func ourArc() async -> [TimelineDay] { await service.timeline() }
+    func herPictureOfYou() async -> ContextEnrichment? { await service.contextEnrichment(replyID: "") }
+
+    /// Tapping the Us title. A presentation flag rather than a route, because
+    /// the arc is something he looks at and closes, not somewhere he goes.
+    var showArc = false
+
     func openConversation() {
         conversationContext = surfaceContext()
         showConversation = true
