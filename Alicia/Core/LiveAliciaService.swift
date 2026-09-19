@@ -547,9 +547,14 @@ struct LiveAliciaService: AliciaService {
     }
 
     func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String? {
+        await reply(proactiveID: proactiveID, text: text, recordingID: recordingID, episodeID: episodeID, surfaceContext: nil)
+    }
+
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String, surfaceContext: SurfaceContext?) async -> String? {
         do {
-            let body = try JSONSerialization.data(
-                withJSONObject: ["proactive_id": proactiveID, "text": text, "recording_id": recordingID, "episode_id": episodeID])
+            var payload: [String: Any] = ["proactive_id": proactiveID, "text": text, "recording_id": recordingID, "episode_id": episodeID]
+            if let surfaceContext { payload["surface_context"] = surfaceContext.wire }
+            let body = try JSONSerialization.data(withJSONObject: payload)
             let (data, resp) = try await URLSession.shared.data(
                 for: request("/api/reply", method: "POST", body: body))
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }

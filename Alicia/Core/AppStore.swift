@@ -1295,7 +1295,7 @@ final class AppStore {
             cancelAnswering()
             messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID))
             Task {
-                let reply = await service.reply(proactiveID: askID, text: clean, recordingID: recordingID, episodeID: episodeID)
+                let reply = await service.reply(proactiveID: askID, text: clean, recordingID: recordingID, episodeID: episodeID, surfaceContext: surfaceContext)
                 if let reply, !reply.isEmpty {
                     messages.append(Message(sender: .alicia, text: reply))
                 } else {

@@ -136,6 +136,7 @@ protocol AliciaService {
     /// shared history + memory on the backend; returns her answer.
     func reply(proactiveID: String, text: String) async -> String?
     func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String?
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String, surfaceContext: SurfaceContext?) async -> String?
     /// Co-creation: send the current canvas composite and where the pencil
     /// stopped (normalized 0…1, nil if unknown); she draws from that point.
     func cocreate(image: Data, width: Int, height: Int,
@@ -213,6 +214,10 @@ extension AliciaService {
         if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") { return ContextSource(title: "Preview source", text: "Preview: removal serves the outcome; it is not an end in itself.", notice: "Fixture source. No live file was read.") }
 #endif
         return nil
+    }
+
+    func reply(proactiveID: String, text: String, recordingID: String, episodeID: String, surfaceContext: SurfaceContext?) async -> String? {
+        await reply(proactiveID: proactiveID, text: text, recordingID: recordingID, episodeID: episodeID)
     }
 
     func reply(proactiveID: String, text: String, recordingID: String, episodeID: String) async -> String? {
