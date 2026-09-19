@@ -74,9 +74,9 @@ final class ContextUITests: XCTestCase {
  func testMicrophoneStateIsExplicitInPreview() {
   continueAfterFailure=false
   let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-save-preview","--episode-day-preview","--episode-microphone-on"];app.launch()
-  let mic=app.otherElements["walk.microphoneState"]
+  let mic=app.descendants(matching:.any).matching(identifier:"walk.microphoneState").firstMatch
   XCTAssertTrue(mic.waitForExistence(timeout:10))
-  XCTAssertTrue(mic.label.contains("MICROPHONE ON"))
+  XCTAssertTrue(mic.label.contains("Microphone on"))
   capture("walk-microphone-on-preview",app:app)
  }
  func testOriginalVoiceReviewCorrectionAndDelete() {

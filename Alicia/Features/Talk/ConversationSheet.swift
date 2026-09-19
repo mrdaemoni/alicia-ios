@@ -18,13 +18,13 @@ struct ConversationSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focused: Bool
-    @State private var context: SurfaceContext?
     @State private var inspected: Message?
     @State private var sent = false
 
-    /// Frozen on appear. If a background refresh moves the selected section
-    /// while he is mid-sentence, the words still leave as what he opened.
-    private var section: SurfaceContext { context ?? store.surfaceContext() }
+    /// Frozen by `openConversation()` before this view ever renders. Deriving
+    /// it here — even into `@State` on appear — let a dismissing sheet write
+    /// one last time under whatever section the app had already moved to.
+    private var section: SurfaceContext { store.conversationContext }
     private var privateBody: Bool { section.section == "body" }
     private var busy: Bool { privateBody ? store.privateBodySending : store.isStreaming }
     private var messages: [Message] { privateBody ? store.privateBodyMessages : store.messages }
@@ -54,10 +54,7 @@ struct ConversationSheet: View {
         .background(Theme.backdrop.ignoresSafeArea())
         .foregroundStyle(Theme.ink)
         .fontDesign(.serif)
-        .onAppear {
-            context = store.surfaceContext()
-            focused = true
-        }
+        .onAppear { focused = true }
         .sheet(item: $inspected) { message in
             DialogueReviewView(message: message).presentationDetents([.large])
         }

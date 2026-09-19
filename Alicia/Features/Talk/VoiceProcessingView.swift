@@ -27,6 +27,9 @@ struct VoiceProcessingView: View {
                         .buttonStyle(EpisodeButtonStyle()).accessibilityIdentifier("voice.finalize")
                 } else {
                     Text(progressText(record)).font(.system(size: 22, design: .serif))
+                        .accessibilityIdentifier("voice.stage")
+                    Text(record.stage.detail).font(.callout).foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(record.syncSummary).font(.caption).foregroundStyle(Theme.inkSoft)
                     if record.transcription?.ready != true {
                         Text("Uploads resume while this app is open. Once all audio reaches your Mac, it can transcribe while the phone is away.")
@@ -135,18 +138,13 @@ struct VoiceProcessingView: View {
         guard !locallyEdited else { return }
         draft = record?.review?.text ?? ""; loaded = true
     }
+    /// One vocabulary, owned by `VoiceRecording.stage`. This used to answer a
+    /// question about the Mac's transcription queue ("Queued on your Mac")
+    /// instead of the question Hector was asking, which was where his words
+    /// were and whether he had already sent them.
     private func progressText(_ record: VoiceRecording) -> String {
-        if record.submissionStatus?.state == "completed" { return "Your words reached Alicia" }
         if record.processingRejected == true { return "Your Mac could not accept this recording" }
-        switch record.transcription?.state {
-        case "ready": return "Your transcript is ready to review"
-        case "transcribing": return "Your Mac is transcribing"
-        case "queued": return "Queued on your Mac"
-        case "waiting_for_audio": return "Waiting for the rest of your audio"
-        case "failed": return "Transcription needs attention"
-        case "cancelled": return "Transcription cancelled"
-        default: return "Preparing your recording for your Mac"
-        }
+        return record.stage.label
     }
     private func submissionText(_ status: VoiceSubmissionStatus) -> String {
         switch status.state {

@@ -74,6 +74,86 @@ struct VoiceRecording: Codable, Identifiable {
         }
         return "Audio saved on this phone. \(uploaded) of \(segments.count) parts synced to your Mac."
     }
+    /// Where a reflection actually is, in one vocabulary.
+    ///
+    /// Hector's build-18 note: *"when I talk about an episode and I submit
+    /// something, I don't know where it is. It says it's Q on my Mac, but it's
+    /// confusing. I don't know if I already viewed it or if I already sent
+    /// it."* He was reading "Queued on your Mac" — a true sentence about a
+    /// transcription queue that answers none of the three questions he was
+    /// actually asking: is it safe, does it need me, did she get it.
+    ///
+    /// So the states are named for him, not for the pipeline, and every
+    /// surface that shows a recording's progress reads this one property.
+    enum Stage: String {
+        case capturing        // still being recorded on this phone
+        case saved            // audio kept, not yet handed to the Mac
+        case transcribing     // the Mac is writing the words
+        case readyForYou      // the words are waiting to be read and sent
+        case sending          // he pressed send; the receipt is out
+        case sent             // she has it
+        case needsAttention   // something failed and is holding still
+        case removed
+
+        /// Four words at most: this is read at a glance, from a list.
+        var label: String {
+            switch self {
+            case .capturing:      "Recording"
+            case .saved:          "Saved on your phone"
+            case .transcribing:   "Your Mac is writing it"
+            case .readyForYou:    "Waiting for you to read"
+            case .sending:        "Sending to Alicia"
+            case .sent:           "Alicia has it"
+            case .needsAttention: "Needs your attention"
+            case .removed:        "Deleted"
+            }
+        }
+
+        /// The sentence under the label, which says what he can do about it.
+        var detail: String {
+            switch self {
+            case .capturing:      "Still recording on this phone."
+            case .saved:          "The original audio is kept. Finish it to get the words."
+            case .transcribing:   "Nothing is sent yet. You will read it before Alicia does."
+            case .readyForYou:    "Open it, change anything that came out wrong, then send."
+            case .sending:        "Your words are on their way. The receipt is saved."
+            case .sent:           "She has your words. The original recording stays here."
+            case .needsAttention: "It is being held exactly as it is, and has not been sent again."
+            case .removed:        "This recording was deleted."
+            }
+        }
+
+        /// True when nothing moves until he does something. The composer band
+        /// surfaces these, because a reflection waiting in a list he never
+        /// opens is the same as a reflection he lost.
+        var needsYou: Bool { self == .readyForYou || self == .needsAttention || self == .saved }
+    }
+
+    var stage: Stage {
+        if deleted { return .removed }
+        if processingRejected == true || submissionRejected == true { return .needsAttention }
+        if submissionError != nil || processingError != nil { return .needsAttention }
+        if let state = submissionStatus?.state {
+            switch state {
+            case "completed":                   return .sent
+            case "failed", "outcome_unknown":   return .needsAttention
+            default:                            return .sending
+            }
+        }
+        if submission != nil { return .sending }
+        switch transcription?.state {
+        case "ready":          return .readyForYou
+        case "transcribing":   return .transcribing
+        case "queued":         return .transcribing
+        case "waiting_for_audio": return .transcribing
+        case "failed":         return .needsAttention
+        case "cancelled":      return .needsAttention
+        default: break
+        }
+        if finalization == nil { return segments.isEmpty ? .capturing : .saved }
+        return .transcribing
+    }
+
     var orderedTranscripts: [VoiceTranscript] {
         transcripts.sorted { a, b in
             let lhs = voiceDate(a.recorded_at), rhs = voiceDate(b.recorded_at)

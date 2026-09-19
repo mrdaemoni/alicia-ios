@@ -22,9 +22,39 @@ struct BodyOverview: Decodable {
     }
     var status, state_status, privacy, historical_note: String
     var as_of, generated_at: String?
+    /// Present only when the backend REFUSED the bridge. A refusal still knows
+    /// when the bridge was last built and last measured, and saying so is the
+    /// difference between "stale" and a sentence Hector can act on.
+    var last_built, last_measurement: String?
+    var stale_days: Int?
     var metrics: [Metric]
     var sources: [Source]
     var goals, events: [BodyEvent]
+
+    /// What went wrong, in his words, with the age attached when it is known.
+    var refusal: String {
+        let age: String
+        switch stale_days {
+        case .some(0):  age = "The last measurement is from today"
+        case .some(1):  age = "The last measurement is from yesterday"
+        case .some(let days) where days > 1: age = "The last measurement is \(days) days old"
+        default:        age = "There is no readable measurement"
+        }
+        switch status {
+        case "stale":
+            return age + ". Your Mac has not rebuilt the Oura bridge since then."
+        case "missing":
+            return "The Oura bridge has never been built on your Mac."
+        case "unreadable", "incompatible", "inconsistent":
+            return "Your Mac's Oura bridge cannot be read as it stands. " + age + "."
+        case "future_date", "missing_date":
+            return "The Oura bridge has a date your Mac cannot make sense of."
+        case "oversized":
+            return "The Oura bridge grew past the size Alicia will open."
+        default:
+            return age + "."
+        }
+    }
 }
 struct BodyAnswer: Decodable { var status, text: String; var model, as_of: String? }
 struct BodySaveResult: Decodable { var status: String; var request_id: String? }

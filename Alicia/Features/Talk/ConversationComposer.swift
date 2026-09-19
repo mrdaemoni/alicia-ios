@@ -37,6 +37,7 @@ struct ConversationComposer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             context
+            reflectionLine
             if busy {
                 Text(privateBody ? "Thinking privately on your Mac…" : "Alicia is thinking…")
                     .font(.caption).foregroundStyle(Theme.paper.opacity(0.7))
@@ -64,6 +65,68 @@ struct ConversationComposer: View {
         .background(Theme.ink)
         .overlay(alignment: .top) { Rectangle().fill(Theme.paper.opacity(0.12)).frame(height: 0.7) }
         .buttonStyle(.plain)
+    }
+
+    /// Where his last spoken reflection is, in one tappable line.
+    ///
+    /// Hector's build-18 note: *"when I talk about an episode and I submit
+    /// something, I don't know where it is … I don't know if I already viewed
+    /// it or if I already sent it."* The answer used to live only inside a
+    /// screen he had to already know to open. Now it follows him: anything
+    /// waiting on him is stated here, and for a short while after it lands,
+    /// so is the fact that she has it.
+    @ViewBuilder private var reflectionLine: some View {
+        if let waiting = store.reflectionNeedingYou {
+            Button { openReflection(waiting) } label: {
+                HStack(spacing: 8) {
+                    Circle().fill(Theme.amber).frame(width: 6, height: 6)
+                    Text(reflectionSubject(waiting) + " · " + waiting.stage.label.lowercased())
+                        .font(.system(size: 12, design: .serif))
+                        .foregroundStyle(Theme.paper.opacity(0.85))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text("OPEN")
+                        .font(.system(size: 8, design: .monospaced)).tracking(1)
+                        .foregroundStyle(Theme.paper.opacity(0.6))
+                }
+                .frame(maxWidth: .infinity, minHeight: 28)
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel(reflectionSubject(waiting) + ", " + waiting.stage.detail)
+            .accessibilityIdentifier("composer.reflectionWaiting")
+        } else if let sent = store.recentlySentReflection, recentlySent(sent) {
+            HStack(spacing: 8) {
+                Circle().fill(Theme.mint).frame(width: 6, height: 6)
+                Text(reflectionSubject(sent) + " · Alicia has it")
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(Theme.paper.opacity(0.7))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .frame(minHeight: 28)
+            .accessibilityIdentifier("composer.reflectionSent")
+        }
+    }
+
+    private func reflectionSubject(_ record: VoiceRecording) -> String {
+        let episode = record.context.episode_id
+        return episode.isEmpty ? "Your spoken thought" : "Your " + episode + " reflection"
+    }
+
+    /// Six hours: long enough that he sees it the next time he picks up the
+    /// phone, short enough that the band does not become a permanent receipt.
+    private func recentlySent(_ record: VoiceRecording) -> Bool {
+        Date().timeIntervalSince(voiceDate(record.context.started_at)) < 6 * 3600
+    }
+
+    private func openReflection(_ record: VoiceRecording) {
+        if record.context.source == "ios_walk" {
+            store.walkRecordingID = record.id
+            store.walkEpisodeID = record.context.episode_id
+            store.showWalk = true
+        } else {
+            store.reviewRecording = AppStore.ReviewedRecording(id: record.id)
+        }
     }
 
     /// One line that names what she would be hearing about. When an episode is

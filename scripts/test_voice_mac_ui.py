@@ -64,10 +64,13 @@ final class ContextUITests: XCTestCase {
  func testCaptureOnlyMicrophonePreviewExplainsMacProcessing() {
   continueAfterFailure=false
   let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-mac-preview","--voice-mac-recording","--voice-save-preview","--episode-day-preview","--episode-microphone-on","--reduce-motion-preview"];app.launch()
-  let microphone=app.otherElements["walk.microphoneState"]
+  // v39: the microphone is the whole screen. The state element says whether
+  // it is on and how long it has been recording; the page itself carries the
+  // words, at a size he can read while still speaking.
+  let microphone=app.descendants(matching:.any).matching(identifier:"walk.microphoneState").firstMatch
   XCTAssertTrue(microphone.waitForExistence(timeout:10))
-  XCTAssertTrue(microphone.label.contains("MICROPHONE ON"))
-  XCTAssertTrue(microphone.label.contains("Your Mac transcribes after Finish"))
+  XCTAssertTrue(microphone.label.contains("Microphone on"))
+  XCTAssertTrue(app.staticTexts["listening.transcript"].exists)
   XCTAssertFalse(app.textViews["Your walk reflection"].exists)
   XCTAssertTrue(app.staticTexts["Preview of microphone-on UI. No audio is recorded or sent."].exists)
   capture("capture-only-microphone-preview",app:app)
@@ -75,9 +78,14 @@ final class ContextUITests: XCTestCase {
  func testDialogueReviewsExactWordsAndKeepsIndependentTypedDraft() {
   continueAfterFailure=false
   let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-mac-preview","--tab","dialogue"];app.launch()
-  let composer=app.textFields["dialogue.composer"]
+  // The typed draft lives on the permanent band and is edited in the sheet
+  // over the section; it must survive a whole voice review round-trip.
+  let band=app.buttons["dialogue.composer"]
+  XCTAssertTrue(band.waitForExistence(timeout:10));band.tap()
+  let composer=app.textFields["conversation.field"]
   XCTAssertTrue(composer.waitForExistence(timeout:10));composer.tap();composer.typeText("Typed note must stay")
   let expectedTyped=composer.value as? String
+  app.buttons["conversation.close"].tap()
   openRecord(app)
   let editor=app.textViews["voice.macDraft"]
   reveal(editor,app:app);XCTAssertTrue(editor.isHittable)
@@ -94,7 +102,9 @@ final class ContextUITests: XCTestCase {
   capture("dialogue-frozen-pending-send",app:app)
   app.navigationBars.buttons.element(boundBy:0).tap()
   app.buttons["CLOSE"].tap()
-  XCTAssertEqual(app.textFields["dialogue.composer"].value as? String,expectedTyped)
+  app.buttons["dialogue.composer"].tap()
+  XCTAssertEqual(app.textFields["conversation.field"].value as? String,expectedTyped)
+  app.buttons["conversation.close"].tap()
   openRecord(app);reveal(editor,app:app)
   XCTAssertTrue((editor.value as? String ?? "").contains("My reviewed addition"))
   XCTAssertFalse(app.buttons["voice.sendReviewed"].exists)

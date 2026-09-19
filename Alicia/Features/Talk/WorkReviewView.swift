@@ -251,7 +251,10 @@ private struct WorkReviewCard: View {
         shared.dialogueContext = .init(goal_id: goal.id, result_id: result.id, section_id: section.id,
             content_hash: section.content_hash, goalTitle: goal.title, sectionTitle: section.title, quote: section.text)
         shared.route = nil
-        store.selectedSection = .dialogue
+        // v39: asking to discuss a passage opens the conversation layer with
+        // that passage attached, rather than dropping him in the Dialogue tab
+        // to find the composer himself.
+        store.openConversation()
     }
 }
 

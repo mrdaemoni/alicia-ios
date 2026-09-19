@@ -25,6 +25,16 @@ struct SurfaceContext: Codable, Equatable {
     }
     private var file: URL { directory.appendingPathComponent("drafts.json") }
     func text(for section: String) -> String { values[section] ?? "" }
+
+    /// Drafts are durable on purpose, which means a UI test inherits whatever
+    /// the last one typed. `--reset-drafts` gives a run a clean slate without
+    /// reinstalling the app; it exists only in DEBUG and is never a product
+    /// affordance — nothing in the app erases his unsent words.
+    func resetForTesting() {
+        values = [:]
+        try? FileManager.default.removeItem(at: file)
+        error = nil
+    }
     func set(_ text: String, for section: String) {
         guard !corrupt else { return }
         values[section] = text

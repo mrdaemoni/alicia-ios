@@ -70,7 +70,9 @@ struct AliciaApp: App {
                 // Same shape as --motion-lab, and gone from Release.
                 .task {
                     let args = ProcessInfo.processInfo.arguments
-                    if args.contains("--body-preview") { store.bodyStore.overview = BodyPreview.overview }
+                    if args.contains("--reset-drafts") { store.composerDrafts.resetForTesting() }
+                    if args.contains("--body-stale-preview") { store.bodyStore.overview = BodyPreview.staleOverview }
+                    else if args.contains("--body-preview") { store.bodyStore.overview = BodyPreview.overview }
                     if args.contains("--episode-day-preview") && args.contains("--episode-walk-preview") {
                         store.episodeDay = EpisodeDay.preview
                         store.walkPrompt = "Where would choosing less give you room to go deeper?"

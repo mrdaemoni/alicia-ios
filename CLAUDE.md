@@ -1,3 +1,35 @@
+## A2-047 — the home screen Hector actually uses
+
+Hector's build-18 field report, built on Codex's preserved A2-045 composer.
+
+**The conversation is a layer, not a place.** `ConversationComposer` is a
+permanent band directly above `EditorialTabBar`, on the same ink ground; it
+never takes the keyboard and nothing collapses for it any more. Tapping it
+raises `ConversationSheet` over the current section, carrying that section's
+name and its own per-section draft; closing it returns him to the page he was
+on. `TalkView` (Dialogue) still exists and keeps shared history.
+
+**The microphone is the page.** `ListeningRoom` and the shared `ListeningStage`
+put `AliciaPresence` full-bleed behind his own words in large serif, in the
+voice of the section he spoke from. "Talk about this episode" opens the same
+room through `WalkReflectionView`, whose lifecycle is unchanged: original audio
+kept, Mac transcript, explicit review before anything is sent. Both paths ask
+for speech authorization so live text can be read back, falling back to
+microphone-only and saying so.
+
+**A reflection has one address.** `VoiceRecording.stage` is the single
+vocabulary — Saved / Your Mac is writing it / Waiting for you to read / Sending
+/ Alicia has it / Needs your attention — used by the band, the recordings list
+and `VoiceProcessingView`. Anything waiting on him surfaces on the band from
+wherever he is.
+
+**Body says what is wrong.** A refused bridge now reports `last_built`,
+`last_measurement` and `stale_days`, and `BodyOverview.refusal` states them;
+no measurement block is drawn for a bridge the backend did not accept. The
+bridge itself is rebuilt by a scheduled task on the Mac (backend A2-046).
+
+Evidence: `scripts/test_home_conversation_ui.py`.
+
 ## A2-043 — mind and body integration candidate
 
 Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action. Body is private Mac/phone evidence and explicit wellness goals. Daily rituals widget saves offline and syncs when Alicia opens. Drawing is removed from Studio navigation; files remain. No release is claimed; shared A2-043 evidence owns status.

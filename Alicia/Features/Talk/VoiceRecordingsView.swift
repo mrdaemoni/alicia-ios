@@ -26,10 +26,13 @@ struct VoiceRecordingsView: View {
                                         .font(.system(size: 20, design: .serif))
                                     Text(voiceDateLabel(record.context) + " · " + (record.context.source == "ios_walk" ? "Walk" : "Dialogue"))
                                         .font(.caption).foregroundStyle(Theme.inkSoft)
-                                    if record.macProcessing == true, record.submissionStatus?.state != "completed", !record.deleted {
-                                        Text(record.finalization == nil ? "Paused recording · finish when ready" : record.transcription?.ready == true ? "Mac transcript · ready to review" : "Mac transcription pending")
-                                            .font(.caption).foregroundStyle(Theme.ink)
-                                    }
+                                    // The same vocabulary the detail screen and
+                                    // the composer band use, so a reflection
+                                    // reads the same wherever he finds it.
+                                    Text(record.stage.label)
+                                        .font(.system(size: 10, design: .monospaced)).tracking(0.8)
+                                        .foregroundStyle(record.stage.needsYou ? Theme.ink : Theme.inkSoft)
+                                        .accessibilityIdentifier("voice.listStage")
                                     Text(record.deleted ? "Audio deleted · words kept" : "\(Int(record.duration / 60))m \(Int(record.duration) % 60)s recorded")
                                         .font(.caption)
                                 }.padding(.vertical, 8)

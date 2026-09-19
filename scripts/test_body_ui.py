@@ -59,9 +59,15 @@ final class BodyUITests: XCTestCase {
   }
   XCTAssertFalse(app.buttons["DRAW"].exists)
   capture("studio-without-drawing",app)
-  app.buttons["dialogue.open"].tap()
-  XCTAssertTrue(app.textFields["dialogue.composer"].waitForExistence(timeout:10))
-  app.buttons["BODY"].tap();XCTAssertTrue(app.buttons["body.ritual.exercise"].exists)
+  app.buttons["BODY"].tap()
+  // v39: the band is permanent and opens the conversation over the section,
+  // carrying that section with it, instead of swapping to a Dialogue tab.
+  let band=app.buttons["dialogue.composer"];XCTAssertTrue(band.waitForExistence(timeout:10));band.tap()
+  XCTAssertTrue(app.textFields["conversation.field"].waitForExistence(timeout:10))
+  XCTAssertTrue(app.staticTexts["conversation.context"].label.contains("Body"))
+  capture("conversation-over-body",app)
+  app.buttons["conversation.close"].tap()
+  XCTAssertTrue(app.buttons["body.ritual.exercise"].waitForExistence(timeout:10))
  }
  func testGoalIntentionAndCriterionStayEditable() {
   let app=launch();app.buttons["GOALS"].tap()

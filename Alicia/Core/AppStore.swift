@@ -1124,8 +1124,44 @@ final class AppStore {
     var showListening = false
     var listeningEpisode = false
 
+    /// The most recent reflection that is waiting on him, if any.
+    ///
+    /// A reflection sitting in a list he never opens is a reflection he lost —
+    /// which is exactly what "Queued on your Mac" produced. The composer band
+    /// carries this, so wherever he is, the app can say the one true sentence
+    /// about where his words are.
+    var reflectionNeedingYou: VoiceRecording? {
+        voiceArchive.recordings
+            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage.needsYou }
+            .max(by: { voiceDate($0.context.started_at) < voiceDate($1.context.started_at) })
+    }
+
+    /// The last thing he sent her, for the short while after he sent it. This
+    /// answers "did I already send it?" without him going to look.
+    var recentlySentReflection: VoiceRecording? {
+        voiceArchive.recordings
+            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage == .sent }
+            .max(by: { voiceDate($0.context.started_at) < voiceDate($1.context.started_at) })
+    }
+
+    /// A recording he asked to look at from anywhere. RootView presents it,
+    /// so the way back to his own words does not depend on which tab he is on.
+    /// Wrapped rather than a bare id because `sheet(item:)` needs an identity
+    /// and String should not be given one globally.
+    struct ReviewedRecording: Identifiable, Equatable { let id: String }
+    var reviewRecording: ReviewedRecording?
+
+    /// The section the conversation layer was opened from, frozen at the moment
+    /// it opens. The sheet deliberately does not derive this from live state:
+    /// its draft binding decides which section a keystroke is *filed under*,
+    /// and a sheet that is being dismissed can be re-evaluated after the tab
+    /// has already moved. Freezing it here costs nothing and removes the
+    /// question entirely.
+    private(set) var conversationContext = SurfaceContext(section: "us", captured_at: "")
+
     func openConversation() {
         showListening = false
+        conversationContext = surfaceContext()
         showConversation = true
     }
 

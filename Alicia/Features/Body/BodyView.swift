@@ -18,7 +18,12 @@ struct BodyView: View {
                     Button("Ask Alicia about my wellbeing") { ask = true }.frame(minHeight: 44)
                     if segment == 0 {
                         RitualCaptureView()
-                        if let overview = store.bodyStore.overview {
+                        // Only a bridge the backend actually accepted draws
+                        // measurements. A refused one used to render this whole
+                        // block anyway — "OURA · AS OF unknown" over an empty
+                        // grid — which is the shape of data where there is
+                        // none. BodyStatus above says what happened instead.
+                        if let overview = store.bodyStore.overview, overview.status == "ready" {
                             Text("OURA · AS OF " + (overview.as_of ?? "unknown"))
                                 .font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.inkSoft)
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 20) {
@@ -125,8 +130,27 @@ struct BodyStatus: View {
             Text(store.isMock ? "Preview · synthetic data, not your health record" : "Private · your Mac and phone").font(.caption).foregroundStyle(Theme.inkSoft)
             if let message = store.bodyStore.error { Text(message).font(.subheadline) }
             if let overview = store.bodyStore.overview, overview.status != "ready" {
-                Text("Oura evidence is \(overview.status.replacingOccurrences(of: "_", with: " ")). No current health interpretation is being inferred.")
-                    .font(.subheadline)
+                // v39. This used to read "Oura evidence is stale" — true, and
+                // useless: it did not say how stale, why, or what would fix
+                // it, so Hector read it as the app being broken. The backend
+                // now reports when the bridge was last built even when it
+                // refuses to trust it, and the refusal is stated in full.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(overview.refusal)
+                        .font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("body.staleness")
+                    Text("Nothing here is being guessed at in the meantime: no measurement is shown and no interpretation is inferred.")
+                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let built = overview.last_built {
+                        Text("Bridge last built " + bodyDateLabel(built))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    Text("Your Mac rebuilds it every morning. If this stays, the Oura sign-in on the Mac probably needs renewing — Alicia cannot do that for you.")
+                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else if store.bodyStore.overview == nil {
                 Text(store.bodyStore.refreshing ? "Reading your private evidence…" : "Connect to your Mac to load Body.").font(.subheadline)
             }
@@ -313,4 +337,17 @@ private struct BodyQuestionView: View {
                 .interactiveDismissDisabled(working || !question.isEmpty)
         }
     }
+}
+
+/// A bridge timestamp as a day he recognises, falling back to the raw value
+/// rather than inventing one when it cannot be parsed.
+func bodyDateLabel(_ timestamp: String) -> String {
+    let iso = ISO8601DateFormatter()
+    iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let plain = ISO8601DateFormatter()
+    plain.formatOptions = [.withInternetDateTime]
+    guard let date = iso.date(from: timestamp) ?? plain.date(from: timestamp) else { return timestamp }
+    let out = DateFormatter()
+    out.dateFormat = "EEEE d MMMM, HH:mm"
+    return out.string(from: date)
 }

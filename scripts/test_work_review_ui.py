@@ -103,9 +103,12 @@ final class WorkReviewUITests: XCTestCase {
   let save=app.buttons["workReview.save.preview-q7"];reveal(save,app);save.tap()
   XCTAssertTrue(app.staticTexts["Your edit"].waitForExistence(timeout:10))
   let discuss=app.buttons["workReview.discuss.preview-q7"];reveal(discuss,app);discuss.tap()
-  let target=app.buttons["workReview.dialogueContext"];XCTAssertTrue(target.waitForExistence(timeout:10));capture("dialogue-exact-goal-context",app)
-  let compose=app.textFields["dialogue.composer"];compose.tap();compose.typeText("How can we test that this week?")
-  app.buttons["Send typed message"].tap()
+  // v39: discussing a passage opens the conversation layer with the passage
+  // attached, instead of leaving him in a tab to find the composer.
+  let target=app.otherElements["workReview.dialogueContext"];XCTAssertTrue(target.waitForExistence(timeout:10));capture("dialogue-exact-goal-context",app)
+  let compose=app.textFields["conversation.field"];XCTAssertTrue(compose.waitForExistence(timeout:10))
+  compose.tap();compose.typeText("How can we test that this week?")
+  app.buttons["conversation.send"].tap()
   let response=app.staticTexts.matching(NSPredicate(format:"label BEGINSWITH %@","Preview · We are discussing")).firstMatch
   XCTAssertTrue(response.waitForExistence(timeout:15));capture("dialogue-context-response",app)
   target.tap();XCTAssertTrue(app.navigationBars["Prepared work"].waitForExistence(timeout:10))
