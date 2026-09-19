@@ -15,7 +15,7 @@ struct BodyView: View {
                         .font(.system(size: 22, design: .serif))
                     InkTabs(items: ["Today", "Goals", "Evidence"], selection: $segment)
                     BodyStatus()
-                    Button("Ask Alicia about my wellbeing") { ask = true }.frame(minHeight: 44)
+                    Button("Ask Alicia about my wellbeing") { ask = true }.inkAction()
                     if segment == 0 {
                         RitualCaptureView()
                         // Only a bridge the backend actually accepted draws
@@ -63,7 +63,7 @@ struct BodyView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Not accepted by Alicia: " + (event.text.isEmpty ? event.ritual : event.text)).font(.subheadline)
                             Text("Discard this rejected edit to edit the current version. The original capture remains in your local files.").font(.caption)
-                            Button("Discard rejected edit") { store.bodyStore.discardRejected(event) }.frame(minHeight: 44)
+                            Button("Discard rejected edit") { store.bodyStore.discardRejected(event) }.inkAction(quiet: true)
                         }
                     }
                     if !store.bodyStore.pendingIDs.isEmpty {
@@ -92,7 +92,7 @@ struct BodyView: View {
                 Text("Wellness goals").font(.title2)
                 Spacer()
                 Button("Add goal") { editor = BodyEvent(kind: "goal", goal_id: UUID().uuidString) }
-                    .frame(minHeight: 44).accessibilityIdentifier("body.addGoal")
+                    .inkAction().accessibilityIdentifier("body.addGoal")
             }
             Text("Choose what better means. Measurements inform the work; you decide whether the outcome is achieved.")
                 .font(.subheadline).foregroundStyle(Theme.inkSoft)
@@ -108,14 +108,21 @@ struct BodyView: View {
                             .font(.caption)
                     }
                     HStack {
-                        Button("Review or edit") { editor = goal }.frame(minHeight: 44)
+                        Button("Review or edit") { editor = goal }.inkAction()
                             .disabled(store.bodyStore.pendingIDs.contains(goal.id))
                         Spacer()
                         Text("\(goal.source_ids.count) source(s)").font(.caption)
                     }
                     ForEach(goal.source_ids, id: \.self) { id in
                         if let source = store.bodyStore.overview?.sources.first(where: { $0.id == id }) {
-                            NavigationLink(source.title) { BodySourceView(source: source) }.font(.caption)
+                            // The last tinted control on the surface. Plain
+                            // alone would leave it indistinguishable from the
+                            // caption beside it, so it takes this file's own
+                            // affordance — the underline already under "View
+                            // history" and "Read evidence".
+                            NavigationLink(source.title) { BodySourceView(source: source) }
+                                .buttonStyle(.plain).font(.caption).underline()
+                                .foregroundStyle(Theme.ink)
                         }
                     }
                     let notes = store.bodyStore.events.filter { $0.kind == "reflection" && $0.goal_id == goal.goal_id }
@@ -161,7 +168,7 @@ struct BodyStatus: View {
                 Text(store.bodyStore.refreshing ? "Reading your private evidence…" : "Connect to your Mac to load Body.").font(.subheadline)
             }
             if store.bodyStore.error != nil || store.bodyStore.overview?.status != "ready" {
-                Button("Refresh Body") { Task { await store.bodyStore.refresh() } }.frame(minHeight: 44)
+                Button("Refresh Body") { Task { await store.bodyStore.refresh() } }.inkAction()
             }
         }
     }
@@ -186,7 +193,7 @@ struct RitualCaptureView: View {
                         saving = true
                         Task { await store.bodyStore.capture(event); saving = false }
                     }
-                    .disabled(saving).frame(minWidth: 100, minHeight: 44)
+                    .inkAction().disabled(saving).frame(minWidth: 100)
                     .accessibilityIdentifier("body.ritual." + ritual.0)
                 }
                 Divider()
@@ -276,6 +283,10 @@ struct BodyGoalEditor: View {
             .onAppear { text = original.text; criterion = original.criterion; metric = original.metric; status = original.status; selected = Set(original.source_ids) }
             .interactiveDismissDisabled()
         }
+        // Cancel/Save, the pickers' values and the source toggles all read the
+        // tint. One statement puts the whole sheet in ink, the way the voice
+        // archive already does.
+        .tint(Theme.ink)
     }
 }
 
@@ -294,14 +305,14 @@ struct BodySourceView: View {
                 if let page, page.status == "ready" {
                     ForEach(page.passages ?? []) { passage in Text(passage.excerpt).textSelection(.enabled) }
                     HStack {
-                        if offset > 0 { Button("Previous passages") { offset = max(0, offset - 5) } }
+                        if offset > 0 { Button("Previous passages") { offset = max(0, offset - 5) }.inkAction(quiet: true) }
                         Spacer()
-                        if let next = page.next_offset { Button("More passages") { offset = next } }
+                        if let next = page.next_offset { Button("More passages") { offset = next }.inkAction(quiet: true) }
                     }.frame(minHeight: 44)
                     if page.passages?.isEmpty == true { Text("No extracted text is available for this source.") }
                 } else {
                     Text(loading ? "Reading the local report…" : "Report text unavailable. The original source remains on your Mac.")
-                    Button("Retry") { Task { await load() } }.frame(minHeight: 44)
+                    Button("Retry") { Task { await load() } }.inkAction()
                 }
                 Divider()
                 Text("Local evidence · extracted text may contain errors. Historical findings are not automatically current findings.").font(.caption)
@@ -330,7 +341,7 @@ private struct BodyQuestionView: View {
                     Button(working ? "Thinking on your Mac…" : "Ask privately") {
                         working = true
                         Task { answer = await store.bodyStore.ask(question) ?? .init(status: "unavailable", text: "Cannot reach your private answer. Please retry."); working = false }
-                    }.disabled(working || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || question.count > 4000).frame(minHeight: 44)
+                    }.inkAction().disabled(working || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || question.count > 4000)
                     if let answer {
                         Text(answer.text).font(.system(size: 20, design: .serif)).textSelection(.enabled)
                         if let model = answer.model { Text("Local model · " + model).font(.caption) }
@@ -342,6 +353,7 @@ private struct BodyQuestionView: View {
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(working) } }
                 .interactiveDismissDisabled(working || !question.isEmpty)
         }
+        .tint(Theme.ink)
     }
 }
 
