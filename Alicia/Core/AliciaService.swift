@@ -176,6 +176,7 @@ protocol AliciaService {
     func contextGraphAct(_ mutation: ContextGraphMutation) async -> ContextGraphMutationResult?
     func contextElevation() async -> ContextElevation?
     func contextTranslate(title: String) async -> ContextTranslation?
+    func contextArrangement() async -> ContextArrangement?
 
     /// Her morning/evening self-reflections (`/api/reflections`).
     func reflections() async -> [Reflection]?
@@ -206,6 +207,7 @@ extension AliciaService {
     func contextGraphAct(_ mutation: ContextGraphMutation) async -> ContextGraphMutationResult? { nil }
     func contextElevation() async -> ContextElevation? { nil }
     func contextTranslate(title: String) async -> ContextTranslation? { nil }
+    func contextArrangement() async -> ContextArrangement? { nil }
     func morningBriefing() async -> MorningBriefing? { nil }
     func collaboration() async -> CollaborationState? {
 #if DEBUG
@@ -454,6 +456,12 @@ struct MockAliciaService: AliciaService {
         default: break
         }
         return ContextGraphMutationResult(ok: true, node: node, error: nil, updated: nil)
+    }
+    func contextArrangement() async -> ContextArrangement? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--context-graph-") || $0 == "--episode-day-preview" }) { return SampleData.contextArrangement }
+#endif
+        return nil
     }
     func contextElevation() async -> ContextElevation? {
 #if DEBUG

@@ -1010,6 +1010,45 @@ struct LiveAliciaService: AliciaService {
                                   node: d.node.flatMap(contextNode), sharedTerms: d.shared_terms ?? [])
     }
 
+    private struct ContextArrangementDTO: Decodable {
+        struct Item: Decodable {
+            struct Evidence: Decodable { var source, ref, excerpt: String? }
+            var kind, title, why, ref, node_id, node_title, node_kind, date: String?
+            var score: Double?
+            var evidence: Evidence?
+        }
+        struct NodeRef: Decodable { var id, kind, title, status, summary, updated: String?; var needs_review: Bool? }
+        struct Group: Decodable { var node: NodeRef?; var items: [Item]?; var arranged: Bool? }
+        struct Episode: Decodable { var id: String? }
+        var generated_at, status, reason, notice, date: String?
+        var refused: Bool?
+        var groups: [Group]?
+        var arranged_count: Int?
+        var episode: Episode?
+    }
+
+    func contextArrangement() async -> ContextArrangement? {
+        guard let d: ContextArrangementDTO = await fetchOne("/api/context_graph/arrangement") else { return nil }
+        let groups: [ContextArrangement.Group] = (d.groups ?? []).compactMap { g in
+            guard let n = g.node, let id = n.id, let title = n.title, !title.isEmpty else { return nil }
+            let items: [ContextArrangement.Item] = (g.items ?? []).compactMap { i in
+                guard let kind = i.kind, let t = i.title, !t.isEmpty else { return nil }
+                return .init(kind: kind, title: t, why: i.why ?? "", ref: i.ref ?? "", score: i.score ?? 0,
+                             node_id: i.node_id ?? id, node_title: i.node_title ?? title, node_kind: i.node_kind ?? (n.kind ?? ""),
+                             evidence: .init(source: i.evidence?.source ?? "", ref: i.evidence?.ref ?? "", excerpt: i.evidence?.excerpt ?? ""),
+                             date: i.date ?? "")
+            }
+            return .init(node: .init(id: id, kind: n.kind ?? "situation", title: title, status: n.status ?? "inferred",
+                                     summary: n.summary ?? "", updated: String((n.updated ?? "").prefix(10)),
+                                     needs_review: n.needs_review ?? (n.status == "inferred")),
+                         items: items, arranged: g.arranged ?? !items.isEmpty)
+        }
+        return ContextArrangement(generatedAt: d.generated_at ?? "", status: d.status ?? "ready", reason: d.reason ?? "",
+                                  notice: d.notice ?? "", date: d.date ?? "", episodeID: d.episode?.id ?? "",
+                                  refused: d.refused ?? groups.allSatisfy { !$0.arranged }, groups: groups,
+                                  arrangedCount: d.arranged_count ?? groups.reduce(0) { $0 + $1.items.count })
+    }
+
     private struct ContextDTO: Decodable {
         var nodes: [ContextNodeDTO]?; var message_count: Int?; var generated_at: String?
     }
