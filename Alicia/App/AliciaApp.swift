@@ -116,6 +116,10 @@ struct AliciaApp: App {
                         Task { await store.load() }
                         Task { await store.bodyStore.refresh() }
                         store.startProactivePolling()
+                        // Fine-grained location only while he is actually in
+                        // the app. Significant-change monitoring keeps running
+                        // either way, so a flight still registers.
+                        PlaceTracker.shared.begin()
                     case .background:
                         // Close the open tab's dwell and push the batch before
                         // iOS suspends us — an unflushed buffer is lost.
@@ -124,6 +128,7 @@ struct AliciaApp: App {
                         // once at launch (the old behavior) meant iOS never
                         // had a fresh window and no notification ever fired.
                         store.stopProactivePolling()
+                        PlaceTracker.shared.pauseForegroundUpdates()
                         if !store.isMock { ProactiveNotifier.schedule() }
                     default:
                         break

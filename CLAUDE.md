@@ -1,3 +1,18 @@
+## A2-052 — she walks through every room
+
+Body carries `.presenceBackground(.body, store:)` like every other section, so
+the time-of-day tint and her body behind the page are continuous across the
+five tabs. `ListeningStage` is composed the same way — backdrop, `Theme.timeTint`,
+the oversized field, `PaperGrain` — at 0.42 rather than 0.30, because there she
+is the subject. The walk's listening phase is the only phase without the padded
+paper ground, so the room reaches every edge while its controls stay in the
+safe area.
+
+`PlaceTracker` resolves a **named place**: locality, sub-locality and a point of
+interest when there is one. Still no coordinate. Home is Palo Alto, office is
+Seattle, stated by Hector. Fine-grained updates run only while the app is in the
+foreground; significant-change monitoring continues either way.
+
 ## A2-050 — where he is
 
 `Core/PlaceTracker.swift` gives Alicia a **place, not a position**: significant-

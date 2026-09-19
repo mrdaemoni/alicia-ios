@@ -91,7 +91,8 @@ final class PresenceTracker {
     private var lastPlace = ""
 
     func place(_ meta: [String: String]) {
-        let identity = (meta["locality"] ?? "") + "|" + (meta["named"] ?? "")
+        let identity = (meta["locality"] ?? "") + "|" + (meta["district"] ?? "")
+            + "|" + (meta["spot"] ?? "") + "|" + (meta["named"] ?? "")
         guard identity != lastPlace, !identity.hasPrefix("|") else { return }
         lastPlace = identity
         append(kind: "place", ref: meta["locality"] ?? "", meta: meta)

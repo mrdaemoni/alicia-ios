@@ -29,6 +29,11 @@ struct WalkReflectionView: View {
 
     var body: some View {
         @Bindable var store = store
+        // The listening room owns the whole screen. The padding and paper
+        // ground below belong to the *other* phases — applied to the outer
+        // container they stopped her field 24 points short of every edge, and
+        // the room read as a card on a page rather than the page itself.
+        Group {
         VStack(alignment: .leading, spacing: 20) {
             if let record = store.voiceArchive.recording(store.walkRecordingID), record.finalization != nil {
                 HStack {
@@ -135,9 +140,15 @@ struct WalkReflectionView: View {
             }
         }
         .disabled(store.isSavingWalk)
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Theme.paper)
+        .padding(listeningPhase ? 0 : 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity,
+               alignment: listeningPhase ? .center : .topLeading)
+        .background(listeningPhase ? Color.clear : Theme.paper)
+        }
+        // No ignoresSafeArea here: ListeningStage's own backdrop, tint, field
+        // and grain each ignore it already, so the ROOM reaches every edge
+        // while the clock, the CLOSE button and the controls stay inside the
+        // safe area where they can be read and tapped.
         .sheet(isPresented: $showRecording) { VoiceRecordingsView(recordingID: didSave ? savedRecordingID : store.walkRecordingID) }
         .task {
 #if DEBUG
@@ -218,6 +229,13 @@ struct WalkReflectionView: View {
         let title = SurfaceContext(section: store.walkSurface, captured_at: "").title
         return store.walkSurface.isEmpty ? "WALKING WITH ALICIA"
                                          : "WALKING FROM · " + title.uppercased()
+    }
+
+    /// True exactly when `episodeListening` is what is on screen.
+    private var listeningPhase: Bool {
+        if didSave { return false }
+        if let record = store.voiceArchive.recording(store.walkRecordingID), record.finalization != nil { return false }
+        return macMode
     }
 
     private var listeningNote: String {

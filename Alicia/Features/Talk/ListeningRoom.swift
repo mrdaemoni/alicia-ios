@@ -43,14 +43,28 @@ struct ListeningStage<Controls: View>: View {
 
     var body: some View {
         ZStack {
+            // v40: composed exactly like a section's background, not merely
+            // "also a presence". Same backdrop, same time-of-day tint, same
+            // oversized field pushing the dense core off-canvas, same grain —
+            // so opening the microphone reads as her turning toward him in the
+            // room he is already in, rather than a different screen that also
+            // has particles. Hector asked for that same animation here.
             Theme.backdrop.ignoresSafeArea()
-            AliciaPresence(voice: voice,
-                           state: isRecording ? .listening : isStarting ? .thinking : .resting,
-                           attention: attention,
-                           isActive: isRecording && scenePhase == .active)
-                .opacity(0.5)
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
+            Theme.timeTint.ignoresSafeArea()
+            GeometryReader { geo in
+                AliciaPresence(voice: voice,
+                               state: isRecording ? .listening : isStarting ? .thinking : .resting,
+                               attention: attention,
+                               isActive: scenePhase == .active)
+                    .frame(width: geo.size.width * 1.9, height: geo.size.height * 1.9)
+                    .position(x: geo.size.width * 0.5, y: geo.size.height * 0.46)
+                    // Denser than a section's 0.30: here she IS the subject,
+                    // and his words are the only thing above her.
+                    .opacity(0.42)
+            }
+            .ignoresSafeArea()
+            .accessibilityHidden(true)
+            PaperGrain().ignoresSafeArea()
             VStack(alignment: .leading, spacing: 0) {
                 head
                 transcript
