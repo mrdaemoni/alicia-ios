@@ -1035,6 +1035,15 @@ final class AppStore {
     var contextGraph: ContextGraph?
     var contextElevation: ContextElevation?
     var contextArrangement: ContextArrangement?
+    /// The arrangement only when it is about the day and the episode Us is
+    /// showing. The backend withholds an incompatible arrangement's groups
+    /// while it prepares the next one; this is the same rule on this side, so
+    /// a previous episode's items can never be read as what is around him now.
+    var currentContextArrangement: ContextArrangement? {
+        guard let day = episodeDay, let a = contextArrangement,
+              a.isCurrent(day: day.date, episodeID: day.episode?.id ?? "") else { return nil }
+        return a
+    }
     var contextGraphError = ""
     /// Her morning/evening self-reflections (`/api/reflections`).
     var reflections: [Reflection] = []

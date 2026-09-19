@@ -30,9 +30,10 @@ struct WhereYouAreSection: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("us.contextGraph.open")
-                // The arrangement, when it is ready: each node with what today
-                // bears on it beneath. Otherwise the plain lines, never a wait.
-                if let arrangement = store.contextArrangement, arrangement.isReady, !arrangement.groups.isEmpty {
+                // The arrangement, when it is prepared and about this day and
+                // episode: each node with what today bears on it beneath.
+                // Otherwise the plain lines, never a wait and never yesterday.
+                if let arrangement = store.currentContextArrangement, !arrangement.groups.isEmpty {
                     ForEach(arrangement.groups) { group in
                         VStack(alignment: .leading, spacing: 8) {
                             NavigationLink { ContextNodeView(nodeID: group.node.id) } label: {
@@ -191,11 +192,20 @@ struct ContextGraphRoom: View {
     }
 
     @ViewBuilder private var elevated: some View {
-        if let arrangement = store.contextArrangement, arrangement.isReady, arrangement.arrangedCount > 0 {
+        if let arrangement = store.currentContextArrangement, arrangement.arrangedCount > 0 {
             VStack(alignment: .leading, spacing: 12) {
-                Text("ARRANGED TODAY")
-                    .font(.system(size: 10, design: .monospaced)).tracking(2)
-                    .foregroundStyle(Theme.inkSoft)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("ARRANGED TODAY")
+                        .font(.system(size: 10, design: .monospaced)).tracking(2)
+                        .foregroundStyle(Theme.inkSoft)
+                    // A refresh in flight says so rather than passing the last
+                    // good answer off as this minute's.
+                    if arrangement.isRefreshing {
+                        Text("REFRESHING")
+                            .font(.system(size: 9, design: .monospaced)).tracking(1.4)
+                            .foregroundStyle(Theme.inkSoft.opacity(0.8))
+                    }
+                }
                 if !arrangement.episodeID.isEmpty {
                     Text(("around " + arrangement.episodeID).uppercased())
                         .font(.system(size: 9, design: .monospaced)).tracking(1.4)
@@ -340,7 +350,7 @@ struct ContextNodeView: View {
             .font(.system(size: 17, design: .serif))
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
-        if let group = store.contextArrangement?.group(for: node.id), !group.items.isEmpty {
+        if let group = store.currentContextArrangement?.group(for: node.id), !group.items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Text("AROUND THIS TODAY")
                     .font(.system(size: 10, design: .monospaced)).tracking(2)

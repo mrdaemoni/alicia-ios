@@ -179,6 +179,18 @@ struct ContextArrangement: Codable {
     var refused: Bool
     var groups: [Group]
     var arrangedCount: Int
+    /// Prepared, with or without a refresh in flight behind it.
     var isReady: Bool { status == "ready" || status == "refreshing" }
+    var isRefreshing: Bool { status == "refreshing" }
+    /// Whether this may be shown as what is around him *now*. A refresh in
+    /// flight still renders the last good answer, but an arrangement made for
+    /// another episode or another day is not today's context however recently
+    /// it was prepared, so it renders as nothing and the plain node lines show.
+    func isCurrent(day: String, episodeID: String) -> Bool {
+        guard isReady, !day.isEmpty else { return false }
+        if !date.isEmpty && date != day { return false }
+        if self.episodeID != episodeID { return false }
+        return true
+    }
     func group(for nodeID: String) -> Group? { groups.first { $0.node.id == nodeID } }
 }
