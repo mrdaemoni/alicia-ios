@@ -21,15 +21,18 @@ struct WorkSessionsView: View {
 
     /// The three questions he was actually asking, in order.
     private enum Group: String, CaseIterable, Identifiable {
-        case needsYou = "WAITING FOR YOU"
+        case needsYou = "NEEDS YOU"
         case working = "ON YOUR MAC"
         case done = "ALICIA HAS THEM"
         var id: String { rawValue }
 
         var blurb: String {
             switch self {
-            case .needsYou: "Nothing moves until you read these."
-            case .working:  "Being transcribed. You will read them before she does."
+            // Since A2-057 a finished walk sends itself, so this group is no
+            // longer the queue his thinking waits in — it is the short list of
+            // things that genuinely stalled.
+            case .needsYou: "These stalled. Everything else sends itself."
+            case .working:  "Being transcribed, then sent on their own."
             case .done:     "Sent, with the original recording still here."
             }
         }
@@ -76,6 +79,7 @@ struct WorkSessionsView: View {
                                     .font(.caption).foregroundStyle(Theme.inkSoft)
                                 ForEach(rows) { record in
                                     row(record, urgent: group == .needsYou)
+                                        .swipeToDelete { discard(record) }
                                 }
                             }
                             .accessibilityIdentifier("sessions.group." + group.rawValue)
@@ -151,6 +155,19 @@ struct WorkSessionsView: View {
         return whole <= 0 ? "no audio yet" : "\(whole / 60)m \(whole % 60)s"
     }
 
+    /// Throw one away. Hector asked for this after his list filled with
+    /// one-second entries from pressing the button by accident:
+    /// *"my ability to quickly delete the ones that are bad, like maybe
+    /// swiping to the left."*
+    ///
+    /// This deletes the audio, which is the thing taking up room and the thing
+    /// he means by "bad". A reflection already sent to Alicia keeps its words
+    /// — deleting a recording is not a way to unsay something, and pretending
+    /// otherwise would be worse than not offering it.
+    private func discard(_ record: VoiceRecording) {
+        Task { await store.deleteOriginalVoice(record.id) }
+    }
+
     /// A session that still needs reviewing reopens where the reviewing
     /// happens; anything else opens its own record.
     private func open(_ record: VoiceRecording) {
@@ -161,6 +178,55 @@ struct WorkSessionsView: View {
             store.showWalk = true
         } else {
             opened = AppStore.ReviewedRecording(id: record.id)
+        }
+    }
+}
+
+private extension View {
+    /// Leading-edge swipe to discard, on a row that is a Button rather than a
+    /// List cell. `swipeActions` needs a List; these rows are a VStack, so the
+    /// gesture is drawn here — a drag that reveals a word, never a bare icon.
+    func swipeToDelete(_ discard: @escaping () -> Void) -> some View {
+        modifier(SwipeToDelete(discard: discard))
+    }
+}
+
+private struct SwipeToDelete: ViewModifier {
+    let discard: () -> Void
+    @State private var offset: CGFloat = 0
+    @State private var gone = false
+
+    private let threshold: CGFloat = -72
+
+    func body(content: Content) -> some View {
+        if gone { EmptyView() } else {
+            content
+                .offset(x: offset)
+                .background(alignment: .trailing) {
+                    Text("DELETE")
+                        .font(.system(size: 10, design: .monospaced)).tracking(1.4)
+                        .foregroundStyle(Theme.rose)
+                        .opacity(Double(min(1, max(0, offset / threshold))))
+                        .padding(.trailing, 6)
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 18)
+                        .onChanged { value in
+                            // Left only, and it resists past the threshold so
+                            // a scroll flick cannot throw a recording away.
+                            let raw = min(0, value.translation.width)
+                            offset = raw < threshold ? threshold + (raw - threshold) / 4 : raw
+                        }
+                        .onEnded { _ in
+                            if offset <= threshold {
+                                withAnimation(.easeIn(duration: 0.18)) { offset = -600; gone = true }
+                                discard()
+                            } else {
+                                withAnimation(.spring(response: 0.3)) { offset = 0 }
+                            }
+                        }
+                )
+                .accessibilityAction(named: "Delete this recording") { gone = true; discard() }
         }
     }
 }
