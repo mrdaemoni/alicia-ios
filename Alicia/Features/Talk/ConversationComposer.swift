@@ -120,14 +120,11 @@ struct ConversationComposer: View {
         Date().timeIntervalSince(voiceDate(record.context.started_at)) < 6 * 3600
     }
 
+    /// Show it; never reopen the walk. Handing an unfinished recording back to
+    /// WalkReflectionView starts recording into it, which edits an original he
+    /// cannot get back.
     private func openReflection(_ record: VoiceRecording) {
-        if record.context.source == "ios_walk" {
-            store.walkRecordingID = record.id
-            store.walkEpisodeID = record.context.episode_id
-            store.showWalk = true
-        } else {
-            store.reviewRecording = AppStore.ReviewedRecording(id: record.id)
-        }
+        store.reviewRecording = AppStore.ReviewedRecording(id: record.id)
     }
 
     /// One line that names what she would be hearing about. When an episode is

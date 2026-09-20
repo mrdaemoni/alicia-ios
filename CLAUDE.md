@@ -1,3 +1,30 @@
+## A2-060 — a link means she has it
+
+**The state machine was reading the wrong signal.** `VoiceRecording.stage` only
+consulted `submission`, the receipt the PHONE writes when the phone sends.
+Since the Mac started sending on its own (A2-057), ten walks that had genuinely
+arrived kept reading "Sending to Alicia" forever, because the phone was
+watching for a receipt it would never write. `stage` now returns `.sent` when
+`links` is non-empty — a link is what the backend writes when words are
+attached to the episode and the conversation, whoever sent them.
+
+**`readyForYou` no longer means "you".** Its words are done and on their way;
+it groups with the in-flight states. `Stage.needsYou` is now exactly
+`.needsAttention` — `saved` came off it because leaving a walk seals it
+(A2-059) and the Mac sends it. One meaning everywhere: nothing happens to this
+unless he acts.
+
+**Opening a past session shows it.** It used to hand unfinished ones back to
+`WalkReflectionView`, whose `.task` starts recording when there is no
+finalization — so tapping an eleven-day-old walk began appending today's audio
+to it. That read as "it opened the wrong recording" and was worse than it read.
+
+Every stage detail now answers one question — do I need to do anything — and
+for all but `needsAttention` the answer is no.
+
+Evidence: `--mac-sent-preview` reproduces the exact archive shape (link, no
+submission) and `test_sessions_ui.py` fails if it reads as anything but arrived.
+
 ## A2-059 — the Sessions list scrolls, and a walk seals itself
 
 **The scroll bug was mine.** A2-058 hung a `DragGesture` on every row to get a

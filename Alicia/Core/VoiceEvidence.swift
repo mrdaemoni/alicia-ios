@@ -99,12 +99,12 @@ struct VoiceRecording: Codable, Identifiable {
         var label: String {
             switch self {
             case .capturing:      "Recording"
-            case .saved:          "Saved on your phone"
+            case .saved:          "Finishing on your phone"
             case .transcribing:   "Your Mac is writing it"
             case .readyForYou:    "Sending to Alicia"
             case .sending:        "Sending to Alicia"
             case .sent:           "Alicia has it"
-            case .needsAttention: "Needs your attention"
+            case .needsAttention: "Stuck — needs you"
             case .removed:        "Deleted"
             }
         }
@@ -112,13 +112,15 @@ struct VoiceRecording: Codable, Identifiable {
         /// The sentence under the label, which says what he can do about it.
         var detail: String {
             switch self {
-            case .capturing:      "Still recording on this phone."
-            case .saved:          "The original audio is kept. Finish it to get the words."
-            case .transcribing:   "Nothing is sent yet. You will read it before Alicia does."
-            case .readyForYou:    "The words are ready and go to her on their own. Open it if you want to correct anything."
-            case .sending:        "Your words are on their way. The receipt is saved."
-            case .sent:           "She has your words. The original recording stays here."
-            case .needsAttention: "It is being held exactly as it is, and has not been sent again."
+            // Every line answers the only question he asks of this screen:
+            // do I need to do anything? For all but one, the answer is no.
+            case .capturing:      "Recording now."
+            case .saved:          "Sealing the audio, then your Mac takes it. Nothing for you to do."
+            case .transcribing:   "Your Mac is turning it into words. Nothing for you to do."
+            case .readyForYou:    "The words are done and on their way to her. Nothing for you to do."
+            case .sending:        "On its way to her. Nothing for you to do."
+            case .sent:           "She has your words and they are part of what she knows. The recording stays here."
+            case .needsAttention: "This one stopped. It is held exactly as you said it and has not been sent."
             case .removed:        "This recording was deleted."
             }
         }
@@ -130,11 +132,26 @@ struct VoiceRecording: Codable, Identifiable {
     /// ready transcript is NOT one of these: it sends itself within two
     /// minutes, so listing it as needing him was the lie that let five
     /// walks sit unsent for eleven days.
-    var needsYou: Bool { self == .needsAttention || self == .saved }
+    /// One meaning, everywhere: nothing happens to this unless he acts.
+    ///
+    /// `saved` came off this list on 2026-09-20. It used to mean "press
+    /// Finish", but leaving a walk now seals it (A2-059) and the Mac sends it
+    /// (A2-057), so a saved recording is in flight rather than waiting. Only
+    /// something genuinely stopped needs him.
+    var needsYou: Bool { self == .needsAttention }
     }
 
     var stage: Stage {
         if deleted { return .removed }
+        // A LINK is the proof a reflection reached her — it is written when the
+        // words are attached to the episode and the conversation. Until
+        // 2026-09-20 this only looked at `submission`, which is the receipt the
+        // PHONE writes when the phone sends. Since the Mac started sending on
+        // its own (A2-057), ten walks that had genuinely arrived kept reading
+        // "Sending to Alicia" forever, because the phone was watching for a
+        // receipt it was never going to write. Whoever sent it, the link is
+        // what says it landed.
+        if !links.isEmpty { return .sent }
         if processingRejected == true || submissionRejected == true { return .needsAttention }
         if submissionError != nil || processingError != nil { return .needsAttention }
         if let state = submissionStatus?.state {
@@ -765,6 +782,13 @@ final class VoiceArchive {
         do { try replace(record) } catch { lastError = "Preview could not be saved." }
     }
     static let previewID = "90100000-0000-4000-8000-000000000001"
+    /// DEBUG only: stamp the link a Mac-side send would have written.
+    func linkForPreview(_ id: String) {
+        guard let index = recordings.firstIndex(where: { $0.id == id }) else { return }
+        recordings[index].links = [VoiceLink(receipt_id: "preview-reaction",
+                                             text: "", kind: "walk")]
+    }
+
     func seedPreview() {
         let id = Self.previewID
         let context = VoiceContext(session_id: id, source: "ios_walk", started_at: "2026-09-05T15:04:00.000Z",
@@ -782,6 +806,33 @@ final class VoiceArchive {
             addTranscript("Preview recognition · I want to revisit the criteria.", kind: "on_device", to: id)
             addTranscript("Preview · I want to revisit the criteria for ending a commitment.", kind: "submitted", to: id)
         } catch { lastError = "Preview fixture could not open." }
+    }
+
+    /// The exact shape of Hector's archive on 2026-09-20: walks the MAC sent,
+    /// which carry a link and no submission receipt. Before the fix these read
+    /// "Sending to Alicia" forever and sat under NEEDS YOU.
+    func seedMacSentPreview() {
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1)!
+        for index in 0..<3 {
+            let id = String(format: "0000BEEF-0000-4000-8000-%012d", index).uppercased()
+            let context = VoiceContext(session_id: id, source: "ios_walk",
+                started_at: "2026-09-1\(index)T16:25:00.000Z", timezone: "America/Los_Angeles",
+                episode_id: "S16E0\(index + 2)", episode_title: "", episode_basis: "selected",
+                frame_id: "preview", question_presented: "", playback_position_ms: 0,
+                season: 16, previous_season: 15)
+            do {
+                let sink = try begin(id: id, context: context)
+                let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48000)!
+                buffer.frameLength = 48000
+                for i in 0..<48000 { buffer.floatChannelData![0][i] = 0 }
+                sink.append(buffer)
+                var segments = sink.drain(close: true).segments
+                if !segments.isEmpty { segments[0].duration = 260 }
+                addSegments(segments, to: id)
+                // What the Mac's send leaves behind: a LINK, and no submission.
+                linkForPreview(id)
+            } catch { continue }
+        }
     }
 
     /// A Sessions list with enough in it to scroll, and one of each kind.

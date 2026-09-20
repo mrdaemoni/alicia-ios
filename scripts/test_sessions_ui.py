@@ -87,6 +87,27 @@ final class SessionsUITests: XCTestCase {
   capture("misfires-grouped",app)
  }
 
+ /// The bug Hector hit: the Mac sends a walk, the phone never learns, and
+ /// ten arrived reflections read "Sending to Alicia" under NEEDS YOU forever.
+ func testAWalkTheMacSentReadsAsArrived() {
+  continueAfterFailure=false
+  let app=XCUIApplication()
+  app.launchArguments=["--reset-drafts","--mac-sent-preview","--episode-day-preview","--tab","alicia"]
+  app.launch()
+  let entry=app.buttons["sessions.open"]
+  XCTAssertTrue(entry.waitForExistence(timeout:15))
+  // The entry must not claim these need him.
+  XCTAssertFalse(entry.label.contains("waiting for you"),"entry says they wait: \(entry.label)")
+  entry.tap()
+  XCTAssertTrue(app.buttons["sessions.close"].waitForExistence(timeout:10))
+  XCTAssertTrue(app.staticTexts["ALICIA HAS IT"].waitForExistence(timeout:10)
+                || app.descendants(matching:.any)["ALICIA HAS IT"].waitForExistence(timeout:5),
+                "a linked walk does not read as arrived")
+  XCTAssertFalse(app.staticTexts["SENDING TO ALICIA"].exists,"still says sending")
+  XCTAssertFalse(app.staticTexts["NEEDS YOU"].exists,"still grouped as needing him")
+  capture("mac-sent-reads-as-arrived",app)
+ }
+
  func testTheCloseButtonSurvivesScrolling() {
   let app=openSessions()
   app.swipeUp()
