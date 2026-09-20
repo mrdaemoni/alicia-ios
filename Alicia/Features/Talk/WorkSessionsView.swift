@@ -2,46 +2,43 @@ import SwiftUI
 
 /// Every spoken session, and exactly where each one is.
 ///
-/// Hector's note after the first pass: *"there's a bug there that I don't know
-/// how to go back to all the things that are yet to be validated and all the
-/// things that have been sent. Maybe we should create an entry point in the
-/// Alicia section to have the state of the work sessions, the ones that have
-/// been on device and the ones that have been sent for processing and the ones
-/// that have been processed."*
+/// Two corrections from Hector using it on 2026-09-20.
 ///
-/// The first pass gave the states one vocabulary and surfaced the single most
-/// recent one on the composer band. That is not the same as being able to go
-/// and look. This is the place to look: one screen, reachable from Alicia,
-/// where the sessions are grouped by what is true of them rather than listed
-/// by date, and the group that needs him is first and cannot be missed.
+/// **It would not scroll.** A2-058 hung a `DragGesture` on every row to get a
+/// swipe, and that gesture ate the vertical drag the ScrollView needed. The
+/// rows are a `List` now: scrolling and `swipeActions` both come from the
+/// platform, and nothing competes for the gesture.
+///
+/// **"NEEDS YOU 13" was thirteen accidents.** Every real walk had been sent —
+/// verified against the Mac — and the thirteen were one-to-fifteen second
+/// stubs from pressing the button by mistake. Presenting those as things that
+/// need him is how a working pipeline reads as a broken one. They now have
+/// their own group, last, named for what they are, with one tap to clear all
+/// of them.
 struct WorkSessionsView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var opened: AppStore.ReviewedRecording?
+    @State private var confirmingSweep = false
 
-    /// The three questions he was actually asking, in order.
+    /// Under this a recording holds no thought. His real walks run three to six
+    /// minutes; his misfires are a second or two of room noise, and some never
+    /// reach the Mac at all.
+    private static let misfireSeconds: Double = 20
+
     private enum Group: String, CaseIterable, Identifiable {
         case needsYou = "NEEDS YOU"
         case working = "ON YOUR MAC"
         case done = "ALICIA HAS THEM"
+        case misfire = "NOTHING WAS SAID"
         var id: String { rawValue }
 
         var blurb: String {
             switch self {
-            // Since A2-057 a finished walk sends itself, so this group is no
-            // longer the queue his thinking waits in — it is the short list of
-            // things that genuinely stalled.
             case .needsYou: "These stalled. Everything else sends itself."
             case .working:  "Being transcribed, then sent on their own."
             case .done:     "Sent, with the original recording still here."
-            }
-        }
-
-        func holds(_ stage: VoiceRecording.Stage) -> Bool {
-            switch self {
-            case .needsYou: stage.needsYou
-            case .working:  stage == .transcribing || stage == .sending || stage == .capturing
-            case .done:     stage == .sent
+            case .misfire:  "A second or two — the button, not a thought. Safe to clear."
             }
         }
     }
@@ -54,68 +51,136 @@ struct WorkSessionsView: View {
             .sorted { voiceDate($0.context.started_at) > voiceDate($1.context.started_at) }
     }
 
+    /// A misfire is short AND has no words. A short recording that did produce
+    /// a transcript is a real short thought and stays where it belongs.
+    private func isMisfire(_ record: VoiceRecording) -> Bool {
+        guard record.stage != .sent else { return false }
+        return record.duration < Self.misfireSeconds && record.latestWords.count < 200
+    }
+
+    private func group(for record: VoiceRecording) -> Group {
+        if isMisfire(record) { return .misfire }
+        switch record.stage {
+        case .sent: return .done
+        case .transcribing, .sending, .capturing: return .working
+        default: return .needsYou
+        }
+    }
+
+    private var misfires: [VoiceRecording] { sessions.filter { group(for: $0) == .misfire } }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 26) {
-                    SectionHeader(title: "Sessions", kicker: "WHAT YOU SAID, AND WHERE IT IS")
-                    if sessions.isEmpty {
-                        Text("Nothing spoken yet. A walk, or the microphone on any section, appears here with its state.")
-                            .font(.system(size: 20, design: .serif))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    ForEach(Group.allCases) { group in
-                        let rows = sessions.filter { group.holds($0.stage) }
-                        if !rows.isEmpty {
-                            VStack(alignment: .leading, spacing: 14) {
-                                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                    Text(group.rawValue)
-                                        .font(.system(size: 10, design: .monospaced)).tracking(1.6)
-                                    Text("\(rows.count)")
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundStyle(Theme.inkSoft)
-                                }
-                                Text(group.blurb)
-                                    .font(.caption).foregroundStyle(Theme.inkSoft)
-                                ForEach(rows) { record in
-                                    row(record, urgent: group == .needsYou)
-                                        .swipeToDelete { discard(record) }
-                                }
+            List {
+                header
+                ForEach(Group.allCases) { group in
+                    let rows = sessions.filter { self.group(for: $0) == group }
+                    if !rows.isEmpty {
+                        Section {
+                            ForEach(rows) { record in
+                                row(record, urgent: group == .needsYou)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button("Delete", role: .destructive) { discard(record) }
+                                    }
                             }
-                            .accessibilityIdentifier("sessions.group." + group.rawValue)
+                        } header: {
+                            sectionHead(group, count: rows.count)
                         }
                     }
-                    if !store.voiceArchive.lastError.isEmpty {
-                        Text(store.voiceArchive.lastError)
-                            .font(.caption).fixedSize(horizontal: false, vertical: true)
-                    }
-                    Button(store.voiceArchive.processing || store.voiceArchive.syncing
-                           ? "CHECKING YOUR MAC…" : "CHECK YOUR MAC") {
-                        Task { await store.refreshVoiceArchive() }
-                    }
-                    .font(.system(size: 10, design: .monospaced)).tracking(1)
-                    .foregroundStyle(Theme.inkSoft).frame(minHeight: 44)
-                    .disabled(store.voiceArchive.processing || store.voiceArchive.syncing)
                 }
-                .padding(22)
+                footer
             }
-            .background(Theme.paper)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .presenceBackground(.mind, store: store)
             .foregroundStyle(Theme.ink)
-            .buttonStyle(.plain)
             .toolbar(.hidden, for: .navigationBar)
             .task { await store.refreshVoiceArchive() }
             .refreshable { await store.refreshVoiceArchive() }
             .sheet(item: $opened) { target in
                 VoiceRecordingsView(recordingID: target.id)
             }
+            .confirmationDialog("Clear \(misfires.count) empty recording(s)?",
+                                isPresented: $confirmingSweep, titleVisibility: .visible) {
+                Button("Clear them", role: .destructive) { misfires.forEach(discard) }
+                Button("Keep them", role: .cancel) { }
+            } message: {
+                Text("These are a second or two each with no words in them. Their audio is deleted; nothing you sent to Alicia is affected.")
+            }
         }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 3) {
+                InkTitleLine(text: "Sessions", size: 27)
+                Text("WHAT YOU SAID, AND WHERE IT IS")
+                    .font(.system(size: 10, design: .monospaced)).tracking(1.6)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            Spacer()
+            Button("CLOSE") { dismiss() }
+                .font(.system(size: 10, design: .monospaced)).tracking(1)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("sessions.close")
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 8)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private func sectionHead(_ group: Group, count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(group.rawValue)
+                    .font(.system(size: 10, design: .monospaced)).tracking(1.6)
+                Text("\(count)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.inkSoft)
+                Spacer(minLength: 0)
+                if group == .misfire {
+                    Button("CLEAR ALL") { confirmingSweep = true }
+                        .font(.system(size: 9, design: .monospaced)).tracking(1)
+                        .foregroundStyle(Theme.rose)
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("sessions.clearMisfires")
+                }
+            }
+            Text(group.blurb).font(.caption).foregroundStyle(Theme.inkSoft)
+        }
+        .textCase(nil)
+        .foregroundStyle(Theme.ink)
+        .padding(.top, 14).padding(.bottom, 2)
+        // Match the rows' own inset; a header flush to the screen edge while
+        // every row is indented reads as a rendering fault.
+        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+    }
+
+    @ViewBuilder private var footer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !store.voiceArchive.lastError.isEmpty {
+                Text(store.voiceArchive.lastError)
+                    .font(.caption).fixedSize(horizontal: false, vertical: true)
+            }
+            Button(store.voiceArchive.processing || store.voiceArchive.syncing
+                   ? "CHECKING YOUR MAC…" : "CHECK YOUR MAC") {
+                Task { await store.refreshVoiceArchive() }
+            }
+            .font(.system(size: 10, design: .monospaced)).tracking(1)
+            .foregroundStyle(Theme.inkSoft).frame(minHeight: 44)
+            .disabled(store.voiceArchive.processing || store.voiceArchive.syncing)
+            .buttonStyle(.plain)
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     private func row(_ record: VoiceRecording, urgent: Bool) -> some View {
         Button { open(record) } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(subject(record))
-                    .font(.system(size: 19, design: .serif))
+                    .font(.system(size: 18, design: .serif))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text(record.stage.label.uppercased())
                     .font(.system(size: 9, design: .monospaced)).tracking(1)
@@ -128,10 +193,11 @@ struct WorkSessionsView: View {
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.inkSoft)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
-            .overlay(alignment: .bottom) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
         }
+        .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
         .accessibilityIdentifier("sessions.row")
         .accessibilityLabel(subject(record) + ", " + record.stage.label + ". " + record.stage.detail)
     }
@@ -155,21 +221,12 @@ struct WorkSessionsView: View {
         return whole <= 0 ? "no audio yet" : "\(whole / 60)m \(whole % 60)s"
     }
 
-    /// Throw one away. Hector asked for this after his list filled with
-    /// one-second entries from pressing the button by accident:
-    /// *"my ability to quickly delete the ones that are bad, like maybe
-    /// swiping to the left."*
-    ///
-    /// This deletes the audio, which is the thing taking up room and the thing
-    /// he means by "bad". A reflection already sent to Alicia keeps its words
-    /// — deleting a recording is not a way to unsay something, and pretending
-    /// otherwise would be worse than not offering it.
+    /// Deletes the audio. A reflection already sent keeps its words — deleting
+    /// a recording is not a way to unsay something.
     private func discard(_ record: VoiceRecording) {
         Task { await store.deleteOriginalVoice(record.id) }
     }
 
-    /// A session that still needs reviewing reopens where the reviewing
-    /// happens; anything else opens its own record.
     private func open(_ record: VoiceRecording) {
         if record.stage.needsYou, record.context.source == "ios_walk" {
             dismiss()
@@ -178,55 +235,6 @@ struct WorkSessionsView: View {
             store.showWalk = true
         } else {
             opened = AppStore.ReviewedRecording(id: record.id)
-        }
-    }
-}
-
-private extension View {
-    /// Leading-edge swipe to discard, on a row that is a Button rather than a
-    /// List cell. `swipeActions` needs a List; these rows are a VStack, so the
-    /// gesture is drawn here — a drag that reveals a word, never a bare icon.
-    func swipeToDelete(_ discard: @escaping () -> Void) -> some View {
-        modifier(SwipeToDelete(discard: discard))
-    }
-}
-
-private struct SwipeToDelete: ViewModifier {
-    let discard: () -> Void
-    @State private var offset: CGFloat = 0
-    @State private var gone = false
-
-    private let threshold: CGFloat = -72
-
-    func body(content: Content) -> some View {
-        if gone { EmptyView() } else {
-            content
-                .offset(x: offset)
-                .background(alignment: .trailing) {
-                    Text("DELETE")
-                        .font(.system(size: 10, design: .monospaced)).tracking(1.4)
-                        .foregroundStyle(Theme.rose)
-                        .opacity(Double(min(1, max(0, offset / threshold))))
-                        .padding(.trailing, 6)
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 18)
-                        .onChanged { value in
-                            // Left only, and it resists past the threshold so
-                            // a scroll flick cannot throw a recording away.
-                            let raw = min(0, value.translation.width)
-                            offset = raw < threshold ? threshold + (raw - threshold) / 4 : raw
-                        }
-                        .onEnded { _ in
-                            if offset <= threshold {
-                                withAnimation(.easeIn(duration: 0.18)) { offset = -600; gone = true }
-                                discard()
-                            } else {
-                                withAnimation(.spring(response: 0.3)) { offset = 0 }
-                            }
-                        }
-                )
-                .accessibilityAction(named: "Delete this recording") { gone = true; discard() }
         }
     }
 }

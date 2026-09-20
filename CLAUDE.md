@@ -1,3 +1,25 @@
+## A2-059 — the Sessions list scrolls, and a walk seals itself
+
+**The scroll bug was mine.** A2-058 hung a `DragGesture` on every row to get a
+swipe; it ate the vertical drag. `WorkSessionsView` is a `List` now — scrolling
+and `swipeActions` both come from the platform, nothing competes. Proved by
+`scripts/test_sessions_ui.py` against `--sessions-preview`, a fixture with
+enough rows to actually scroll (the old 2-row fixture could not show the bug).
+
+**"NEEDS YOU 13" was thirteen accidents.** Every real walk had reached her;
+the thirteen were 1-15 second stubs, empty or Whisper hallucinations
+("Thanks for watching!"). Misfires are their own group, last, named for what
+they are, with one tap to clear all. The Alicia-tab count ignores them too.
+
+**Leaving a walk seals it.** Closing without FINISH left the recording
+unfinalized, so the Mac never transcribed it and auto-send never saw it — a
+walk he walked away from silently never happened. `pause()` now finalizes any
+recording over 20 seconds. Under that it does not, because sealing a
+one-second press queues the Mac to transcribe silence.
+
+**The connection banner heals itself.** While it is up, and only while it is
+up, the app re-probes every ten seconds; the first success clears it.
+
 ## A2-058 — Sessions after walks send themselves
 
 `VoiceRecording.Stage.readyForYou` no longer counts as `needsYou`. Since the
