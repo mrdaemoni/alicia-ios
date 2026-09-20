@@ -38,6 +38,7 @@ struct VoiceProcessingView: View {
                         .accessibilityIdentifier("voice.stage")
                     Text(record.stage.detail).font(.callout).foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(record.syncSummary).font(.caption).foregroundStyle(Theme.inkSoft)
                     if record.transcription?.ready != true {
                         Text("Uploads resume while this app is open. Once all audio reaches your Mac, it can transcribe while the phone is away.")

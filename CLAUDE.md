@@ -1,3 +1,16 @@
+## A2-058 — Sessions after walks send themselves
+
+`VoiceRecording.Stage.readyForYou` no longer counts as `needsYou`. Since the
+Mac auto-sends (backend A2-057), a ready transcript goes on its own within two
+minutes; listing it as needing him is the lie that let five walks sit unsent for
+eleven days. It reads "Sending to Alicia", and the WAITING group became NEEDS
+YOU — the short list of things that genuinely stalled.
+
+Rows in `WorkSessionsView` swipe left to discard, with resistance past the
+threshold so a scroll flick cannot throw a recording away, and a VoiceOver
+action for the same thing. It deletes the **audio**; a reflection already sent
+keeps its words, because deleting a recording is not a way to unsay something.
+
 ## A2-056 — a lost route retries instead of accusing her
 
 Reads through `LiveAliciaService.fetchOne` attempt three times over ~2.4s

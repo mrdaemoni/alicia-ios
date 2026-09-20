@@ -101,7 +101,7 @@ struct VoiceRecording: Codable, Identifiable {
             case .capturing:      "Recording"
             case .saved:          "Saved on your phone"
             case .transcribing:   "Your Mac is writing it"
-            case .readyForYou:    "Waiting for you to read"
+            case .readyForYou:    "Sending to Alicia"
             case .sending:        "Sending to Alicia"
             case .sent:           "Alicia has it"
             case .needsAttention: "Needs your attention"
@@ -115,7 +115,7 @@ struct VoiceRecording: Codable, Identifiable {
             case .capturing:      "Still recording on this phone."
             case .saved:          "The original audio is kept. Finish it to get the words."
             case .transcribing:   "Nothing is sent yet. You will read it before Alicia does."
-            case .readyForYou:    "Open it, change anything that came out wrong, then send."
+            case .readyForYou:    "The words are ready and go to her on their own. Open it if you want to correct anything."
             case .sending:        "Your words are on their way. The receipt is saved."
             case .sent:           "She has your words. The original recording stays here."
             case .needsAttention: "It is being held exactly as it is, and has not been sent again."
@@ -126,7 +126,11 @@ struct VoiceRecording: Codable, Identifiable {
         /// True when nothing moves until he does something. The composer band
         /// surfaces these, because a reflection waiting in a list he never
         /// opens is the same as a reflection he lost.
-        var needsYou: Bool { self == .readyForYou || self == .needsAttention || self == .saved }
+        /// True when nothing moves until he does something. Since A2-057 a
+    /// ready transcript is NOT one of these: it sends itself within two
+    /// minutes, so listing it as needing him was the lie that let five
+    /// walks sit unsent for eleven days.
+    var needsYou: Bool { self == .needsAttention || self == .saved }
     }
 
     var stage: Stage {
