@@ -68,6 +68,9 @@ final class AppStore {
         if ProcessInfo.processInfo.arguments.contains("--sessions-preview") {
             voiceArchive.seedSessionsPreview()
         }
+        if ProcessInfo.processInfo.arguments.contains("--mac-sent-preview") {
+            voiceArchive.seedMacSentPreview()
+        }
         if ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") {
             voiceArchive.seedPreview()
             messages = [Message(sender: .me, text: "Preview · I want to revisit the criteria for ending a commitment.",

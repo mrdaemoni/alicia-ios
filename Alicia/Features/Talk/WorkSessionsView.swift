@@ -35,9 +35,9 @@ struct WorkSessionsView: View {
 
         var blurb: String {
             switch self {
-            case .needsYou: "These stalled. Everything else sends itself."
-            case .working:  "Being transcribed, then sent on their own."
-            case .done:     "Sent, with the original recording still here."
+            case .needsYou: "These stopped. Everything else needs nothing from you."
+            case .working:  "On their way to her by themselves. Nothing to do."
+            case .done:     "She has these. The recordings stay here."
             case .misfire:  "A second or two — the button, not a thought. Safe to clear."
             }
         }
@@ -61,9 +61,17 @@ struct WorkSessionsView: View {
     private func group(for record: VoiceRecording) -> Group {
         if isMisfire(record) { return .misfire }
         switch record.stage {
-        case .sent: return .done
-        case .transcribing, .sending, .capturing: return .working
-        default: return .needsYou
+        case .sent:
+            return .done
+        // `readyForYou` is a misnomer inherited from when review was a gate:
+        // its words are DONE and on their way to her by themselves. It belongs
+        // with the other in-flight states, not in the group that means "you
+        // have to act". Putting it under NEEDS YOU is what showed Hector
+        // twelve things needing him when the true number was one.
+        case .readyForYou, .transcribing, .sending, .capturing, .saved:
+            return .working
+        case .needsAttention, .removed:
+            return .needsYou
         }
     }
 
@@ -227,14 +235,14 @@ struct WorkSessionsView: View {
         Task { await store.deleteOriginalVoice(record.id) }
     }
 
+    /// Opening a past session SHOWS it. It never reopens the walk.
+    ///
+    /// It used to hand unfinished ones back to `WalkReflectionView`, whose
+    /// `.task` starts recording when a recording has no finalization — so
+    /// tapping a walk from eleven days ago began appending today's audio to
+    /// it. That reads as "it opened the wrong recording" and is worse than it
+    /// reads: it edits an original he cannot get back.
     private func open(_ record: VoiceRecording) {
-        if record.stage.needsYou, record.context.source == "ios_walk" {
-            dismiss()
-            store.walkRecordingID = record.id
-            store.walkEpisodeID = record.context.episode_id
-            store.showWalk = true
-        } else {
-            opened = AppStore.ReviewedRecording(id: record.id)
-        }
+        opened = AppStore.ReviewedRecording(id: record.id)
     }
 }
