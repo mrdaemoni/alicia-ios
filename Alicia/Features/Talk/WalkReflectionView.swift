@@ -384,5 +384,27 @@ struct WalkReflectionView: View {
         listening = false
         speech.stop()
         base = store.walkDraft
+        sealIfWorthSending()
+    }
+
+    /// Leaving a walk finishes it.
+    ///
+    /// Until now, closing without pressing FINISH left the recording
+    /// unfinalized — so the Mac never transcribed it, and the auto-send it
+    /// feeds never saw it. A walk he simply walked away from was a walk that
+    /// silently never happened. Hector's instruction was "just send it", and
+    /// that has to include the case where he does not press anything.
+    ///
+    /// Only for real audio: twenty seconds is well under his shortest real
+    /// walk and well over a misfire, and sealing a one-second press would
+    /// queue the Mac to transcribe silence.
+    private func sealIfWorthSending() {
+        let id = store.walkRecordingID
+        guard !id.isEmpty,
+              let record = store.voiceArchive.recording(id),
+              !record.deleted,
+              record.finalization == nil,
+              record.duration >= 20 else { return }
+        _ = store.finalizeVoice(id, speech: speech)
     }
 }

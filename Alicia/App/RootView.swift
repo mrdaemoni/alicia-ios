@@ -164,6 +164,9 @@ struct RootView: View {
 /// never leaves `.ok`, so nothing renders. Deliberately unobtrusive — a
 /// margin note, not an alert.
 private struct ConnectionBanner: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         if let text = label(for: ConnectionStatus.shared.state) {
             Text(text)
@@ -175,6 +178,20 @@ private struct ConnectionBanner: View {
                 .padding(.vertical, 5)
                 .background(Capsule().fill(Theme.paper.opacity(0.92)))
                 .overlay(Capsule().stroke((ConnectionStatus.shared.state == .reaching ? Theme.inkSoft : Theme.rose).opacity(0.35), lineWidth: 0.7))
+                // v40: heal without him. A dropped Tailscale route comes back
+                // on its own, but nothing re-asked, so the banner sat there
+                // until he pulled to refresh. While it is up — and only while
+                // it is up — re-probe every ten seconds; the first success
+                // clears it. This costs nothing when everything is fine,
+                // because the banner is not on screen then.
+                .task(id: scenePhase) {
+                    guard scenePhase == .active else { return }
+                    while !Task.isCancelled, ConnectionStatus.shared.state != .ok {
+                        try? await Task.sleep(for: .seconds(10))
+                        guard !Task.isCancelled, ConnectionStatus.shared.state != .ok else { return }
+                        await store.reprobeConnection()
+                    }
+                }
         }
     }
 

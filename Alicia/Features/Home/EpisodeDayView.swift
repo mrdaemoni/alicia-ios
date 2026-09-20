@@ -431,9 +431,13 @@ struct WorkSessionsEntry: View {
     @Environment(AppStore.self) private var store
     @State private var open = false
 
+    /// Only real sessions count. A one-second misfire is not something
+    /// waiting for him, and counting it here is what made a working pipeline
+    /// read as thirteen lost walks.
     private var waiting: Int {
         store.voiceArchive.recordings
-            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage.needsYou }.count
+            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage.needsYou
+                      && !($0.duration < 20 && $0.latestWords.count < 200) }.count
     }
     private var total: Int {
         store.voiceArchive.recordings.filter { !$0.deleted && !$0.isPrivateBody }.count

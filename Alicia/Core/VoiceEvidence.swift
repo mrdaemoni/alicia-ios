@@ -783,5 +783,52 @@ final class VoiceArchive {
             addTranscript("Preview · I want to revisit the criteria for ending a commitment.", kind: "submitted", to: id)
         } catch { lastError = "Preview fixture could not open." }
     }
+
+    /// A Sessions list with enough in it to scroll, and one of each kind.
+    ///
+    /// Hector's real list on 2026-09-20 was eleven sent walks and thirteen
+    /// one-second misfires; a two-row fixture could neither reproduce the
+    /// scroll bug nor show that the grouping puts the misfires last.
+    func seedSessionsPreview() {
+        let shapes: [(String, Double, String?)] = [
+            ("S16E08", 284, "A full reflection that reached her."),
+            ("S16E07", 283, "Another that reached her."),
+            ("S16E06", 322, "And another."),
+            ("S16E05", 258, "A fourth."),
+            ("S16E04", 247, "A fifth."),
+            ("S16E03", 276, "A sixth."),
+            ("S16E02", 217, "A seventh."),
+            ("S16E01", 202, "An eighth."),
+            ("S15E08", 333, "A ninth."),
+            ("S16E08", 2, nil), ("S16E08", 1, nil), ("S15E08", 4, nil),
+            ("S16E08", 1, nil), ("S16E07", 3, nil), ("S16E07", 2, nil),
+            ("S16E07", 1, nil), ("S16E02", 2, nil), ("S16E08", 1, nil),
+        ]
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1)!
+        for (index, shape) in shapes.enumerated() {
+            // A real UUID: the archive and its sync reject anything else.
+            let id = String(format: "0000FEED-0000-4000-8000-%012d", index).uppercased()
+            let context = VoiceContext(session_id: id, source: "ios_walk",
+                started_at: String(format: "2026-09-%02dT1%d:04:00.000Z", 2 + (index % 18), index % 9),
+                timezone: "America/Los_Angeles", episode_id: shape.0,
+                episode_title: "", episode_basis: "selected", frame_id: "preview",
+                question_presented: "", playback_position_ms: 0, season: 16, previous_season: 15)
+            do {
+                let sink = try begin(id: id, context: context)
+                let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48000)!
+                buffer.frameLength = 48000
+                for i in 0..<48000 { buffer.floatChannelData![0][i] = 0 }
+                sink.append(buffer)
+                var segments = sink.drain(close: true).segments
+                // The fixture's meaning is its DURATION, which is what sorts a
+                // misfire from a thought.
+                if !segments.isEmpty { segments[0].duration = shape.1 }
+                addSegments(segments, to: id)
+                if let words = shape.2 {
+                    addTranscript(String(repeating: words + " ", count: 6), kind: "submitted", to: id)
+                }
+            } catch { continue }
+        }
+    }
 #endif
 }

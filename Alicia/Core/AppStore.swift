@@ -65,6 +65,9 @@ final class AppStore {
                 collaboration.route = CollaborationRoute(candidateID: "preview-candidate", goalID: CollaborationPreview.goalID, connectionID: CollaborationPreview.connectionID)
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("--sessions-preview") {
+            voiceArchive.seedSessionsPreview()
+        }
         if ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") {
             voiceArchive.seedPreview()
             messages = [Message(sender: .me, text: "Preview · I want to revisit the criteria for ending a commitment.",
@@ -1270,6 +1273,11 @@ final class AppStore {
     /// the Us title opens. Through the store because views do not touch the
     /// network; kept as plain reads because this surface shows state, it does
     /// not own any.
+    /// One cheap read whose only job is to find out whether she is reachable.
+    /// `fetchOne` reports the outcome to ConnectionStatus, so a success here
+    /// clears the banner.
+    func reprobeConnection() async { _ = await service.modeState() }
+
     func ourArc() async -> [TimelineDay] { await service.timeline() }
     func herPictureOfYou() async -> ContextEnrichment? { await service.contextEnrichment(replyID: "") }
 
