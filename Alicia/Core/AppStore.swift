@@ -628,7 +628,10 @@ final class AppStore {
             voiceArchive.addTranscript(text, kind: "submitted", to: recordedID)
             Task { await syncVoiceArchive() }
         }
-        messages.append(Message(sender: .me, text: text, recordingID: recordedID.isEmpty ? nil : recordedID))
+        // A walk is not a chat turn (2026-09-21). Hector: "When I do walks with
+        // Alicia, I'm not expecting to see them in our chat conversation." The
+        // backend keeps walks out of /api/history; appending one here would
+        // put it in the chat anyway until the next reload.
         // Never erase words that arrived after the submitted snapshot.
         if walkDraft.trimmingCharacters(in: .whitespacesAndNewlines) == text { walkDraft = "" }
         walkRequestID = UUID().uuidString
