@@ -21,11 +21,6 @@ struct WorkSessionsView: View {
     @State private var opened: AppStore.ReviewedRecording?
     @State private var confirmingSweep = false
 
-    /// Under this a recording holds no thought. His real walks run three to six
-    /// minutes; his misfires are a second or two of room noise, and some never
-    /// reach the Mac at all.
-    private static let misfireSeconds: Double = 20
-
     private enum Group: String, CaseIterable, Identifiable {
         case needsYou = "NEEDS YOU"
         case working = "ON YOUR MAC"
@@ -53,10 +48,7 @@ struct WorkSessionsView: View {
 
     /// A misfire is short AND has no words. A short recording that did produce
     /// a transcript is a real short thought and stays where it belongs.
-    private func isMisfire(_ record: VoiceRecording) -> Bool {
-        guard record.stage != .sent else { return false }
-        return record.duration < Self.misfireSeconds && record.latestWords.count < 200
-    }
+    private func isMisfire(_ record: VoiceRecording) -> Bool { record.isMisfire }
 
     private func group(for record: VoiceRecording) -> Group {
         if isMisfire(record) { return .misfire }

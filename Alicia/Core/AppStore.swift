@@ -1248,7 +1248,7 @@ final class AppStore {
     /// about where his words are.
     var reflectionNeedingYou: VoiceRecording? {
         voiceArchive.recordings
-            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage.needsYou }
+            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage.needsYou && !$0.isMisfire }
             .max(by: { voiceDate($0.context.started_at) < voiceDate($1.context.started_at) })
     }
 
