@@ -87,6 +87,22 @@ final class SessionsUITests: XCTestCase {
   capture("misfires-grouped",app)
  }
 
+ /// 2026-09-22: Hector deleted one stuck S16E08 misfire from the band above
+ /// the text box, went home, and the band showed the next of four more while
+ /// Sessions said "none waiting on you". One rule now decides both.
+ func testTheBandDoesNotNagAboutAccidents() {
+  continueAfterFailure=false
+  let app=XCUIApplication()
+  app.launchArguments=["--reset-drafts","--sessions-preview","--episode-day-preview","--tab","alicia"]
+  app.launch()
+  let entry=app.buttons["sessions.open"]
+  XCTAssertTrue(entry.waitForExistence(timeout:15))
+  XCTAssertFalse(entry.label.contains("waiting for you"),"entry counts accidents: \(entry.label)")
+  let band=app.descendants(matching:.any).matching(identifier:"composer.reflectionWaiting").firstMatch
+  XCTAssertFalse(band.waitForExistence(timeout:3),"the band nags about a one-second accident: \(band.label)")
+  capture("band-quiet-for-misfires",app)
+ }
+
  /// The bug Hector hit: the Mac sends a walk, the phone never learns, and
  /// ten arrived reflections read "Sending to Alicia" under NEEDS YOU forever.
  func testAWalkTheMacSentReadsAsArrived() {

@@ -181,6 +181,16 @@ struct VoiceRecording: Codable, Identifiable {
             return lhs == rhs ? a.id < b.id : lhs < rhs
         }
     }
+    /// A press of the button, not a thought: short AND wordless. The ONE rule
+    /// every "needs you" surface uses. Before 2026-09-22 Sessions and the home
+    /// count used it but the composer band did not, so Hector deleted one
+    /// accidental S16E08 recording from the band, went home, and the band
+    /// showed the next of four more — while Sessions said "none waiting on you".
+    /// The backend's walk_autosend.is_misfire applies the same rule.
+    var isMisfire: Bool {
+        stage != .sent && duration < 20 && latestWords.count < 200
+    }
+
     var latestWords: String {
         orderedTranscripts.last(where: { $0.kind == "correction" })?.text
             ?? orderedTranscripts.last(where: { $0.kind == "submitted" })?.text
@@ -783,6 +793,13 @@ final class VoiceArchive {
     }
     static let previewID = "90100000-0000-4000-8000-000000000001"
     /// DEBUG only: stamp the link a Mac-side send would have written.
+    /// Hector's real misfires read "Stuck — needs you" (the Mac could not
+    /// process one second of room noise). The preview reproduces that.
+    func stickForPreview(_ id: String) {
+        guard let index = recordings.firstIndex(where: { $0.id == id }) else { return }
+        recordings[index].processingError = "Preview · nothing to transcribe"
+    }
+
     func linkForPreview(_ id: String) {
         guard let index = recordings.firstIndex(where: { $0.id == id }) else { return }
         recordings[index].links = [VoiceLink(receipt_id: "preview-reaction",
@@ -877,6 +894,8 @@ final class VoiceArchive {
                 addSegments(segments, to: id)
                 if let words = shape.2 {
                     addTranscript(String(repeating: words + " ", count: 6), kind: "submitted", to: id)
+                } else {
+                    stickForPreview(id)
                 }
             } catch { continue }
         }

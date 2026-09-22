@@ -436,8 +436,7 @@ struct WorkSessionsEntry: View {
     /// read as thirteen lost walks.
     private var waiting: Int {
         store.voiceArchive.recordings
-            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage.needsYou
-                      && !($0.duration < 20 && $0.latestWords.count < 200) }.count
+            .filter { !$0.deleted && !$0.isPrivateBody && $0.stage.needsYou && !$0.isMisfire }.count
     }
     private var total: Int {
         store.voiceArchive.recordings.filter { !$0.deleted && !$0.isPrivateBody }.count
