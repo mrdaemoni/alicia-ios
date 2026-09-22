@@ -155,13 +155,17 @@ struct ConversationComposer: View {
     private var field: some View {
         Button { store.openConversation() } label: {
             HStack(spacing: 8) {
-                Text(draft.isEmpty ? "Talk or type to Alicia…" : draft)
+                Text(draft.isEmpty ? "Write to Alicia about " + section.title + "…" : draft)
                     .font(.system(size: 16, design: .serif))
                     .foregroundStyle(draft.isEmpty ? Theme.paper.opacity(0.5) : Theme.paper)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if !draft.isEmpty {
                     Text("DRAFT")
+                        .font(.system(size: 8, design: .monospaced)).tracking(0.8)
+                        .foregroundStyle(Theme.paper.opacity(0.55))
+                } else {
+                    Text("OPEN")
                         .font(.system(size: 8, design: .monospaced)).tracking(0.8)
                         .foregroundStyle(Theme.paper.opacity(0.55))
                 }
@@ -174,6 +178,7 @@ struct ConversationComposer: View {
         .accessibilityLabel(draft.isEmpty
             ? "Write to Alicia about " + section.title
             : "Continue your draft about " + section.title)
+        .accessibilityHint("Opens the conversation over this section. Your message carries its context.")
         .accessibilityIdentifier("dialogue.composer")
     }
 

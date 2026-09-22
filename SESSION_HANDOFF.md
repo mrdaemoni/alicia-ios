@@ -1,3 +1,21 @@
+## September 21 — widget contrast and the shared way to reach Alicia
+
+The Daily rituals widget keeps a full-color near-black plate in its tinted
+content tree, behind white type, so a light green Home Screen tint cannot wash
+out its words. The line below the rituals gives the time of the latest widget
+tap and distinguishes a local pending save from a synced receipt. This time is
+phone evidence; absence from the Mac journal alone does not prove the tap failed.
+
+The permanent conversation band now names the section in its writing prompt.
+It still opens a sheet over Us, Mind, Body, Alicia or Studio and freezes that
+section for the send; Body keeps its separate private lane. The walk room keeps
+the section's AliciaPresence particle body and now marks LISTENING, OPENING or
+PAUSED plainly beside elapsed time. No voice pipeline or backend route changed.
+
+Simulator rendering and interaction checks are evidence for this branch, not
+a claim about widget tinting or the microphone on Pandaiux. A device check is
+still needed before calling those visual states final.
+
 ## September 19 — blind Jev impulse study in Aves
 
 This paired backend/app release adds an auditable private study surface under
