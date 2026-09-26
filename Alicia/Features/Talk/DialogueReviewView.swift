@@ -17,7 +17,6 @@ struct DialogueReviewView: View {
     @State private var feedbackTarget = "reply"
     @State private var feedbackNote = ""
     @State private var reasonTags: Set<String> = []
-    @State private var showWhy = false
     private enum EditingField: Hashable { case feedback, correction, reason }
     @FocusState private var editing: EditingField?
 
@@ -37,12 +36,14 @@ struct DialogueReviewView: View {
     private var reviewContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
-                NavigationLink("Enrich context · about you and what shaped this reply") {
+                InkKicker(text: "Behind this reply")
+                NavigationLink {
                     ContextEnrichmentView(replyID: message.replyID ?? "")
-                }.font(.callout).frame(minHeight: 44).accessibilityIdentifier("review.context")
-                Text("BEHIND THIS REPLY")
-                    .font(.system(size: 11, design: .monospaced)).tracking(2)
-                    .foregroundStyle(Theme.accentSoft)
+                } label: {
+                    InkLinkLabel(title: "Enrich context", detail: "About you and what shaped this reply")
+                }
+                .buttonStyle(.inkLink)
+                .accessibilityIdentifier("review.context")
                 if loading {
                     ProgressView("Loading saved context…")
                 } else if let detail {
@@ -53,22 +54,27 @@ struct DialogueReviewView: View {
                          ? "This older reply has no saved response context. Its original text is above."
                          : "The saved context could not be reached. Try again when Alicia is connected.")
                         .font(.callout).foregroundStyle(Theme.accentSoft)
-                    if message.replyID != nil { Button("Try again") { Task { await load() } } }
+                    if message.replyID != nil { Button("Try again") { Task { await load() } }.buttonStyle(.inkQuiet) }
                 }
-                if !error.isEmpty {
-                    Text(error).font(.callout).foregroundStyle(Theme.rose)
-                }
+                InkNotice(text: error, kind: .error)
                 if let pending {
-                    Text("Your \(pending.action == "compare" ? "comparison request" : "feedback") is kept on this phone until the save is confirmed.")
-                        .font(.callout)
-                    Button(busy ? "Saving…" : "Retry saved request") { Task { await retry() } }
-                        .frame(minHeight: 44).disabled(busy)
-                    Button("Edit my feedback") {
-                        self.pending = nil
-                        UserDefaults.standard.removeObject(forKey: storageKey + ".pending")
-                        error = ""
-                        Task { await load() }
-                    }.frame(minHeight: 44).disabled(busy)
+                    // The saved request, its retry, and the way out, together.
+                    VStack(alignment: .leading, spacing: 8) {
+                        InkNotice(text: "Your \(pending.action == "compare" ? "comparison request" : "feedback") is kept on this phone until the save is confirmed.", kind: .info)
+                        HStack(spacing: 20) {
+                            Button(busy ? "Saving…" : "Try again") { Task { await retry() } }
+                                .buttonStyle(.inkQuiet).disabled(busy)
+                            // Discards the pending request: quiet, never primary.
+                            Button("Edit my feedback") {
+                                self.pending = nil
+                                UserDefaults.standard.removeObject(forKey: storageKey + ".pending")
+                                error = ""
+                                Task { await load() }
+                            }.buttonStyle(.inkQuiet).disabled(busy)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .card(padding: 16, radius: 16)
                 }
             }
             .padding(22)
@@ -79,10 +85,8 @@ struct DialogueReviewView: View {
         .background(Theme.paper)
         .foregroundStyle(Theme.ink)
         .fontDesign(.serif)
-        .navigationTitle("Alicia’s reply")
-        .navigationBarTitleDisplayMode(.inline)
+        .inkSheetPage("Alicia’s reply") { dismiss() }
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done writing") { editing = nil } }
         }
         .task { await restoreDraft() }
@@ -123,50 +127,48 @@ struct DialogueReviewView: View {
     @ViewBuilder
     private func inspection(_ value: DialogueReview) -> some View {
         if let nodes = value.context_graph_nodes, !nodes.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("DREW ON YOUR CONTEXT")
-                    .font(.system(size: 11, design: .monospaced)).tracking(2)
-                    .foregroundStyle(Theme.accentSoft)
-                ForEach(nodes) { n in
+            InkSection(kicker: "Drew on your context", spacing: 2) {
+                ForEach(Array(nodes.enumerated()), id: \.element.id) { index, n in
+                    if index > 0 { InkRule(opacity: 0.6) }
                     NavigationLink { ContextNodeView(nodeID: n.id) } label: {
-                        Text((n.title.isEmpty ? n.id : n.title) + " · " + (n.status == "inferred" ? "unconfirmed reading" : n.status))
-                            .font(.system(size: 14, design: .serif)).foregroundStyle(Theme.inkSoft)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityIdentifier("review.contextNode." + n.id)
+                        InkLinkLabel(title: n.title.isEmpty ? n.id : n.title,
+                                     detail: n.status == "inferred" ? "unconfirmed reading" : n.status, small: true)
+                    }.buttonStyle(.inkLink).accessibilityIdentifier("review.contextNode." + n.id)
                 }
             }
         }
         modelAnswers(value)
         if selectedAnswer == "original" || value.comparison.status == "ready" {
             section("Quick feedback") {
+                saveHint
                 feedbackRow("reply", labels: ["Helpful", "Okay", "Missed me"], values: ["helpful", "okay", "missed_me"], answer: selectedAnswer)
-                DisclosureGroup("More precise feedback (optional)") {
+                InkDisclosure("More precise feedback (optional)") {
                     VStack(alignment: .leading, spacing: 14) {
-                        Picker("About", selection: $feedbackTarget) {
-                            Text("Overall response").tag("reply")
-                            Text("Depth").tag("depth")
-                            Text("Tone").tag("tone")
-                            Text("Length").tag("brevity")
-                        }.frame(minHeight: 44)
+                        // Chooses what the rating is about; nothing is saved here.
+                        InkKicker(text: "About")
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .leading)], alignment: .leading, spacing: 8) {
+                            ForEach([("reply", "Overall response"), ("depth", "Depth"), ("tone", "Tone"), ("brevity", "Length")], id: \.0) { tag, label in
+                                WorkReviewChoice(title: label, selected: feedbackTarget == tag, compact: true) { feedbackTarget = tag }
+                            }
+                        }
                         TextField("What would make this answer better?", text: $feedbackNote, axis: .vertical)
                             .focused($editing, equals: .feedback).accessibilityIdentifier("review.feedbackNote")
-                            .lineLimit(2...6).padding(12)
-                            .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                            .lineLimit(2...6).inkField()
                         if feedbackNote.unicodeScalars.count > 2000 {
                             Text("Keep the note under 2,000 characters. Your draft is retained.").font(.caption).foregroundStyle(Theme.rose)
                         }
                         feedbackRow(feedbackTarget, labels: feedbackLabels(feedbackTarget),
                                     values: feedbackValues(feedbackTarget), answer: selectedAnswer, note: feedbackNote)
-                        Text("Tap a rating to save it with your optional note.").font(.caption).foregroundStyle(Theme.accentSoft)
-                    }.padding(.top, 12)
+                        Text("Tap a rating to save it with your optional note.").font(.caption).foregroundStyle(Theme.inkSoft)
+                    }
                 }
             }
         }
         if value.comparison.status == "ready" { preferenceControls(value) }
-        DisclosureGroup("What informed the original reply") {
+        InkDisclosure("What informed the original reply") {
             VStack(alignment: .leading, spacing: 24) {
                 originalContext(value)
-            }.padding(.top, 18)
+            }.padding(.top, 6)
         }
     }
 
@@ -179,12 +181,12 @@ struct DialogueReviewView: View {
                 Text("A tentative reading you can correct.").font(.caption).foregroundStyle(Theme.accentSoft)
                 TextField("What did she miss?", text: $correction, axis: .vertical)
                     .focused($editing, equals: .correction)
-                    .lineLimit(2...6).padding(12)
-                    .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                    .lineLimit(2...6).inkField()
                 if correction.unicodeScalars.count > 2000 {
                     Text("Keep the correction under 2,000 characters before saving. Your draft is retained.")
                         .font(.caption).foregroundStyle(Theme.rose)
                 }
+                saveHint
                 feedbackRow("reading", labels: ["That’s right", "She misread me"], values: ["accurate", "misread"])
             }
         }
@@ -196,6 +198,7 @@ struct DialogueReviewView: View {
                 }
                 Text("The lens named with this reply. You can tell her whether it fits.")
                     .font(.caption).foregroundStyle(Theme.accentSoft)
+                saveHint
                 feedbackRow("lens", labels: ["Fits", "Doesn’t fit"], values: ["fits", "does_not_fit"])
             }
         }
@@ -223,11 +226,13 @@ struct DialogueReviewView: View {
                 ForEach(value.sources) { source in
                     VStack(alignment: .leading, spacing: 8) {
                         if let url = URL(string: source.url) {
-                            Link(source.title, destination: url).font(.headline)
-                        } else { Text(source.title).font(.headline) }
+                            Link(destination: url) { InkLinkLabel(title: source.title, small: true, external: true) }
+                                .buttonStyle(.inkLink)
+                        } else { Text(source.title.strippedEmojis).font(.headline) }
                         Text(source.excerpt.strippedEmojis).font(.callout).textSelection(.enabled)
                     }.padding(.vertical, 6)
                 }
+                saveHint
                 feedbackRow("sources", labels: ["Relevant", "Wrong connection"], values: ["relevant", "not_relevant"])
             }
         }
@@ -254,17 +259,17 @@ struct DialogueReviewView: View {
             Text(value.reply.strippedEmojis).font(.title3).textSelection(.enabled)
             listen(value.reply, title: "Original reply")
             if !value.detail.isEmpty {
-                DisclosureGroup("Read the full answer") { Text(value.detail.strippedEmojis).textSelection(.enabled) }
+                InkDisclosure("Read the full answer") { Text(value.detail.strippedEmojis).textSelection(.enabled) }
             }
         } else if value.comparison.status == "ready", let answer = value.comparison.reply {
             Text("Alternative · \(modelName(value, answer: "alternative"))").font(.caption).foregroundStyle(Theme.accentSoft)
             Text(answer.strippedEmojis).font(.title3).textSelection(.enabled)
             listen(answer, title: "Alternative reply")
             if let more = value.comparison.detail, !more.isEmpty {
-                DisclosureGroup("Read the full answer") { Text(more.strippedEmojis).textSelection(.enabled) }
+                InkDisclosure("Read the full answer") { Text(more.strippedEmojis).textSelection(.enabled) }
             }
             if let reading = value.comparison.reading, !reading.isEmpty {
-                DisclosureGroup("What this answer took from your words") {
+                InkDisclosure("What this answer took from your words") {
                     Text(reading.strippedEmojis).textSelection(.enabled)
                     feedbackRow("reading", labels: ["That’s right", "She misread me"], values: ["accurate", "misread"], answer: "alternative")
                 }
@@ -285,16 +290,16 @@ struct DialogueReviewView: View {
             ProgressView("Preparing the other answer…")
             Text("You can switch tabs or return later.").font(.caption).foregroundStyle(Theme.accentSoft)
         } else {
-            if let failure = value.comparison.error { Text(failure).font(.caption).foregroundStyle(Theme.rose) }
+            if let failure = value.comparison.error { InkNotice(text: failure, kind: .error) }
             Button("Prepare this answer") { submit(DialogueMutation(action: "compare", reply_id: value.id)) }
-                .frame(minHeight: 44).disabled(busy || pending != nil)
+                .buttonStyle(.inkSecondaryCompact).disabled(busy || pending != nil)
         }
     }
 
     @ViewBuilder
     private func preferenceControls(_ value: DialogueReview) -> some View {
         section("Which helped more?") {
-            Text("Tap once to vote. A reason is optional.").font(.caption).foregroundStyle(Theme.accentSoft)
+            Text("Tap once to vote; it saves. A reason is optional.").font(.caption).foregroundStyle(Theme.inkSoft)
             HStack(spacing: 10) {
                 voteButton("Prefer " + modelName(value, answer: "original"), choice: "original", value: value)
                 voteButton("Prefer " + modelName(value, answer: "alternative"), choice: "alternative", value: value)
@@ -305,22 +310,19 @@ struct DialogueReviewView: View {
             }
             if let saved = value.preference {
                 Text("Vote saved. You can change it.").font(.caption).foregroundStyle(Theme.accentSoft)
-                DisclosureGroup("Add why (optional)", isExpanded: $showWhy) {
+                InkDisclosure("Add why (optional)") {
                     VStack(alignment: .leading, spacing: 14) {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 130))], spacing: 10) {
+                        // These only toggle; "Save optional details" saves them.
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), alignment: .leading)], alignment: .leading, spacing: 8) {
                             ForEach(reasonOptions, id: \.0) { tag, label in
-                                Button { if reasonTags.contains(tag) { reasonTags.remove(tag) } else { reasonTags.insert(tag) } } label: {
-                                    Text(label).font(.callout).frame(maxWidth: .infinity, minHeight: 44)
-                                        .padding(.horizontal, 8)
-                                        .background(reasonTags.contains(tag) ? Theme.accent.opacity(0.18) : Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
-                                }.buttonStyle(.plain)
-                                    .accessibilityAddTraits(reasonTags.contains(tag) ? .isSelected : [])
+                                WorkReviewChoice(title: label, selected: reasonTags.contains(tag), compact: true) {
+                                    if reasonTags.contains(tag) { reasonTags.remove(tag) } else { reasonTags.insert(tag) }
+                                }
                             }
                         }
                         TextField("Anything more specific?", text: $reason, axis: .vertical)
                             .focused($editing, equals: .reason).accessibilityIdentifier("review.reason")
-                            .lineLimit(2...6).padding(12)
-                            .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                            .lineLimit(2...6).inkField()
                         if reason.unicodeScalars.count > 2000 {
                             Text("Keep the note under 2,000 characters. Your draft is retained.").font(.caption).foregroundStyle(Theme.rose)
                         }
@@ -331,13 +333,13 @@ struct DialogueReviewView: View {
                             submit(DialogueMutation(action: "preference", reply_id: value.id,
                                 reason_tags: reasonTags.sorted(), choice: saved.choice, reason: reason,
                                 training_allowed: allowTraining && value.comparison.same_input == true))
-                        }.frame(minHeight: 44).disabled(busy || pending != nil || reason.unicodeScalars.count > 2000)
+                        }.buttonStyle(.inkSecondary).disabled(busy || pending != nil || reason.unicodeScalars.count > 2000)
                         if saved.reason == reason && Set(saved.reason_tags ?? []) == reasonTags && saved.training_allowed == allowTraining {
                             Text("Optional details saved.").font(.caption).foregroundStyle(Theme.accentSoft)
                         }
                         Text(value.training_status == "pending_review" ? "Selected for training review. No model has been trained." : "Your vote guides conversation. Training is a separate reviewed step.")
                             .font(.caption).foregroundStyle(Theme.accentSoft)
-                    }.padding(.top, 14)
+                    }
                 }
             }
         }
@@ -348,16 +350,14 @@ struct DialogueReviewView: View {
         ("more_concise", "More concise"), ("more_challenging", "Made me think")]
 
     private func voteButton(_ label: String, choice: String, value: DialogueReview) -> some View {
-        Button {
+        // A chip that saves on tap (the line above says so).
+        WorkReviewChoice(title: label, selected: value.preference?.choice == choice) {
             guard value.preference?.choice != choice else { return }
             // A quick vote stands alone. Explanations are added deliberately afterward.
             submit(DialogueMutation(action: "preference", reply_id: value.id, choice: choice,
                                     training_allowed: value.preference?.training_allowed == true && value.comparison.same_input == true))
-        } label: {
-            Text(label).font(.callout).frame(maxWidth: .infinity, minHeight: 44).padding(.horizontal, 8)
-                .background(value.preference?.choice == choice ? Theme.accent.opacity(0.18) : Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
-        }.buttonStyle(.plain).disabled(busy || pending != nil)
-            .accessibilityAddTraits(value.preference?.choice == choice ? .isSelected : [])
+        }
+            .disabled(busy || pending != nil)
             .accessibilityValue(value.preference?.choice == choice ? "Saved" : "")
     }
 
@@ -380,21 +380,13 @@ struct DialogueReviewView: View {
 
     private func feedbackRow(_ target: String, labels: [String], values: [String], answer: String = "original", note: String = "") -> some View {
         let key = (answer == "alternative" ? "alternative:" : "") + target
-        return HStack(spacing: 10) {
+        return HStack(spacing: 8) {
             ForEach(values.indices, id: \.self) { index in
-                Button {
+                WorkReviewChoice(title: labels[index], selected: detail?.feedback[key]?.verdict == values[index]) {
                     guard let id = message.replyID else { return }
                     submit(DialogueMutation(action: "feedback", reply_id: id, answer: answer, target: target,
                                             verdict: values[index], note: target == "reading" && answer == "original" ? correction : note))
-                } label: {
-                    Text(labels[index]).font(.callout)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .padding(.horizontal, 7)
-                        .background(detail?.feedback[key]?.verdict == values[index]
-                                    ? Theme.accent.opacity(0.18) : Theme.ink.opacity(0.04),
-                                    in: RoundedRectangle(cornerRadius: 10))
-                }.buttonStyle(.plain)
-                    .accessibilityAddTraits(detail?.feedback[key]?.verdict == values[index] ? .isSelected : [])
+                }
                     .accessibilityValue(detail?.feedback[key]?.verdict == values[index] ? "Saved" : "")
                     .disabled(busy || pending != nil || ((target == "reading" && answer == "original" ? correction : note).unicodeScalars.count > 2000))
             }
@@ -409,17 +401,20 @@ struct DialogueReviewView: View {
          "optional": "Additional context"][name] ?? name.replacingOccurrences(of: "_", with: " ")
     }
 
+    /// Listening keeps its one established control.
     private func listen(_ text: String, title: String) -> some View {
-        Button("Listen") { store.readAloud(Readable(title: title, body: text, kind: "dialogue")) }
-            .font(.callout).frame(minHeight: 44)
+        ListenLine(item: Readable(title: title, body: text, kind: "dialogue"))
     }
 
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Rectangle().fill(Theme.ink.opacity(0.12)).frame(height: 1)
-            Text(title).font(.headline)
-            content()
-        }
+    /// Chips under this line save when tapped — unlike the reason tags, which
+    /// only toggle until "Save optional details".
+    private var saveHint: some View {
+        InkKicker(text: "Tap to save")
+    }
+
+    /// One header system for the sheet: the same section as everywhere else.
+    private func section<Content: View>(_ title: String, @ViewBuilder content: @escaping () -> Content) -> some View {
+        InkSection(kicker: title, content: content)
     }
 
     private func load() async {

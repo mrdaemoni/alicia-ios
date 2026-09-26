@@ -114,17 +114,12 @@ struct WorkSessionsView: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
                 InkTitleLine(text: "Sessions", size: 27)
-                Text("WHAT YOU SAID, AND WHERE IT IS")
-                    .font(.system(size: 10, design: .monospaced)).tracking(1.6)
-                    .foregroundStyle(Theme.inkSoft)
+                InkKicker(text: "What you said, and where it is")
             }
             Spacer()
-            Button("CLOSE") { dismiss() }
-                .font(.system(size: 10, design: .monospaced)).tracking(1)
-                .frame(minHeight: 44)
+            InkCloseButton { dismiss() }
                 .accessibilityIdentifier("sessions.close")
         }
-        .buttonStyle(.plain)
         .padding(.vertical, 8)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
@@ -132,21 +127,20 @@ struct WorkSessionsView: View {
 
     private func sectionHead(_ group: Group, count: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(group.rawValue)
-                    .font(.system(size: 10, design: .monospaced)).tracking(1.6)
+            HStack(alignment: .center, spacing: 8) {
+                InkKicker(text: group.rawValue, color: Theme.ink)
                 Text("\(count)")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(InkType.kicker)
                     .foregroundStyle(Theme.inkSoft)
                 Spacer(minLength: 0)
                 if group == .misfire {
-                    Button("CLEAR ALL") { confirmingSweep = true }
-                        .font(.system(size: 9, design: .monospaced)).tracking(1)
-                        .foregroundStyle(Theme.rose)
-                        .buttonStyle(.plain)
+                    // Removes: seal red, in the header's trailing slot.
+                    Button("Clear all") { confirmingSweep = true }
+                        .buttonStyle(.inkDestructiveCompact)
                         .accessibilityIdentifier("sessions.clearMisfires")
                 }
             }
+            .frame(minHeight: 28)
             Text(group.blurb).font(.caption).foregroundStyle(Theme.inkSoft)
         }
         .textCase(nil)
@@ -159,18 +153,13 @@ struct WorkSessionsView: View {
 
     @ViewBuilder private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !store.voiceArchive.lastError.isEmpty {
-                Text(store.voiceArchive.lastError)
-                    .font(.caption).fixedSize(horizontal: false, vertical: true)
-            }
+            InkNotice(text: store.voiceArchive.lastError, kind: .error)
             Button(store.voiceArchive.processing || store.voiceArchive.syncing
-                   ? "CHECKING YOUR MAC…" : "CHECK YOUR MAC") {
+                   ? "Checking your Mac…" : "Check your Mac") {
                 Task { await store.refreshVoiceArchive() }
             }
-            .font(.system(size: 10, design: .monospaced)).tracking(1)
-            .foregroundStyle(Theme.inkSoft).frame(minHeight: 44)
+            .buttonStyle(.inkQuiet)
             .disabled(store.voiceArchive.processing || store.voiceArchive.syncing)
-            .buttonStyle(.plain)
         }
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
@@ -178,25 +167,29 @@ struct WorkSessionsView: View {
 
     private func row(_ record: VoiceRecording, urgent: Bool) -> some View {
         Button { open(record) } label: {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(subject(record))
-                    .font(.system(size: 18, design: .serif))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text(record.stage.label.uppercased())
-                    .font(.system(size: 9, design: .monospaced)).tracking(1)
-                    .foregroundStyle(urgent ? Theme.ink : Theme.inkSoft)
-                Text(record.stage.detail)
-                    .font(.caption).foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text(voiceDateLabel(record.context) + " · " + length(record))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(Theme.inkSoft)
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(subject(record))
+                        .font(.system(size: 18, design: .serif))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(record.stage.label.uppercased())
+                        .font(.system(size: 9, design: .monospaced)).tracking(1)
+                        .foregroundStyle(urgent ? Theme.ink : Theme.inkSoft)
+                    Text(record.stage.detail)
+                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(voiceDateLabel(record.context) + " · " + length(record))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                // Opens the recording: her chevron, like every other way in.
+                InkChevron(pointing: .right, size: 14, color: Theme.inkSoft, seed: record.id.inkSeed)
             }
             .padding(.vertical, 8)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.inkLink)
         .listRowBackground(Color.clear)
         .accessibilityIdentifier("sessions.row")
         .accessibilityLabel(subject(record) + ", " + record.stage.label + ". " + record.stage.detail)
