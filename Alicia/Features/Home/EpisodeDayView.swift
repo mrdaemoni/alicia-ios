@@ -149,26 +149,6 @@ struct EpisodeProbeCard: View {
 /// A disclosure line whose open state its owner keeps — for toggles that also
 /// reset something, or that UI tests address by identifier. Looks exactly like
 /// InkDisclosure's line.
-struct InkDisclosureToggle: View {
-    let title: String
-    let open: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button { withAnimation(.easeOut(duration: 0.18)) { action() } } label: {
-            HStack(spacing: 8) {
-                Text(title.strippedEmojis).font(InkType.linkSmall).foregroundStyle(Theme.inkSoft)
-                    .multilineTextAlignment(.leading)
-                InkChevron(pointing: open ? .up : .down, size: 11, color: Theme.inkSoft, seed: title.inkSeed)
-                Spacer(minLength: 0)
-            }
-            .frame(minHeight: 44).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityValue(open ? "Open" : "Closed")
-    }
-}
-
 struct EpisodePassage: View {
     let probe: EpisodeDay.Probe
     @State private var expanded = false

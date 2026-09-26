@@ -120,8 +120,8 @@ final class ContextUITests: XCTestCase {
   XCTAssertTrue(done.waitForExistence(timeout:5));XCTAssertTrue(done.isHittable)
   capture("walk-review-keyboard-done",app:app);done.tap()
   capture("walk-mac-review",app:app)
-  XCTAssertTrue(app.buttons["REVIEW ORIGINAL AUDIO"].exists)
-  app.buttons["REVIEW ORIGINAL AUDIO"].tap()
+  XCTAssertTrue(app.buttons["Original recording"].exists)
+  app.buttons["Original recording"].tap()
   XCTAssertTrue(app.buttons["voice.playOriginal"].waitForExistence(timeout:10))
   capture("walk-original-with-mac-draft",app:app)
  }

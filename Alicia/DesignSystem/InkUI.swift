@@ -227,17 +227,7 @@ struct InkDisclosure<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button { withAnimation(.easeOut(duration: 0.18)) { open.toggle() } } label: {
-                HStack(spacing: 8) {
-                    Text(title.strippedEmojis).font(InkType.linkSmall).foregroundStyle(Theme.inkSoft)
-                        .multilineTextAlignment(.leading)
-                    InkChevron(pointing: open ? .up : .down, size: 11, color: Theme.inkSoft, seed: title.inkSeed)
-                    Spacer(minLength: 0)
-                }
-                .frame(minHeight: 44).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityValue(open ? "Open" : "Closed")
+            InkDisclosureToggle(title: title, open: open) { open.toggle() }
             if open {
                 HStack(alignment: .top, spacing: 12) {
                     Rectangle().fill(Theme.stroke).frame(width: 0.7)
@@ -247,6 +237,28 @@ struct InkDisclosure<Content: View>: View {
                 .transition(.opacity)
             }
         }
+    }
+}
+
+/// The header line of a disclosure, for an owner that holds the open state
+/// itself (it may also open from elsewhere, or reset on save).
+struct InkDisclosureToggle: View {
+    let title: String
+    let open: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button { withAnimation(.easeOut(duration: 0.18)) { action() } } label: {
+            HStack(spacing: 8) {
+                Text(title.strippedEmojis).font(InkType.linkSmall).foregroundStyle(Theme.inkSoft)
+                    .multilineTextAlignment(.leading)
+                InkChevron(pointing: open ? .up : .down, size: 11, color: Theme.inkSoft, seed: title.inkSeed)
+                Spacer(minLength: 0)
+            }
+            .frame(minHeight: 44).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(open ? "Open" : "Closed")
     }
 }
 
@@ -277,6 +289,7 @@ struct InkNotice: View {
 /// "CLOSE" for a sheet's toolbar: the same word everywhere a sheet ends.
 struct InkCloseButton: View {
     var action: (() -> Void)? = nil
+    var identifier: String = ""
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         Button { if let action { action() } else { dismiss() } } label: {
@@ -285,6 +298,8 @@ struct InkCloseButton: View {
                 .frame(minWidth: 44, minHeight: 44)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Close")
+        .accessibilityIdentifier(identifier.isEmpty ? "ink.close" : identifier)
     }
 }
 
@@ -304,13 +319,13 @@ extension View {
 
     /// The root of a sheet: her title in the middle and CLOSE at the trailing
     /// edge. Pass `close` when closing means more than dismissing.
-    func inkSheetPage(_ title: String, close: (() -> Void)? = nil) -> some View {
+    func inkSheetPage(_ title: String, closeIdentifier: String = "", close: (() -> Void)? = nil) -> some View {
         self
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) { InkTitleLine(text: title, size: 16) }
-                ToolbarItem(placement: .topBarTrailing) { InkCloseButton(action: close) }
+                ToolbarItem(placement: .topBarTrailing) { InkCloseButton(action: close, identifier: closeIdentifier) }
             }
     }
 }
