@@ -56,6 +56,9 @@ struct CollaborationState: Codable {
     var followups_enabled, telegram_returns_enabled: Bool
     var followup: Followup?
     var impulse_research: ImpulseResearch? = nil
+    /// Finished goals and open "did you mean to close?" questions (GoalClosure.swift).
+    var closures: [GoalClosureSummary]? = nil
+    var closure_proposals: [GoalClosureProposal]? = nil
 
     func goal(for result: Result) -> Goal? {
         let goalID = result.goal_id?.isEmpty == false ? result.goal_id
@@ -126,6 +129,7 @@ struct CollaborationMutation: Codable, Equatable {
     var candidate_id: String?
     var result_id, section_id, content_hash: String?
     var source, trace_state_hash, usefulness, stance: String?
+    var closure_id, proposal_id: String?
     var body: [String: Any] {
         guard let data = try? JSONEncoder().encode(self),
               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
@@ -159,6 +163,8 @@ struct CollaborationRoute: Identifiable, Codable, Sendable {
     var resultID: String?
     var sectionID: String?
     var originalQuote: String?
+    /// Opens Finished together, optionally on one finished goal.
+    var finishedClosureID: String?
 }
 
 struct WorkReviewProgress: Codable, Equatable {
@@ -306,6 +312,8 @@ final class CollaborationStore {
         error = ""
         return true
     }
+    /// A finished goal's frozen record, read through the one service seam.
+    func goalClosure(_ id: String) async -> GoalClosureRecord? { await service.goalClosure(id: id) }
     func source(connectionID: String = "", resultID: String = "", evidenceID: String) async -> ContextSource? {
         await service.collaborationSource(connectionID: connectionID, resultID: resultID, evidenceID: evidenceID)
     }

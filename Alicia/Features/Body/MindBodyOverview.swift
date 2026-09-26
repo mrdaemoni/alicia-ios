@@ -40,7 +40,9 @@ struct MindBodyOverview: View {
                 Button { store.selectedSection = .knowledge } label: {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Mind").font(.title2)
-                        Text("\(mindGoals.count) active shared goal(s)").font(.caption)
+                        let finished = store.collaboration.state?.finishedGoals.count ?? 0
+                        Text(mindGoals.isEmpty && finished > 0 ? "\(finished) finished · ready for a next goal"
+                             : "\(mindGoals.count) active shared goal(s)").font(.caption)
                         Text(mindGoals.first?.title ?? "Explore your knowledge").font(.subheadline).lineLimit(3)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }

@@ -86,6 +86,16 @@ struct AliciaApp: App {
                         store.walkDraft = "Preview reflection: I keep returning to the difference between commitment and control. I want to give this idea a real test today."
                         store.openWalk(probe: "Where would choosing less give you room to go deeper?")
                     }
+                    if args.contains("--finished-goals-preview") {
+                        await store.collaboration.load()
+                        if args.contains("--open-finished-record") {
+                            store.collaboration.route = CollaborationRoute(finishedClosureID: CollaborationPreview.finishedID)
+                        } else if args.contains("--open-together") {
+                            store.collaboration.route = CollaborationRoute()
+                        } else if args.contains("--open-finished") {
+                            store.collaboration.route = CollaborationRoute(finishedClosureID: "")
+                        }
+                    }
                     guard let flag = args.firstIndex(of: "--tab"),
                           args.index(after: flag) < args.endIndex,
                           let section = AppSection(launchName: args[args.index(after: flag)])

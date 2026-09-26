@@ -42,6 +42,7 @@ import Foundation
                         trace_state_hash: String(repeating: "b", count: 64)),
                     reveal: Self.impulseReveal),
             ])
+        if ProcessInfo.processInfo.arguments.contains("--finished-goals-preview") { seedFinished() }
         guard ProcessInfo.processInfo.arguments.contains("--work-review-preview") else { return }
         value.goals += [
             .init(id: "preview-goal-two", title: "Peace-time urgency", outcome: "Act with care without a crisis.", why: "A separate goal, close to enough.", status: "active", priority: "normal", revision: 1, created_at: "now", updated_at: "now"),
@@ -58,6 +59,46 @@ import Foundation
         value.results[0].project_id = "preview-project"
         value.results[0].project_revision = 8
     }
+    /// Invented fixture (the iOS repo is public): one goal closed on a walk,
+    /// one still active with an unclear "close it?" question.
+    nonisolated static let finishedID = "00000000-0000-4000-8000-00000000c105"
+    private func seedFinished() {
+        value.goals.append(.init(id: "preview-finished-goal", title: "Preview · Learn to rest between sprints",
+            outcome: "Three honest signs that a rest is due.", why: "A rhythm I can keep.", status: "completed",
+            priority: "normal", revision: 2, created_at: "2026-08-30T15:00:00Z", updated_at: "2026-09-20T16:40:00Z"))
+        value.closures = [.init(closure_id: Self.finishedID, goal_id: "preview-finished-goal",
+            title: "Preview · Learn to rest between sprints", outcome: "Three honest signs that a rest is due.",
+            created_at: "2026-08-30T15:00:00Z", closed_at: "2026-09-20T16:40:00Z", by: "walk",
+            words: "Preview words · I think we have it, let's close the rest goal.", reopened_at: "",
+            revisions: 12, his_words: 5, connections: 4, final_artifact_title: "Preview · Three signs of a due rest",
+            has_reflection: true,
+            acknowledgement: "You closed ‘Preview · Learn to rest between sprints’ on your walk on Sep 20. The work we did together is kept in Finished together, and I'm ready for what's next.")]
+        value.closure_proposals = [.init(proposal_id: "preview-proposal", goal_ids: [Self.goalID],
+            titles: ["Preview · Make room for what matters"], words: "Preview words · maybe this one is nearly done",
+            by: "walk", proposed_at: "2026-09-21T16:00:00Z")]
+    }
+    nonisolated static var finishedRecord: GoalClosureRecord {
+        .init(closure_id: finishedID, title: "Preview · Learn to rest between sprints", by: "walk",
+              words: "Preview words · I think we have it, let's close the rest goal.", closed_at: "2026-09-20T16:40:00Z",
+              reopened_at: "",
+              reflection: .init(text: "Preview reading · It began as a wish for rhythm and landed on three signs in your own words: \"let's close the rest goal\".",
+                                next_goal_seeds: ["Preview seed · What does a rest day protect?", "Preview seed · Which sign shows up first?"],
+                                notice: "Alicia's reading of the work, written when the goal closed. Not his words."),
+              dossier: .init(goal: .init(id: "preview-finished-goal", title: "Preview · Learn to rest between sprints",
+                                         outcome: "Three honest signs that a rest is due.", why: "A rhythm I can keep.",
+                                         priority: "normal", created_at: "2026-08-30T15:00:00Z"),
+                             his_words: [.init(id: "w1", excerpt: "Preview words · I notice I stop reading when I'm tired.", observed_at: "2026-09-02T15:00:00Z"),
+                                         .init(id: "w2", excerpt: "Preview words · The body says it before the calendar does.", observed_at: "2026-09-11T15:00:00Z")],
+                             steps: [.init(number: 3, at: "2026-09-03T12:00:00Z", title: "Preview · First list of signs", change: ""),
+                                     .init(number: 12, at: "2026-09-19T12:00:00Z", title: "Preview · Three signs of a due rest", change: "")],
+                             final_artifact: .init(title: "Preview · Three signs of a due rest",
+                                                   body: "Preview body · 1. Reading stops. 2. Sleep shortens. 3. Small things feel urgent."),
+                             open_questions: [.init(question: "Preview · Does the order of the signs matter?")],
+                             references: [.init(title: "Preview · A note on rhythm", path: "preview.md", kind: "synthesis", uses: 6)],
+                             connections: [], stats: .init(revisions: 12, his_words: 5, connections: 4),
+                             notice: "Assembled from receipts when the goal closed.",
+                             closing_input: .init(text: "Preview words · A longer reflection. I think we have it, let's close the rest goal.")))
+    }
     func read() -> CollaborationState { value }
     func save(_ change: CollaborationMutation) async -> CollaborationResponse {
         if change.action == "signal", ProcessInfo.processInfo.arguments.contains("--collaboration-save-delay-preview") {
@@ -69,6 +110,8 @@ import Foundation
         value.revision += 1
         let now = "2026-09-07T15:00:00Z"
         switch change.action {
+        case "reopen_goal", "close_goal", "closure_decision":
+            value.closure_proposals = []
         case "work_review":
             guard let ri = value.results.firstIndex(where: { $0.id == change.result_id }),
                   let si = value.results[ri].review_sections?.firstIndex(where: { $0.id == change.section_id }),

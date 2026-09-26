@@ -1,3 +1,19 @@
+## CL-20260926-goal-closure — Finished together
+
+Hector closed two goals on a walk ("We close those two goals … so I can start
+finding a new goal") and asked for the finished work to stay reachable. The
+backend now hears that and freezes a record (`skills/goal_closure.py`). Here:
+`Core/GoalClosure.swift` (summaries, proposals, the record), and
+`Talk/FinishedTogetherView.swift`: `FinishedTogetherRoom` (every finished goal),
+`FinishedGoalView` (how he closed it, her labelled reading, where the work
+landed, his words along the way with originals, the steps, sources, what was
+left open with "Start a goal from this", Reopen), `CloseGoalView` (close from
+the app in his words) and `GoalClosureNotices` (her acknowledgement and "did
+you mean to close this?"), mounted in `CollaborationSummary` and at the top of
+Together. A goal with a record leaves the Together cards. Fixture:
+`--collaboration-preview --finished-goals-preview` plus `--open-together`,
+`--open-finished` or `--open-finished-record` (invented text; this repo is public).
+
 ## CL-20260926-walk-sync — walk audio keeps moving when the phone locks
 
 Hector: "make sure that it runs in the background, even if the app is closed."
@@ -355,6 +371,7 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `POST /api/context_enrichment` | UUID-receipted attention priority, correction, explicit note or follow-up setting |
 | `GET /api/dialogue_review?reply_id=<UUID>` | public context for one saved reply; read-only |
 | `POST /api/dialogue_review` | explicit feedback, requested opposite-model comparison, or contextual preference; UUID receipt |
+| `GET /api/goal_closure?closure_id=` | a finished goal's frozen record: goal, his closing words and whole input, her labelled reflection and next-goal seeds, his words along the way, steps, final artifact, sources, open questions. `GET /api/collaboration` adds `closures` / `closure_proposals`; POST actions `close_goal`, `reopen_goal`, `closure_decision` |
 | `GET /api/episode/<label>` | shownotes markdown |
 | `POST /api/speak` · `GET /api/speech/<name>` | read-aloud: her voice rendered in ramped chunks (`skills/reading_voice.py`), returned as an ordered chunk list — `ready` / `streaming` / `rendering`, never blocking |
 | `GET /api/playlists` · `POST /api/playlist` | Studio's listening queues (create/rename/delete/add/remove/reorder); adding also renders that piece's audio so a queue is warm before he drives |

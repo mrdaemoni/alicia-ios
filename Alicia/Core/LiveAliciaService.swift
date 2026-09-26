@@ -306,6 +306,10 @@ struct LiveAliciaService: AliciaService {
     }
 
     func collaboration() async -> CollaborationState? { await fetchOne("/api/collaboration") }
+    func goalClosure(id: String) async -> GoalClosureRecord? {
+        guard UUID(uuidString: id) != nil else { return nil }
+        return await fetchOne("/api/goal_closure?closure_id=" + id)
+    }
     func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse? {
         do {
             let bytes = try JSONEncoder().encode(mutation)

@@ -11,6 +11,9 @@ struct CollaborationSummary: View {
                     .font(.callout).frame(minHeight: 44)
                     .accessibilityIdentifier("collaboration.addGoal")
             }
+            GoalClosureNotices { id in
+                store.collaboration.route = CollaborationRoute(finishedClosureID: id ?? "")
+            }
             if let state = store.collaboration.state {
                 if !state.activeGoals.isEmpty {
                     Text("\(state.activeGoals.count) active \(state.activeGoals.count == 1 ? "goal" : "goals")")
@@ -25,7 +28,10 @@ struct CollaborationSummary: View {
                             }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }.accessibilityIdentifier("collaboration.summaryGoal." + goal.id)
                     }
-                } else { Text("What would you like us to work toward?").font(.system(size: 21, design: .serif)) }
+                } else {
+                    Text(state.finishedGoals.isEmpty ? "What would you like us to work toward?" : "Ready for a next goal. What would you like us to work toward now?")
+                        .font(.system(size: 21, design: .serif))
+                }
                 if let connection = state.connections.first(where: { $0.status == "proposed" }) {
                     Text(connection.title.strippedEmojis).font(.subheadline).italic().lineLimit(2)
                 } else if let agreement = state.agreements.first(where: { $0.status == "active" }) {
@@ -50,6 +56,8 @@ struct CollaborationView: View {
     @State private var openTarget = false
     @State private var openNewGoal = false
     @State private var openedGoalEditor = false
+    @State private var openFinished = false
+    @State private var finishedTarget: String?
     @State private var selectedGoalID = ""
     @State private var targetResult: CollaborationState.Result?
     @State private var signal = ""
@@ -69,6 +77,7 @@ struct CollaborationView: View {
                                 Text(candidate.reason).font(.callout)
                             }
                         }
+                        GoalClosureNotices { id in finishedTarget = id; openFinished = true }
                         if state.pending { Text("Alicia is revisiting the evidence. Prepared work will appear here.").font(.callout) }
                         if !state.error.isEmpty { Text(state.error).font(.callout).foregroundStyle(Theme.rose) }
                         HStack(alignment: .firstTextBaseline) {
@@ -89,6 +98,15 @@ struct CollaborationView: View {
                         }.accessibilityIdentifier("workReview.goalTabs")
                         ForEach(visibleGoals(state)) { goal in
                             goalCard(goal, state: state)
+                        }
+                        if !(state.closures ?? []).isEmpty {
+                            NavigationLink { FinishedTogetherRoom() } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("FINISHED TOGETHER · \(state.finishedGoals.count)").font(.system(size: 10, design: .monospaced)).tracking(2)
+                                    Text(state.finishedGoals.prefix(3).map { $0.title.strippedEmojis }.joined(separator: " · "))
+                                        .font(.system(size: 16, design: .serif)).lineLimit(2)
+                                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }.accessibilityIdentifier("collaboration.finished")
                         }
                         if !state.connections.isEmpty {
                             Divider()
@@ -178,6 +196,11 @@ struct CollaborationView: View {
                 signalRequestID = shared.draft("signal")?["request_id"] ?? ""
                 await shared.load()
                 if targetResult == nil { targetResult = shared.state?.results.first { $0.id == target.resultID } }
+                if let id = target.finishedClosureID, !openedGoalEditor {
+                    openedGoalEditor = true
+                    finishedTarget = id.isEmpty ? nil : id
+                    openFinished = true
+                }
                 if target.newGoal == true, !openedGoalEditor {
                     openedGoalEditor = true
                     openNewGoal = true
@@ -197,6 +220,7 @@ struct CollaborationView: View {
         .background(Theme.paper).foregroundStyle(Theme.ink)
         .navigationTitle("Together").navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $openNewGoal) { CollaborationEditor(kind: .goal(nil)) }
+        .navigationDestination(isPresented: $openFinished) { FinishedTogetherRoom(openClosureID: finishedTarget) }
         .navigationDestination(isPresented: $openTarget) {
             Group {
                 if let result = targetResult {
@@ -223,7 +247,8 @@ struct CollaborationView: View {
         .buttonStyle(CollaborationButtonStyle())
     }
     private func visibleGoals(_ state: CollaborationState) -> [CollaborationState.Goal] {
-        let ordered = state.activeGoals + state.goals.filter { $0.status != "active" }
+        // A finished goal lives in Finished together with its record, not as a stale card here.
+        let ordered = state.activeGoals + state.goals.filter { $0.status != "active" && !state.hasRecord($0) }
         return ordered.filter { selectedGoalID.isEmpty || $0.id == selectedGoalID }
     }
     private func goalCard(_ goal: CollaborationState.Goal, state: CollaborationState) -> some View {
@@ -233,6 +258,10 @@ struct CollaborationView: View {
             Text("Your goal · " + goal.status + " · " + goal.priority + " attention").font(.caption).foregroundStyle(Theme.inkSoft)
             NavigationLink("Edit goal or change direction") { CollaborationEditor(kind: .goal(goal)) }
                 .accessibilityIdentifier("collaboration.editGoal." + goal.id)
+            if goal.status == "active" {
+                NavigationLink("Close this goal") { CloseGoalView(goal: goal) }
+                    .accessibilityIdentifier("collaboration.closeGoal." + goal.id)
+            }
             GoalWorkProgress(goal: goal, state: state)
             ForEach(state.results.filter { $0.agreement_id.isEmpty && $0.goal_id == goal.id }) { result in
                 NavigationLink { CollaborationResultView(result: result) } label: {
@@ -567,7 +596,7 @@ struct CollaborationEvidenceView: View {
     }
 }
 
-private enum CollaborationEditorKind {
+enum CollaborationEditorKind {
     case goal(CollaborationState.Goal?)
     case commit(CollaborationState.Connection)
     case agreement(CollaborationState.Agreement)
@@ -578,9 +607,11 @@ private enum CollaborationEditorKind {
     }
 }
 
-private struct CollaborationEditor: View {
+struct CollaborationEditor: View {
     @Environment(AppStore.self) private var store
     let kind: CollaborationEditorKind
+    /// A next-goal seed from a finished goal; only a starting title, he writes the rest.
+    var suggestedTitle: String? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
     @State private var outcome = ""
@@ -663,7 +694,7 @@ private struct CollaborationEditor: View {
         switch kind {
         case .goal(let old):
             let g = state?.goals.first(where: { $0.id == old?.id }) ?? old
-            title = g?.title ?? ""; outcome = g?.outcome ?? ""; why = g?.why ?? ""; priority = g?.priority ?? "normal"; status = g?.status ?? "active"; revision = g?.revision
+            title = g?.title ?? suggestedTitle ?? ""; outcome = g?.outcome ?? ""; why = g?.why ?? ""; priority = g?.priority ?? "normal"; status = g?.status ?? "active"; revision = g?.revision
         case .commit(let old):
             let c = state?.connections.first(where: { $0.id == old.id }) ?? old
             action = c.proposed_action; owner = c.action_owner; condition = c.review_condition; revision = c.revision
@@ -702,7 +733,7 @@ struct CollaborationSaveStatus: View {
         }
     }
 }
-private struct CollaborationButtonStyle: ButtonStyle {
+struct CollaborationButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.frame(minHeight: 44).contentShape(Rectangle())
             .foregroundStyle(Theme.ink).opacity(configuration.isPressed ? 0.55 : 1)
