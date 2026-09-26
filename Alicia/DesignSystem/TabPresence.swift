@@ -128,7 +128,9 @@ extension View {
                         state: TabPresence.state(for: section, store: store),
                         attention: TabPresence.attention(for: section, store: store),
                         isActive: store.selectedSection == section,
-                        previewsReduceMotion: previewsCollaborationStillness
+                        previewsReduceMotion: previewsCollaborationStillness,
+                        // Her awareness: one body across every room.
+                        field: store.presenceField.enabled ? store.presenceField : nil
                     )
                     .frame(width: geo.size.width * 1.9,
                            height: geo.size.height * 1.9)

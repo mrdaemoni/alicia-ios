@@ -306,6 +306,7 @@ struct LiveAliciaService: AliciaService {
     }
 
     func collaboration() async -> CollaborationState? { await fetchOne("/api/collaboration") }
+    func presence() async -> PresenceAwareness? { await fetchOne("/api/presence") }
     func goalClosure(id: String) async -> GoalClosureRecord? {
         guard UUID(uuidString: id) != nil else { return nil }
         return await fetchOne("/api/goal_closure?closure_id=" + id)

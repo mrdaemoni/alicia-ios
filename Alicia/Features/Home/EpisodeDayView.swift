@@ -423,6 +423,7 @@ struct EpisodeMindView: View {
                         }.buttonStyle(.inkLink)
                     }
                     InkSection(kicker: "Where you are") { PlaceAwareness() }
+                    InkSection(kicker: "Her awareness") { PresenceAwarenessSection() }
                     Text(AppVersion.tag).font(.system(size: 9, design: .monospaced)).foregroundStyle(Theme.inkSoft)
                 }
                 .padding(22)
@@ -555,5 +556,36 @@ struct PlaceAwareness: View {
             }
         }
         .task { tracker.begin() }
+    }
+}
+
+/// What the moving field behind every room is showing, said in words, and the
+/// switch back to the earlier per-room forms while Hector judges the new one.
+struct PresenceAwarenessSection: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        let field = store.presenceField
+        VStack(alignment: .leading, spacing: 8) {
+            if !field.awareness.attending_to.isEmpty {
+                Text(field.awareness.attending_to.strippedEmojis).font(InkType.body)
+            }
+            Text(detail(field)).font(InkType.meta).foregroundStyle(Theme.inkSoft)
+            HStack(spacing: 8) {
+                WorkReviewChoice(title: "Her awareness", selected: field.enabled, compact: true) { field.enabled = true }
+                WorkReviewChoice(title: "Rooms", selected: !field.enabled, compact: true) { field.enabled = false }
+            }
+            .accessibilityIdentifier("presence.mode")
+            Text(field.enabled
+                 ? "One body behind every room, moving with what she is attending to."
+                 : "The earlier field: a fixed form for each room.")
+                .font(.caption).italic().foregroundStyle(Theme.inkSoft)
+        }
+    }
+
+    private func detail(_ field: PresenceField) -> String {
+        guard let at = field.lastUpdate else { return "Waiting for her first reading" }
+        let who = field.awareness.source.contains("jev") ? "Read with Jev" : "From her own signals"
+        return who + " · " + at.formatted(.relative(presentation: .named))
     }
 }

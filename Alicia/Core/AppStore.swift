@@ -852,6 +852,7 @@ final class AppStore {
     private var liveTimelineSeeded = false
 
     func load() async {
+        Task { await refreshPresence() }
         Task { await refreshMorningBriefing() }
         Task { await collaboration.load() }
         Task { await refreshVoiceArchive() }
@@ -967,6 +968,7 @@ final class AppStore {
     }
 
     private func pollProactive() async {
+        await refreshPresence()
         await collaboration.load()
         await refreshEpisodeDay()
         await flushPlaybackOutbox()
@@ -1194,7 +1196,17 @@ final class AppStore {
     }
     /// Programmatic tab switching (Dialogue chips → Alicia tab).
     var selectedSection: AppSection = .us {
-        didSet { if selectedSection != .dialogue { dialogueOrigin = selectedSection } }
+        didSet {
+            if selectedSection != .dialogue { dialogueOrigin = selectedSection }
+            presenceField.enter(selectedSection)
+        }
+    }
+    /// One body behind every room, moved by her awareness (PresenceField.swift).
+    let presenceField = PresenceField()
+
+    func refreshPresence() async {
+        guard !isMock, let reading = await service.presence() else { return }
+        if reading != presenceField.awareness { presenceField.receive(reading) }
     }
     var dialogueOrigin: AppSection = .us
     var composerDrafts = ComposerDrafts()

@@ -86,6 +86,8 @@ protocol AliciaService {
     func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult?
     func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload?
     func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult?
+    /// Her awareness for the particle field.
+    func presence() async -> PresenceAwareness?
     /// The frozen record of one finished goal.
     func goalClosure(id: String) async -> GoalClosureRecord?
     func downloadVoice(recordingID: String, segmentID: String) async -> Data?
@@ -248,6 +250,7 @@ extension AliciaService {
     func voiceAction(_ body: [String: Any]) async -> VoiceEvidenceResult? { nil }
     func voiceRecordings(recordingID: String) async -> VoiceEvidencePayload? { nil }
     func uploadVoice(recordingID: String, segment: VoiceSegment, file: URL) async -> VoiceEvidenceResult? { nil }
+    func presence() async -> PresenceAwareness? { nil }
     func goalClosure(id: String) async -> GoalClosureRecord? {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--finished-goals-preview") { return CollaborationPreview.finishedRecord }
