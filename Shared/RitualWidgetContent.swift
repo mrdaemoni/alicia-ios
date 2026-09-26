@@ -29,21 +29,31 @@ struct RitualEntry: TimelineEntry {
     let events: [BodyEvent]
     let pending: Int
     let failed: Bool
+    var pendingIDs: Set<String> = []
 }
 
-/// Tinted widgets force white labels. A tiny full-color ink plate preserves contrast.
+/// Tinted widgets force white labels. Keep a full-color dark plate in the
+/// widget's content tree so a light Home Screen tint cannot sit behind them.
 struct RitualWidgetContent: View {
     let entry: RitualEntry
     var forceAccented = false
     @Environment(\.widgetRenderingMode) private var renderingMode
     private var accented: Bool { forceAccented || renderingMode == .accented }
-    // Was a near-black of its own — (0.12, 0.15, 0.13), greener than the
-    // app's ink — because this file could not see Theme. It reads the shared
-    // palette now. Accented (tinted) widgets force white labels, so the ink
-    // inverts there and her underline inverts with it: dark on paper, light
-    // on the plate, never a tint.
     private var ink: Color { accented ? .white : InkPalette.ink }
+    private var lastWidgetTap: BodyEvent? {
+        entry.events.last {
+            $0.source == "widget" && $0.kind == "ritual" &&
+            $0.local_day == BodyCapture.day(entry.date)
+        }
+    }
     var body: some View {
+        ZStack {
+            if accented { contrastPlate }
+            content.padding(accented ? 12 : 0)
+        }
+        .containerBackground(InkPalette.paper, for: .widget)
+    }
+    private var content: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("BODY · DAILY RITUALS").font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -64,23 +74,31 @@ struct RitualWidgetContent: View {
                     .accessibilityValue(done ? "Recorded today" : "Not recorded")
                 }
             }
-            Text(entry.failed ? "Open Alicia to check your local record." : entry.pending > 0 ? "Saved here · open Alicia to sync" : "Tap after each ritual · correct it in Body")
+            Text(status)
                 .font(.system(size: 11, design: .serif))
         }
         .font(.system(size: 14, design: .serif)).foregroundStyle(ink)
-        .padding(accented ? 10 : 0)
-        .background { if accented { contrastPlate } }
-        .containerBackground(InkPalette.paper, for: .widget)
+    }
+    private var status: String {
+        if entry.failed { return "Open Alicia to check your local record." }
+        if let tap = lastWidgetTap {
+            let time = BodyCapture.instant(tap.captured_at).formatted(date: .omitted, time: .shortened)
+            return entry.pendingIDs.contains(tap.id)
+                ? "Tap saved at \(time) · open Alicia to sync"
+                : "Tap saved at \(time) · synced with Alicia"
+        }
+        return entry.pending > 0 ? "Saved here · open Alicia to sync" : "Tap after each ritual · correct it in Body"
     }
     @ViewBuilder private var contrastPlate: some View {
         if #available(iOS 18.0, *) {
             Image(uiImage: Self.plate).resizable().widgetAccentedRenderingMode(.fullColor)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 10)).accessibilityHidden(true)
-        } else { Color(red: 0.08, green: 0.12, blue: 0.10) }
+        } else { Color(red: 0.025, green: 0.035, blue: 0.03) }
     }
     private static let plate: UIImage = {
         UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1)).image { context in
-            UIColor(red: 0.08, green: 0.12, blue: 0.10, alpha: 1).setFill()
+            UIColor(red: 0.025, green: 0.035, blue: 0.03, alpha: 1).setFill()
             context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
         }
     }()

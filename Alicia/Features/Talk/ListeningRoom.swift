@@ -60,7 +60,8 @@ struct ListeningStage<Controls: View>: View {
                     .position(x: geo.size.width * 0.5, y: geo.size.height * 0.46)
                     // Denser than a section's 0.30: here she IS the subject,
                     // and his words are the only thing above her.
-                    .opacity(0.42)
+                    .opacity(isRecording ? 0.58 : 0.36)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: isRecording)
             }
             .ignoresSafeArea()
             .accessibilityHidden(true)
@@ -99,10 +100,15 @@ struct ListeningStage<Controls: View>: View {
                     Text(elapsed)
                         .font(.system(size: 15, design: .monospaced)).monospacedDigit()
                         .foregroundStyle(Theme.inkSoft)
+                    Text(isRecording ? "LISTENING" : isStarting ? "OPENING…" : "PAUSED")
+                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                        .tracking(1)
+                        .foregroundStyle(isRecording ? Theme.ink : Theme.inkSoft)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(isRecording
                     ? "Microphone on, \(Int(seconds)) seconds recorded"
+                    : isStarting ? "Opening microphone"
                     : "Microphone paused, \(Int(seconds)) seconds recorded")
                 .accessibilityIdentifier("walk.microphoneState")
             }
