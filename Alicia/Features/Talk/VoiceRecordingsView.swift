@@ -81,7 +81,7 @@ func voiceDateLabel(_ context: VoiceContext) -> String {
     return formatter.string(from: date)
 }
 
-private struct VoiceRecordingDetail: View {
+struct VoiceRecordingDetail: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
     var id: String

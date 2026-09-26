@@ -138,7 +138,7 @@ struct FinishedGoalView: View {
                         InkKicker(text: goalDay(words.observed_at))
                         Text("“" + words.excerpt.strippedEmojis + "”").font(InkType.linkSmall).italic()
                         if let recording = words.recording_id, !recording.isEmpty {
-                            NavigationLink { VoiceRecordingsView(recordingID: recording) } label: {
+                            NavigationLink { VoiceRecordingDetail(id: recording, pushed: true) } label: {
                                 InkLinkLabel(title: "Hear the original", small: true)
                             }.buttonStyle(.inkLink)
                         }

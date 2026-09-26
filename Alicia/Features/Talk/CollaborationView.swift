@@ -252,7 +252,7 @@ struct CollaborationView: View {
                 Text(row.source + " · " + row.observed_at).font(InkType.meta).foregroundStyle(Theme.inkSoft)
                 Text(row.notice).font(InkType.meta).foregroundStyle(Theme.inkSoft)
                 if let id = row.recording_id, !id.isEmpty {
-                    NavigationLink { VoiceRecordingsView(recordingID: id) } label: {
+                    NavigationLink { VoiceRecordingDetail(id: id, pushed: true) } label: {
                         InkLinkLabel(title: "Review original voice", small: true)
                     }.buttonStyle(.inkLink)
                 }
@@ -707,7 +707,7 @@ struct CollaborationEvidenceView: View {
                         }
                         if !evidence.recording_id.isEmpty {
                             if track != nil && !evidence.episode_id.isEmpty { InkRule(opacity: 0.6) }
-                            NavigationLink { VoiceRecordingsView(recordingID: evidence.recording_id) } label: {
+                            NavigationLink { VoiceRecordingDetail(id: evidence.recording_id, pushed: true) } label: {
                                 InkLinkLabel(title: "Review original voice")
                             }.buttonStyle(.inkLink)
                         }
