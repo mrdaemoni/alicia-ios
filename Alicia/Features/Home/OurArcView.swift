@@ -17,7 +17,6 @@ import SwiftUI
 /// have no location, and none is inferred from a neighbouring day.
 struct OurArcView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
     @State private var days: [TimelineDay] = []
     @State private var context: ContextEnrichment?
     @State private var loading = true
@@ -26,7 +25,6 @@ struct OurArcView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
-                    header
                     whatSheHolds
                     arc
                 }
@@ -34,26 +32,16 @@ struct OurArcView: View {
             }
             .presenceBackground(.us, store: store)
             .foregroundStyle(Theme.ink)
-            .buttonStyle(.plain)
-            .toolbar(.hidden, for: .navigationBar)
+            // The sheet page chrome (.inkSheetPage), spelled out so CLOSE keeps
+            // the identifier the UI scripts address.
+            .navigationTitle("Since she began")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) { InkTitleLine(text: "Since she began", size: 16) }
+                ToolbarItem(placement: .topBarTrailing) { InkCloseButton().accessibilityIdentifier("arc.close") }
+            }
             .task { await load() }
             .refreshable { await load() }
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 3) {
-                InkTitleLine(text: "Us", size: 30)
-                Text("EVERY DAY SINCE SHE BEGAN")
-                    .font(.system(size: 10, design: .monospaced)).tracking(2)
-                    .foregroundStyle(Theme.inkSoft)
-            }
-            Spacer()
-            Button("CLOSE") { dismiss() }
-                .font(.system(size: 10, design: .monospaced)).tracking(1)
-                .frame(minHeight: 44)
-                .accessibilityIdentifier("arc.close")
         }
     }
 
@@ -61,12 +49,10 @@ struct OurArcView: View {
     /// edits, shown here read-only because this is "what does she think right
     /// now", not "change what she thinks".
     @ViewBuilder private var whatSheHolds: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("WHAT SHE'S HOLDING ABOUT YOU")
-                .font(.system(size: 10, design: .monospaced)).tracking(1.6)
-                .foregroundStyle(Theme.inkSoft)
+        InkSection(kicker: "What she's holding about you", rule: false) {
             if let context, !context.about.isEmpty {
-                ForEach(context.about) { item in
+                ForEach(Array(context.about.enumerated()), id: \.element.id) { index, item in
+                    if index > 0 { InkRule(opacity: 0.6) }
                     VStack(alignment: .leading, spacing: 3) {
                         Text(item.title).font(.subheadline)
                         Text(item.text).font(.system(size: 17, design: .serif))
@@ -75,11 +61,13 @@ struct OurArcView: View {
                     }
                     .accessibilityIdentifier("arc.about")
                 }
-                NavigationLink("Change what she's holding") { ContextEnrichmentView() }
-                    .font(.callout).frame(minHeight: 44)
+                InkRule(opacity: 0.6)
+                NavigationLink { ContextEnrichmentView() } label: {
+                    InkLinkLabel(title: "About you", detail: "What she knows about you, open to your corrections")
+                }
+                .buttonStyle(.inkLink)
             } else if loading {
-                Text("Reading her picture of you…").font(.subheadline).italic()
-                    .foregroundStyle(Theme.inkSoft)
+                InkNotice(text: "Reading her picture of you…")
             } else {
                 Text("She has nothing written down about you right now.")
                     .font(.system(size: 17, design: .serif)).italic()
@@ -88,19 +76,15 @@ struct OurArcView: View {
     }
 
     private var arc: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("THE ARC")
-                .font(.system(size: 10, design: .monospaced)).tracking(1.6)
-                .foregroundStyle(Theme.inkSoft)
-                .padding(.bottom, 12)
+        InkSection(kicker: "The arc", spacing: 0) {
             if days.isEmpty, loading {
-                Text("Reading every day…").font(.subheadline).italic()
-                    .foregroundStyle(Theme.inkSoft)
+                InkNotice(text: "Reading every day…").padding(.top, 12)
             } else if days.isEmpty {
-                Text("The arc is unavailable. Nothing has been lost; connect to your Mac and pull to refresh.")
-                    .font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                InkNotice(text: "The arc is unavailable. Nothing has been lost; connect to your Mac and pull to refresh.", kind: .error)
+                    .padding(.top, 12)
             }
-            ForEach(days) { day in
+            ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
+                if index > 0 { InkRule(opacity: 0.6) }
                 dayRow(day)
             }
         }
@@ -144,7 +128,6 @@ struct OurArcView: View {
             }
         }
         .padding(.vertical, 12)
-        .overlay(alignment: .bottom) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("arc.day")
     }

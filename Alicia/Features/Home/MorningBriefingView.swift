@@ -19,10 +19,7 @@ struct MorningBriefingView: View {
         // Date honesty survives leaving Us visible through midnight. This is a
         // clock update, with no animation or activity indicator.
         TimelineView(.periodic(from: .now, by: 60)) { clock in
-            VStack(alignment: .leading, spacing: 14) {
-                Text("MORNING BRIEFING")
-                    .font(.caption.monospaced()).tracking(1.5)
-                    .foregroundStyle(Theme.accent)
+            InkSection(kicker: "Morning briefing", rule: false, spacing: 14) {
                 if let briefing {
                     MorningBriefingDate(briefing: briefing, now: clock.date)
                     Text(briefing.displayTitle.strippedEmojis)
@@ -31,16 +28,18 @@ struct MorningBriefingView: View {
                         .accessibilityAddTraits(.isHeader)
                     if briefing.hasPlayableAudio {
                         playbackButton(briefing)
-                        if loadingBriefingID == briefing.id { Text("Loading audio…").font(.caption).foregroundStyle(Theme.inkSoft) }
-                        if failedBriefingID == briefing.id, let playbackError { Text(playbackError).font(.caption).foregroundStyle(Theme.inkSoft) }
+                        if loadingBriefingID == briefing.id { InkNotice(text: "Loading audio…") }
+                        if failedBriefingID == briefing.id, let playbackError { InkNotice(text: playbackError, kind: .error) }
                     } else {
                         Text(briefing.availabilityText).font(.body).fontDesign(.serif)
                             .foregroundStyle(Theme.inkSoft)
                             .accessibilityIdentifier("morningBriefing.status")
                     }
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 18) { inspectButton(briefing); playlistButton(briefing) }
-                        VStack(alignment: .leading, spacing: 0) { inspectButton(briefing); playlistButton(briefing) }
+                    VStack(alignment: .leading, spacing: 0) {
+                        InkRule(opacity: 0.6)
+                        inspectButton(briefing)
+                        if briefing.hasPlaylist { InkRule(opacity: 0.6) }
+                        playlistButton(briefing)
                     }
                     if !briefing.hasPlayableAudio || briefing.dayRelation(to: clock.date) != .today {
                         refreshButton
@@ -59,9 +58,6 @@ struct MorningBriefingView: View {
         }
         .foregroundStyle(Theme.ink)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 18)
-        .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
-        .overlay(alignment: .bottom) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
         .sheet(item: $inspectedBriefing) { inspected in
             MorningBriefingReading(briefing: inspected, playingBriefingID: playingBriefingID,
                                    loadingBriefingID: loadingBriefingID, failedBriefingID: failedBriefingID, playbackError: playbackError,
@@ -77,11 +73,10 @@ struct MorningBriefingView: View {
 
     private func inspectButton(_ item: MorningBriefing) -> some View {
         Button { inspectedBriefing = item } label: {
-            Text(item.hasText ? "READ THE BRIEFING" : "VIEW DETAILS")
-                .font(.caption.monospaced()).tracking(0.5)
-                .frame(minHeight: 44, alignment: .leading).contentShape(Rectangle())
+            InkLinkLabel(title: item.hasText ? "Read the briefing" : "View details",
+                         detail: item.hasText ? "The full text and its sources" : "What was supplied with it")
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.inkLink)
         .accessibilityIdentifier("morningBriefing.read")
         .accessibilityHint("Opens the full text and its supplied sources. Does not start audio.")
     }
@@ -89,10 +84,9 @@ struct MorningBriefingView: View {
     @ViewBuilder private func playlistButton(_ item: MorningBriefing) -> some View {
         if item.hasPlaylist {
             Button { onOpenPlaylist(item.playlist_id) } label: {
-                Text("IN STUDIO").font(.caption.monospaced()).tracking(0.5)
-                    .frame(minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                InkLinkLabel(title: "Open the playlist in Studio", detail: "Everything this briefing drew on, to listen to")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.inkLink)
             .accessibilityLabel("Open this briefing's playlist in Studio")
             .accessibilityIdentifier("morningBriefing.playlist")
         }
@@ -100,12 +94,8 @@ struct MorningBriefingView: View {
 
     @ViewBuilder private var refreshButton: some View {
         if let onRefresh {
-            Button(action: onRefresh) {
-                Text(isRefreshing ? "CHECKING…" : "CHECK AGAIN")
-                    .font(.caption.monospaced()).tracking(0.5)
-                    .frame(minHeight: 44, alignment: .leading).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).disabled(isRefreshing)
+            Button(isRefreshing ? "Checking…" : "Check again", action: onRefresh)
+            .buttonStyle(.inkQuiet).disabled(isRefreshing)
             .accessibilityIdentifier("morningBriefing.refresh")
             .accessibilityHint("Checks for an already prepared briefing.")
         }
@@ -191,8 +181,8 @@ private struct MorningBriefingReading: View {
                                                  isLoading: loadingBriefingID == briefing.id, hasFailed: failedBriefingID == briefing.id,
                                                  accessibilityID: "morningBriefing.reading.play",
                                                  action: { onTogglePlayback(briefing) })
-                        if loadingBriefingID == briefing.id { Text("Loading audio…").font(.caption).foregroundStyle(Theme.inkSoft) }
-                        if failedBriefingID == briefing.id, let playbackError { Text(playbackError).font(.caption).foregroundStyle(Theme.inkSoft) }
+                        if loadingBriefingID == briefing.id { InkNotice(text: "Loading audio…") }
+                        if failedBriefingID == briefing.id, let playbackError { InkNotice(text: playbackError, kind: .error) }
                     } else {
                         Text(briefing.availabilityText).font(.subheadline).foregroundStyle(Theme.inkSoft)
                     }
@@ -203,61 +193,57 @@ private struct MorningBriefingReading: View {
                     } else {
                         Text("The text isn't available yet.").font(.body).italic()
                     }
-                    Button { showSources.toggle() } label: {
-                        Text(showSources ? "HIDE SOURCES" : "SOURCES · \(briefing.sources.count)")
-                            .font(.caption.monospaced()).frame(minHeight: 44).contentShape(Rectangle())
+                    if !briefing.error.isEmpty {
+                        InkNotice(text: briefing.error, kind: .error)
+                            .textSelection(.enabled)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityValue(showSources ? "Expanded" : "Collapsed")
-                    .accessibilityIdentifier("morningBriefing.sources")
+                    InkDisclosureToggle(title: "Sources · \(briefing.sources.count)",
+                                        open: showSources) { showSources.toggle() }
+                        .accessibilityIdentifier("morningBriefing.sources")
                     if showSources {
-                        if briefing.sources.isEmpty {
-                            Text("No source passages were supplied with this briefing.")
-                                .font(.subheadline).foregroundStyle(Theme.inkSoft)
-                        }
-                        ForEach(Array(briefing.sources.enumerated()), id: \.offset) { _, source in
-                            VStack(alignment: .leading, spacing: 8) {
-                                if let title = source.title, !title.isEmpty {
-                                    Text(title.strippedEmojis).font(.headline).fontDesign(.serif)
+                        HStack(alignment: .top, spacing: 12) {
+                            Rectangle().fill(Theme.stroke).frame(width: 0.7)
+                            VStack(alignment: .leading, spacing: 12) {
+                                if briefing.sources.isEmpty {
+                                    InkNotice(text: "No source passages were supplied with this briefing.")
                                 }
-                                if let excerpt = source.excerpt, !excerpt.isEmpty {
-                                    Text(excerpt.strippedEmojis).font(.body).fontDesign(.serif).textSelection(.enabled)
-                                }
-                                if let path = source.path, !path.isEmpty {
-                                    Text(path).font(.caption).foregroundStyle(Theme.inkSoft).textSelection(.enabled)
-                                }
-                                if [source.title, source.excerpt, source.path].allSatisfy({ ($0 ?? "").isEmpty }) {
-                                    Text("Source details weren't supplied.").font(.subheadline)
-                                        .foregroundStyle(Theme.inkSoft)
+                                ForEach(Array(briefing.sources.enumerated()), id: \.offset) { index, source in
+                                    if index > 0 { InkRule(opacity: 0.6) }
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        if let title = source.title, !title.isEmpty {
+                                            Text(title.strippedEmojis).font(.headline).fontDesign(.serif)
+                                        }
+                                        if let excerpt = source.excerpt, !excerpt.isEmpty {
+                                            Text(excerpt.strippedEmojis).font(.body).fontDesign(.serif).textSelection(.enabled)
+                                        }
+                                        if let path = source.path, !path.isEmpty {
+                                            Text(path).font(.caption).foregroundStyle(Theme.inkSoft).textSelection(.enabled)
+                                        }
+                                        if [source.title, source.excerpt, source.path].allSatisfy({ ($0 ?? "").isEmpty }) {
+                                            Text("Source details weren't supplied.").font(.subheadline)
+                                                .foregroundStyle(Theme.inkSoft)
+                                        }
+                                    }
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                    }
-                    if !briefing.error.isEmpty {
-                        Text(briefing.error.strippedEmojis).font(.caption).foregroundStyle(Theme.inkSoft)
-                            .textSelection(.enabled)
                     }
                     if briefing.hasPlaylist {
                         Button {
                             dismiss()
                             onOpenPlaylist(briefing.playlist_id)
                         } label: {
-                            Text("OPEN PLAYLIST IN STUDIO").font(.caption.monospaced())
-                                .frame(minHeight: 44).contentShape(Rectangle())
+                            InkLinkLabel(title: "Open the playlist in Studio", detail: "Everything this briefing drew on, to listen to")
                         }
-                        .buttonStyle(.plain).accessibilityIdentifier("morningBriefing.reading.playlist")
+                        .buttonStyle(.inkLink).accessibilityIdentifier("morningBriefing.reading.playlist")
                     }
                 }
                 .padding(22)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(Theme.paper.ignoresSafeArea()).foregroundStyle(Theme.ink)
-            .navigationTitle("Morning briefing").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Close") { dismiss() }.frame(minWidth: 44, minHeight: 44)
-                }
-            }
+            .inkSheetPage("Morning briefing")
         }
     }
 }

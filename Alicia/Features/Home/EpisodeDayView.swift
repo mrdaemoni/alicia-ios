@@ -12,6 +12,8 @@ struct EpisodeHomeView: View {
                     // back what she is holding about him and the whole arc
                     // since she began — unmounted when the old orbit came out
                     // of Us, though both endpoints kept working the whole time.
+                    // The same place is also an explicit link under "The days
+                    // behind", so it is never only a hidden gesture.
                     Button { store.showArc = true } label: {
                         SectionHeader(title: "Us", kicker: Date.now.formatted(date: .complete, time: .omitted))
                             .frame(maxWidth: .infinity)
@@ -33,71 +35,28 @@ struct EpisodeHomeView: View {
                     // Option A (CL-20260918-context-graph-behaviours): his situation,
                     // above the goals, opening into the room with the whole graph.
                     WhereYouAreSection()
-                    NextEpisodeInvitation()
+                    // What is next in his ears and what the episode he chose is
+                    // asking of him today: one section, so the pieces of the
+                    // episode are never split around the goals.
+                    InkSection(kicker: "Episode") {
+                        NextEpisodeInvitation()
+                        episodeBlock
+                        EpisodeErrorLine()
+                    }
                     InkSection(kicker: "Our shared focus") { CollaborationSummary() }
-                    if let day = store.episodeDay, let episode = day.episode {
-                        EpisodeHeading(episode: episode)
-                        if !day.focus.isEmpty {
-                            Text(day.focus.strippedEmojis)
-                                .font(.system(size: 25, design: .serif))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        WalkInvitation()
-                        if day.frame_status != "ready" {
-                            FrameStatus()
-                        }
-                        if !day.probes.isEmpty {
-                            Text(day.frame_status == "ready" ? "STAY WITH THIS" : "EARLIER QUESTIONS")
-                                .font(.system(size: 10, design: .monospaced)).tracking(2)
-                                .foregroundStyle(Theme.inkSoft)
-                            ForEach(day.probes) { probe in
-                                VStack(alignment: .leading, spacing: 13) {
-                                    Text(probe.question.strippedEmojis)
-                                        .font(.system(size: 21, design: .serif))
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    EpisodePassage(probe: probe)
-                                    HStack {
-                                        Button("TALK ABOUT THIS") { store.openWalk(probe: probe.question) }
-                                            .font(.system(size: 10, design: .monospaced).weight(.semibold)).tracking(1)
-                                        Spacer()
-                                        ListenLine(item: Readable(title: "", body: probe.question, kind: "thought"))
-                                    }
-                                    EpisodeFeedback(target: probe.id, verdict: probe.verdict,
-                                                    episodeID: episode.id, canCorrect: false)
-                                }
-                                .padding(.bottom, 18)
-                                Rectangle().fill(Theme.stroke).frame(height: 0.7)
-                            }
-                        }
-                        Button("CONTINUE IN DIALOGUE") { store.selectedSection = .dialogue }
-                            .font(.system(size: 11, design: .monospaced)).tracking(1.3)
-                    } else {
-                        if store.collaboration.state?.goals.contains(where: { $0.status == "active" }) == true {
-                            Text("An episode can add another perspective.").font(.subheadline).italic()
-                            Button("BRING IN AN EPISODE") { store.selectedSection = .studio }
-                                .font(.caption.monospaced()).frame(minHeight: 44)
-                        } else {
-                            InkTitle(text: "Begin with what you hear", size: 32)
-                            Text("Play an episode in Studio. Its ideas will be here, ready for your reaction.")
-                                .font(.system(size: 20, design: .serif))
-                            Button("OPEN STUDIO") { store.selectedSection = .studio }
-                                .buttonStyle(EpisodeButtonStyle())
-                        }
-                        if !store.walkDraft.isEmpty {
-                            Button("RETURN TO YOUR REFLECTION") {
-                                store.walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? ""
-                                store.showWalk = true
-                            }
-                        }
+                    InkSection(kicker: "The days behind", spacing: 4) {
+                        Button { store.showArc = true } label: {
+                            InkLinkLabel(title: "Since she began", detail: "What she's holding about you, and every day since")
+                        }.buttonStyle(.inkLink)
+                        InkRule(opacity: 0.6)
+                        Button { showHistory = true } label: {
+                            InkLinkLabel(title: "Your days & learnings", detail: "Every day's reading, your words and what you kept")
+                        }.buttonStyle(.inkLink)
+                        InkRule(opacity: 0.6)
+                        NavigationLink { HealthView() } label: {
+                            InkLinkLabel(title: "Connection", detail: "Whether she can reach you, and how")
+                        }.buttonStyle(.inkLink)
                     }
-                    EpisodeErrorLine()
-                    HStack {
-                        Button("THE DAYS BEHIND") { showHistory = true }
-                        Spacer()
-                        NavigationLink("CONNECTION") { HealthView() }
-                    }
-                    .font(.system(size: 9, design: .monospaced)).tracking(1.4)
-                    .foregroundStyle(Theme.inkSoft)
                 }
                 .padding(22)
                 .padding(.bottom, 20)
@@ -111,6 +70,102 @@ struct EpisodeHomeView: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showHistory) { EpisodeHistoryView() }
         }
+    }
+
+    /// Today's episode: what it is, the one thing to hold, the walk, and the
+    /// questions — each question one card with everything it owns.
+    @ViewBuilder private var episodeBlock: some View {
+        if let day = store.episodeDay, let episode = day.episode {
+            EpisodeHeading(episode: episode)
+            if !day.focus.isEmpty {
+                Text(day.focus.strippedEmojis)
+                    .font(.system(size: 25, design: .serif))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            WalkInvitation()
+            if day.frame_status != "ready" {
+                FrameStatus()
+            }
+            if !day.probes.isEmpty {
+                InkKicker(text: day.frame_status == "ready" ? "Stay with this" : "Earlier questions")
+                    .padding(.top, 6)
+                ForEach(day.probes) { probe in
+                    EpisodeProbeCard(probe: probe, episodeID: episode.id)
+                }
+            }
+            InkRule(opacity: 0.6).padding(.top, 4)
+            Button { store.selectedSection = .dialogue } label: {
+                InkLinkLabel(title: "Continue in Dialogue", detail: "Talk it through with her")
+            }.buttonStyle(.inkLink)
+        } else {
+            if store.collaboration.state?.goals.contains(where: { $0.status == "active" }) == true {
+                Text("An episode can add another perspective.").font(.subheadline).italic()
+                    .foregroundStyle(Theme.inkSoft)
+            } else {
+                InkTitle(text: "Begin with what you hear", size: 32)
+                Text("Play an episode in Studio. Its ideas will be here, ready for your reaction.")
+                    .font(.system(size: 20, design: .serif))
+            }
+            Button { store.selectedSection = .studio } label: {
+                InkLinkLabel(title: "Choose an episode in Studio")
+            }.buttonStyle(.inkLink)
+            if !store.walkDraft.isEmpty {
+                WalkBand(title: "Return to your reflection") {
+                    store.walkEpisodeID = UserDefaults.standard.string(forKey: "alicia.walkEpisodeID") ?? ""
+                    store.showWalk = true
+                }
+            }
+        }
+    }
+}
+
+/// One question for him, and everything that belongs to it: her voice for
+/// it, the passage it came from, his verdict, and the walk it can begin.
+struct EpisodeProbeCard: View {
+    @Environment(AppStore.self) private var store
+    let probe: EpisodeDay.Probe
+    let episodeID: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(probe.question.strippedEmojis)
+                .font(InkType.subhead)
+                .fixedSize(horizontal: false, vertical: true)
+            ListenLine(item: Readable(title: "", body: probe.question, kind: "thought"))
+            EpisodePassage(probe: probe)
+            InkRule(opacity: 0.6)
+            EpisodeFeedback(target: probe.id, verdict: probe.verdict,
+                            episodeID: episodeID, canCorrect: false)
+            InkRule(opacity: 0.6)
+            Button { store.openWalk(probe: probe.question) } label: {
+                InkLinkLabel(title: "Talk about this", detail: "Begin a walk with this question", small: true)
+            }.buttonStyle(.inkLink)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 16, radius: 16)
+    }
+}
+
+/// A disclosure line whose open state its owner keeps — for toggles that also
+/// reset something, or that UI tests address by identifier. Looks exactly like
+/// InkDisclosure's line.
+struct InkDisclosureToggle: View {
+    let title: String
+    let open: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button { withAnimation(.easeOut(duration: 0.18)) { action() } } label: {
+            HStack(spacing: 8) {
+                Text(title.strippedEmojis).font(InkType.linkSmall).foregroundStyle(Theme.inkSoft)
+                    .multilineTextAlignment(.leading)
+                InkChevron(pointing: open ? .up : .down, size: 11, color: Theme.inkSoft, seed: title.inkSeed)
+                Spacer(minLength: 0)
+            }
+            .frame(minHeight: 44).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(open ? "Open" : "Closed")
     }
 }
 
@@ -143,9 +198,20 @@ struct EpisodeHeading: View {
 struct WalkInvitation: View {
     @Environment(AppStore.self) private var store
     var body: some View {
-        Button { store.openWalk() } label: {
+        WalkBand(title: store.walkDraft.isEmpty || store.walkEpisodeID != store.episodeDay?.episode?.id
+                 ? "Walk with this" : "Return to your reflection") { store.openWalk() }
+            .accessibilityIdentifier("episode.walk")
+    }
+}
+
+/// Every way into the walk looks like this: one card, her words, her chevron.
+struct WalkBand: View {
+    let title: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
             VStack(alignment: .leading, spacing: 9) {
-                Text(store.walkDraft.isEmpty || store.walkEpisodeID != store.episodeDay?.episode?.id ? "Walk with this" : "Return to your reflection")
+                Text(title)
                     .font(.system(size: 23, design: .serif))
                 HStack {
                     Text("I'll listen. We can reflect when you're ready.")
@@ -159,7 +225,6 @@ struct WalkInvitation: View {
             .card(padding: 18, radius: 16)
         }
         .buttonStyle(.inkLink)
-        .accessibilityIdentifier("episode.walk")
     }
 }
 
@@ -392,33 +457,50 @@ struct EpisodeMindView: View {
 
 struct EpisodeHistoryView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
     @State private var selected: EpisodeDay?
+    @State private var selectedDate = ""
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Your days").font(.largeTitle)
-                    Text("The episodes, your reactions, and what you chose to keep.").font(.subheadline).italic()
-                    ForEach(store.episodeDay?.days ?? [], id: \.self) { date in
-                        Button(date) { Task { selected = await store.loadEpisodeDay(date) } }
-                            .font(.system(size: 15, design: .monospaced))
+                VStack(alignment: .leading, spacing: 24) {
+                    Text("The episodes, your reactions, and what you chose to keep.")
+                        .font(.subheadline).italic().foregroundStyle(Theme.inkSoft)
+                    InkSection(kicker: "Choose a day", rule: false) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(store.episodeDay?.days ?? [], id: \.self) { date in
+                                    WorkReviewChoice(title: date, selected: selectedDate == date, compact: true) {
+                                        selectedDate = date
+                                        Task { selected = await store.loadEpisodeDay(date) }
+                                    }
+                                }
+                            }
+                        }
                     }
                     if let day = selected {
-                        Text(day.date).font(.title2)
-                        Text(day.episodes.joined(separator: " · ")).font(.caption)
-                        ForEach(day.reactions + day.learnings + day.corrections) { entry in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(entry.kind.uppercased()).font(.system(size: 9, design: .monospaced)).tracking(1.3)
-                                Text(entry.text.strippedEmojis)
-                                ListenLine(item: Readable(title: "", body: entry.text, kind: "thought"))
+                        InkSection(kicker: day.date) {
+                            if !day.episodes.isEmpty {
+                                Text(day.episodes.joined(separator: " · ")).font(InkType.meta).foregroundStyle(Theme.inkSoft)
+                            }
+                            let entries = day.reactions + day.learnings + day.corrections
+                            if entries.isEmpty {
+                                InkNotice(text: "Nothing was said or kept this day.")
+                            }
+                            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                                if index > 0 { InkRule(opacity: 0.6) }
+                                VStack(alignment: .leading, spacing: 8) {
+                                    InkKicker(text: entry.kind)
+                                    Text(entry.text.strippedEmojis).font(InkType.body)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    ListenLine(item: Readable(title: "", body: entry.text, kind: "thought"))
+                                }
                             }
                         }
                     }
                 }.padding(22)
             }
             .background(Theme.paper)
-            .toolbar { Button("Close") { dismiss() } }
+            .inkSheetPage("Your days & learnings")
         }
     }
 }
