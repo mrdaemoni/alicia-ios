@@ -51,6 +51,7 @@ final class AppStore {
             notifications: !(service is MockAliciaService))
         self.voiceArchive = VoiceArchive(root: service is MockAliciaService
             ? FileManager.default.temporaryDirectory.appendingPathComponent("voice-preview-" + UUID().uuidString) : nil)
+        if !isMock { BackgroundVoiceSync.store = self }
         if isMock { messages = SampleData.messages }
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { messages = [] }

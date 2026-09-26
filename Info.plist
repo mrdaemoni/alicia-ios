@@ -11,6 +11,7 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.alicia.app.refresh</string>
+		<string>com.alicia.app.voicesync</string>
 	</array>
 	<!-- The Alicia backend speaks plain HTTP on a private network (home
 	     Wi-Fi / Tailscale tailnet, port 8766) — never the open internet.
@@ -39,7 +40,8 @@
 	<string>Your voice is transcribed on-device so you can speak to Alicia instead of typing.</string>
 	<!-- Only the modes the app actually uses: background refresh polls her
 	     proactive-message feed for local notifications; audio keeps a
-	     podcast playing when backgrounded. Unused modes (voip,
+	     podcast playing when backgrounded; processing carries walk audio
+	     to the Mac while the app is closed (BackgroundVoiceSync). Unused modes (voip,
 	     push-to-talk, location, …) expect entitlements the personal
 	     provisioning profile doesn't carry — they can break device
 	     launches and would fail App Store review. -->
@@ -47,6 +49,7 @@
 	<array>
 		<string>fetch</string>
 		<string>audio</string>
+		<string>processing</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>

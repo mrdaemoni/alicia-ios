@@ -240,9 +240,11 @@ final class VoiceAudioSink: @unchecked Sendable {
     private var failure: Error?
     private var closed = false
     private var order: [String]?
+    private let protection: FileProtectionType
 
-    init(directory: URL, ordered: Bool = false) {
+    init(directory: URL, ordered: Bool = false, protection: FileProtectionType = .completeUntilFirstUserAuthentication) {
         self.directory = directory
+        self.protection = protection
         if ordered {
             let path = directory.appendingPathComponent("capture-order.json")
             do {
@@ -265,14 +267,14 @@ final class VoiceAudioSink: @unchecked Sendable {
                     next.append(id)
                     // Persist order before writing samples: recovery never guesses from UUID or wall-clock time.
                     try JSONEncoder().encode(next).write(to: directory.appendingPathComponent("capture-order.json"),
-                                                        options: [.atomic, .completeFileProtection])
+                                                        options: [.atomic, VoiceArchive.writeOption(protection)])
                     order = next
                 }
                 let url = directory.appendingPathComponent(id + ".caf")
                 started = .now
                 frames = 0
                 file = try AVAudioFile(forWriting: url, settings: buffer.format.settings)
-                try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUnlessOpen], ofItemAtPath: url.path)
+                try FileManager.default.setAttributes([.protectionKey: protection], ofItemAtPath: url.path)
             }
             try file?.write(from: buffer)
             frames += AVAudioFramePosition(buffer.frameLength)
@@ -359,6 +361,7 @@ final class VoiceArchive {
                         record.segments.sort { (order.firstIndex(of: $0.id) ?? Int.max) < (order.firstIndex(of: $1.id) ?? Int.max) }
                     }
                     recordings.append(record)
+                    applyProtection(record)
                     try persist(record)
                 } catch { lastError = "A recording needs recovery. Its original files have been kept." }
             }
@@ -373,11 +376,52 @@ final class VoiceArchive {
     func recording(_ id: String) -> VoiceRecording? { recordings.first { $0.id == id } }
     func hasAudio(_ id: String) -> Bool { recording(id).map { !$0.deleted && !$0.segments.isEmpty } ?? false }
 
+    /// Which data-protection class a recording's files live in.
+    ///
+    /// Until 2026-09-26 every file was `.complete`, which iOS makes unreadable
+    /// about ten seconds after the phone locks. A walk ends with the phone going
+    /// into his pocket, so the last segments and the seal could never leave
+    /// until he opened the app again (the 9/19 walk waited 82 minutes). Walk and
+    /// Dialogue audio now use the class background sync can read: still
+    /// encrypted until the first unlock after a restart. Private Body audio never
+    /// syncs, so it keeps the strict class.
+    nonisolated static func protection(for record: VoiceRecording) -> FileProtectionType {
+        record.isPrivateBody ? .completeUnlessOpen : .completeUntilFirstUserAuthentication
+    }
+    nonisolated static func writeOption(_ protection: FileProtectionType) -> Data.WritingOptions {
+        protection == .completeUntilFirstUserAuthentication ? .completeFileProtectionUntilFirstUserAuthentication : .completeFileProtection
+    }
+
+    /// Moves an existing recording's files into its class. Only possible while
+    /// unlocked, which is when the archive opens in the foreground; a failure
+    /// leaves the file as it was and is retried at the next open.
+    private func applyProtection(_ record: VoiceRecording) {
+        let protection = Self.protection(for: record)
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory(record.id), includingPropertiesForKeys: nil) else { return }
+        for file in files {
+            try? FileManager.default.setAttributes([.protectionKey: protection], ofItemAtPath: file.path)
+        }
+    }
+
     private func persist(_ record: VoiceRecording) throws {
         try FileManager.default.createDirectory(at: directory(record.id), withIntermediateDirectories: true)
         let bytes = try JSONEncoder().encode(record)
         try bytes.write(to: directory(record.id).appendingPathComponent("recording.json"),
-                        options: [.atomic, .completeFileProtection])
+                        options: [.atomic, Self.writeOption(Self.protection(for: record))])
+    }
+
+    /// True while anything still has to reach the Mac: context, a segment, a
+    /// deletion, a seal the Mac has not acknowledged, or words not yet sent.
+    /// Background sync keeps asking iOS for time until this is false.
+    var hasPendingSync: Bool {
+        recordings.contains { record in
+            guard !record.isPrivateBody else { return false }
+            if record.deleted { return record.deletionUploaded != true }
+            return record.contextUploaded != true
+                || record.segments.contains { $0.uploaded != true }
+                || record.transcripts.contains { $0.uploaded != true }
+                || (record.finalization != nil && record.transcription == nil && record.processingRejected != true)
+        }
     }
 
     private func replace(_ record: VoiceRecording) throws {
@@ -398,7 +442,8 @@ final class VoiceArchive {
             record.macProcessing = review != nil; record.review = review
             try replace(record)
         }
-        let sink = VoiceAudioSink(directory: directory(id), ordered: recording(id)?.macProcessing == true)
+        let sink = VoiceAudioSink(directory: directory(id), ordered: recording(id)?.macProcessing == true,
+                                  protection: recording(id).map(Self.protection(for:)) ?? .completeUnlessOpen)
         captureSinks[id] = sink
         return sink
     }
