@@ -1,3 +1,20 @@
+## CL-20260926-walk-sync — walk audio keeps moving when the phone locks
+
+Hector: "make sure that it runs in the background, even if the app is closed."
+The archive synced only in the foreground, and every file was `.complete`
+data protection, which iOS makes unreadable ~10 s after lock. A walk ends with
+the phone pocketed, so the tail segments and the seal waited on the phone until
+the next open (the 9/19 walk: 82 minutes).
+
+`Core/BackgroundVoiceSync.swift`: on every background transition it holds a
+`beginBackgroundTask` until the archive is drained; anything still pending
+submits a network-requiring `BGProcessingTask` (`com.alicia.app.voicesync`,
+`processing` background mode) that re-arms itself until
+`VoiceArchive.hasPendingSync` is false; the notification refresh drains it
+too. Walk/Dialogue files are now `completeUntilFirstUserAuthentication`
+(migrated at archive open); private Body audio keeps the strict class and
+never syncs. A swipe-up force-quit still stops everything until the next open.
+
 ## A2-060 — a link means she has it
 
 **The state machine was reading the wrong signal.** `VoiceRecording.stage` only
@@ -256,8 +273,8 @@ words with a durable receipt. The same review is reachable from Dialogue and
 Recordings. Legacy Apple Speech code remains for existing compatibility paths;
 new Mac-mode capture needs microphone permission only. Automatic screen sleep is
 disabled while the walk is visible and active, including paused editing, and the
-prior idle setting is restored on exit. No background recording or locked-phone
-upload is promised. See `docs/MAC_VOICE_PROCESSING.md` for recovery and provenance.
+prior idle setting is restored on exit. No background recording is promised;
+upload continues after lock and while closed (CL-20260926-walk-sync). See `docs/MAC_VOICE_PROCESSING.md` for recovery and provenance.
 
 ## Architecture
 

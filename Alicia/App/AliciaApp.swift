@@ -15,6 +15,7 @@ struct AliciaApp: App {
     init() {
         // Must happen before launch finishes.
         ProactiveNotifier.register()
+        BackgroundVoiceSync.register()
 
         // Ink-on-paper typography: navigation titles in serif to match the
         // hand-drawn sketchbook identity (body text gets .fontDesign(.serif)
@@ -136,6 +137,9 @@ struct AliciaApp: App {
                         store.stopProactivePolling()
                         PlaceTracker.shared.pauseForegroundUpdates()
                         if !store.isMock { ProactiveNotifier.schedule() }
+                        // A walk ends with the phone locked: finish sending
+                        // its tail and seal, and keep going while closed.
+                        BackgroundVoiceSync.finishInBackground(store)
                     default:
                         break
                     }

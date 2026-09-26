@@ -30,8 +30,9 @@ blocks Send until the phone has saved it.
 The shared review surface is reachable in Walk, Dialogue and Recordings. It shows
 upload progress, Mac state, the editable draft, original replay, processing details
 and explicit Send. Its states distinguish local audio, audio received by the Mac,
-transcription and words saved with Alicia. It does not promise background uploads:
-foreground use resumes pending uploads; the Mac can continue after all sealed
+transcription and words saved with Alicia. Pending uploads continue after the
+phone locks and while the app is closed (`BackgroundVoiceSync`, best effort on
+iOS's schedule, never after a force-quit); the Mac continues once all sealed
 parts arrive. Physical capture, recognition accuracy and phone lock/reconnect
 remain device checks, not simulator claims.
 

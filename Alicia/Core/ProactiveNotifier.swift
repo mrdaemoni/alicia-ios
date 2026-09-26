@@ -103,6 +103,8 @@ enum ProactiveNotifier {
     private static func handle(_ task: BGAppRefreshTask) {
         schedule()   // always chain the next window
         let work = Task {
+            // Any window iOS grants also carries walk audio the Mac is missing.
+            await BackgroundVoiceSync.run()
             let service = AliciaConfig.makeService()
             if let state = await service.collaboration() {
                 await CollaborationNotifier.sync(state)
