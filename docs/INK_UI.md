@@ -18,7 +18,7 @@ Reference screen: the Alicia tab (`EpisodeMindView`) and `CollaborationSummary`.
 
 Listening keeps its own established control: `ListenLine` (and `NaturalReviewButton`). Transport keeps the ink glyphs (`InkPlayPause`, `InkSkip`, `InkCross`).
 
-Labels are sentence case in code — the action styles uppercase them.
+Labels are sentence case in code — the action styles draw them in small capitals (the words themselves are unchanged for VoiceOver and tests).
 
 ## Containment
 
