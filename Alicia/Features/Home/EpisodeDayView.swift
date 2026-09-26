@@ -34,7 +34,7 @@ struct EpisodeHomeView: View {
                     // above the goals, opening into the room with the whole graph.
                     WhereYouAreSection()
                     NextEpisodeInvitation()
-                    CollaborationSummary()
+                    InkSection(kicker: "Our shared focus") { CollaborationSummary() }
                     if let day = store.episodeDay, let episode = day.episode {
                         EpisodeHeading(episode: episode)
                         if !day.focus.isEmpty {
@@ -118,15 +118,10 @@ struct EpisodePassage: View {
     let probe: EpisodeDay.Probe
     @State private var expanded = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button(expanded ? "HIDE THE PASSAGE" : "FROM THE EPISODE") { expanded.toggle() }
-                .font(.system(size: 9, design: .monospaced)).tracking(1)
-                .accessibilityValue(expanded ? "Expanded" : "Collapsed")
-            if expanded {
-                Text(probe.anchor.strippedEmojis).font(.subheadline).italic()
-                Text(probe.source_path).font(.caption2).foregroundStyle(Theme.inkSoft)
-                ListenLine(item: Readable(title: "From the episode", body: probe.anchor, kind: "thought"))
-            }
+        InkDisclosure("From the episode") {
+            Text(probe.anchor.strippedEmojis).font(.subheadline).italic()
+            Text(probe.source_path).font(.caption2).foregroundStyle(Theme.inkSoft)
+            ListenLine(item: Readable(title: "From the episode", body: probe.anchor, kind: "thought"))
         }
     }
 }
@@ -136,11 +131,10 @@ struct EpisodeHeading: View {
     let episode: EpisodeDay.Episode
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text((store.episodeDay?.has_playback == false ? "CHOSEN IN STUDIO · " : "IN OUR EARS · ") + episode.id)
-                .font(.system(size: 10, design: .monospaced)).tracking(1.7)
-                .foregroundStyle(Theme.accent)
             Text(episode.title.strippedEmojis)
                 .font(.system(size: 17, design: .serif)).italic()
+            Text((store.episodeDay?.has_playback == false ? "Chosen in Studio · " : "In our ears · ") + episode.id)
+                .font(InkType.meta).foregroundStyle(Theme.inkSoft)
         }
         .accessibilityElement(children: .combine)
     }
@@ -153,33 +147,26 @@ struct WalkInvitation: View {
             VStack(alignment: .leading, spacing: 9) {
                 Text(store.walkDraft.isEmpty || store.walkEpisodeID != store.episodeDay?.episode?.id ? "Walk with this" : "Return to your reflection")
                     .font(.system(size: 23, design: .serif))
-                Text("THINK ALOUD TOGETHER")
-                    .font(.system(size: 10, design: .monospaced)).tracking(1.5)
-                Text("I'll listen. We can reflect when you're ready.")
-                    .font(.system(size: 15, design: .serif)).italic()
+                HStack {
+                    Text("I'll listen. We can reflect when you're ready.")
+                        .font(.system(size: 15, design: .serif)).italic()
+                    Spacer(minLength: 8)
+                    InkChevron(pointing: .right, size: 14, color: Theme.inkSoft, seed: 17)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 18)
-            .padding(.horizontal, 16)
             .foregroundStyle(Theme.ink)
-            .background(Theme.paper.opacity(0.45))
-            .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
-            .overlay(alignment: .bottom) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
+            .card(padding: 18, radius: 16)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.inkLink)
         .accessibilityIdentifier("episode.walk")
     }
 }
 
+/// Kept as a name for older call sites; it is the primary action now.
 struct EpisodeButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 11, design: .monospaced).weight(.semibold))
-            .tracking(1.2)
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .padding(.horizontal, 12)
-            .foregroundStyle(Theme.paper)
-            .background(Theme.ink.opacity(configuration.isPressed ? 0.75 : 1))
+        InkButtonStyle(role: .primary).makeBody(configuration: configuration)
     }
 }
 
@@ -199,7 +186,7 @@ struct FrameStatus: View {
                     retrying = false
                 }
             }
-            .font(.system(size: 9, design: .monospaced)).tracking(1)
+            .buttonStyle(.inkQuiet)
             .disabled(retrying)
         }
     }
@@ -209,7 +196,7 @@ struct EpisodeErrorLine: View {
     @Environment(AppStore.self) private var store
     var body: some View {
         if !store.episodeError.isEmpty {
-            Text(store.episodeError).font(.subheadline).foregroundStyle(Theme.rose)
+            InkNotice(text: store.episodeError, kind: .error)
                 .accessibilityIdentifier("episode.error")
         }
     }
@@ -230,17 +217,16 @@ struct EpisodeFeedback: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 22) {
-                feedback("THIS HELPS", value: "good")
-                feedback("GO DEEPER", value: "deeper")
-                feedback("MISSED ME", value: "miss")
+            HStack(spacing: 8) {
+                feedback("This helps", value: "good")
+                feedback("Go deeper", value: "deeper")
+                feedback("Missed me", value: "miss")
             }
-            .font(.system(size: 9, design: .monospaced).weight(.semibold)).tracking(0.7)
             if canCorrect {
-                Button("LET ME CORRECT THAT") { showCorrection = true }
-                    .font(.system(size: 9, design: .monospaced)).tracking(1)
+                Button { showCorrection = true } label: { InkLinkLabel(title: "Correct this reading", small: true) }
+                    .buttonStyle(.inkLink)
             }
-            if !confirmed.isEmpty { Text(confirmed).font(.caption).italic() }
+            InkNotice(text: confirmed, kind: .success)
         }
         .disabled(saving)
         .sheet(isPresented: $showCorrection) {
@@ -248,7 +234,7 @@ struct EpisodeFeedback: View {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("What should I understand differently?").font(.title2)
                     TextEditor(text: $correction).frame(minHeight: 150)
-                        .scrollContentBackground(.hidden).disabled(saving)
+                        .scrollContentBackground(.hidden).disabled(saving).inkField()
                     EpisodeErrorLine()
                     Button(saving ? "SAVING…" : "SAVE MY CORRECTION") {
                         let identity = "correction|" + target + "|" + correction
@@ -265,17 +251,17 @@ struct EpisodeFeedback: View {
                             saving = false
                         }
                     }
-                    .buttonStyle(EpisodeButtonStyle())
+                    .buttonStyle(.inkPrimary)
                     .disabled(correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
                 }
                 .padding(22).background(Theme.paper)
-                .toolbar { Button("Close") { showCorrection = false } }
+                .inkSheetPage("Correct this reading") { showCorrection = false }
             }
         }
     }
 
     private func feedback(_ label: String, value: String) -> some View {
-        Button(label) {
+        WorkReviewChoice(title: label, selected: verdict == value, compact: true) {
             let identity = "feedback|" + target + "|" + value
             if receiptIdentity != identity { receiptID = UUID().uuidString; receiptIdentity = identity }
             saving = true
@@ -288,9 +274,6 @@ struct EpisodeFeedback: View {
                 saving = false
             }
         }
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
-        .underline(verdict == value)
     }
 }
 
@@ -307,77 +290,94 @@ struct EpisodeMindView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     SectionHeader(title: "Alicia", kicker: "WHAT I'M HOLDING WITH YOU")
-                    CollaborationSummary()
-                    NavigationLink("About you · enrich Alicia’s context") { ContextEnrichmentView() }
-                        .font(.callout).frame(minHeight: 44)
-                    NavigationLink("In the middle of · your context graph") { ContextGraphRoom() }
-                        .font(.callout).frame(minHeight: 44).accessibilityIdentifier("alicia.contextGraph.open")
-                    WorkSessionsEntry()
-                    PlaceAwareness()
+                    InkSection(kicker: "Our shared focus", rule: false) { CollaborationSummary() }
                     if let day = store.episodeDay, let episode = day.episode {
-                        EpisodeHeading(episode: episode)
-                        if !day.understanding.isEmpty {
-                            Text(day.understanding.strippedEmojis)
-                                .font(.system(size: 23, design: .serif))
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text(["miss", "corrected"].contains(day.frame_verdict)
-                                 ? "You corrected this reading. Your words take precedence while I update it."
-                                 : day.reactions.isEmpty ? "A starting point, before your reaction." : "My reading of your words. You can change it.")
-                                .font(.caption).italic().foregroundStyle(Theme.inkSoft)
-                            ListenLine(item: Readable(title: "What I'm holding", body: day.understanding, kind: "thought"))
-                            EpisodeFeedback(target: day.frame_id, verdict: day.frame_verdict, episodeID: episode.id)
+                        InkSection(kicker: "What I'm holding") {
+                            EpisodeHeading(episode: episode)
+                            if !day.understanding.isEmpty {
+                                Text(day.understanding.strippedEmojis)
+                                    .font(.system(size: 23, design: .serif))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text(["miss", "corrected"].contains(day.frame_verdict)
+                                     ? "You corrected this reading. Your words take precedence while I update it."
+                                     : day.reactions.isEmpty ? "A starting point, before your reaction." : "My reading of your words. You can change it.")
+                                    .font(.caption).italic().foregroundStyle(Theme.inkSoft)
+                                ListenLine(item: Readable(title: "What I'm holding", body: day.understanding, kind: "thought"))
+                                EpisodeFeedback(target: day.frame_id, verdict: day.frame_verdict, episodeID: episode.id)
+                            }
+                            if day.frame_status != "ready" { FrameStatus() }
                         }
-                        if day.frame_status != "ready" { FrameStatus() }
-                        if let last = day.reactions.last {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("YOUR WORDS").font(.system(size: 10, design: .monospaced)).tracking(2)
-                                Text(last.text.strippedEmojis).font(.body)
+                        InkSection(kicker: "Your words") {
+                            if let last = day.reactions.last {
+                                Text(last.text.strippedEmojis).font(InkType.body)
                                 ListenLine(item: Readable(title: "Your reflection", body: last.text, kind: "thought"))
+                            } else {
+                                WalkInvitation()
                             }
-                        } else {
-                            WalkInvitation()
-                        }
-                        ForEach(day.corrections) { entry in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("YOU CORRECTED").font(.system(size: 10, design: .monospaced)).tracking(2)
-                                Text(entry.text.strippedEmojis)
-                            }
-                        }
-                        Rectangle().fill(Theme.stroke).frame(height: 0.7)
-                        Text("What do you want to keep?").font(.system(size: 23, design: .serif))
-                        Text("A learning becomes yours here when you choose it.")
-                            .font(.subheadline).italic().foregroundStyle(Theme.inkSoft)
-                        TextField("In your own words…", text: $learning, axis: .vertical)
-                            .lineLimit(3...8).disabled(saving).padding(14).background(Theme.paper.opacity(0.85))
-                        Button(saving ? "SAVING…" : "KEEP THIS LEARNING") {
-                            let identity = episode.id + "|" + learning
-                            if receiptIdentity != identity { receiptID = UUID().uuidString; receiptIdentity = identity }
-                            saving = true
-                            Task {
-                                if await store.episodeAction("learning", text: learning, eventID: receiptID) {
-                                    learning = ""
-                                    receiptID = UUID().uuidString
+                            ForEach(day.corrections) { entry in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    InkKicker(text: "You corrected")
+                                    Text(entry.text.strippedEmojis).font(InkType.body)
                                 }
-                                saving = false
                             }
                         }
-                        .buttonStyle(EpisodeButtonStyle())
-                        .disabled(saving || learning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        ForEach(day.learnings) { entry in
-                            Text(entry.text.strippedEmojis).font(.body)
-                            ListenLine(item: Readable(title: "What you kept", body: entry.text, kind: "thought"))
+                        InkSection(kicker: "What you keep") {
+                            Text("What do you want to keep?").font(InkType.subhead)
+                            Text("A learning becomes yours here when you choose it.")
+                                .font(.subheadline).italic().foregroundStyle(Theme.inkSoft)
+                            TextField("In your own words…", text: $learning, axis: .vertical)
+                                .lineLimit(3...8).disabled(saving).inkField()
+                            Button(saving ? "Saving…" : "Keep this learning") {
+                                let identity = episode.id + "|" + learning
+                                if receiptIdentity != identity { receiptID = UUID().uuidString; receiptIdentity = identity }
+                                saving = true
+                                Task {
+                                    if await store.episodeAction("learning", text: learning, eventID: receiptID) {
+                                        learning = ""
+                                        receiptID = UUID().uuidString
+                                    }
+                                    saving = false
+                                }
+                            }
+                            .buttonStyle(.inkPrimary)
+                            .disabled(saving || learning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            ForEach(day.learnings) { entry in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    InkRule(opacity: 0.6)
+                                    Text(entry.text.strippedEmojis).font(InkType.body)
+                                    ListenLine(item: Readable(title: "What you kept", body: entry.text, kind: "thought"))
+                                }
+                            }
                         }
-                        Button("CONTINUE TOGETHER") { store.selectedSection = .dialogue }
-                            .font(.system(size: 10, design: .monospaced)).tracking(1.2)
                     } else {
-                        Text("Once you've listened, this is where we'll hold your reaction and what you want to keep.")
-                            .font(.system(size: 23, design: .serif))
-                        Button("OPEN STUDIO") { store.selectedSection = .studio }
-                            .buttonStyle(EpisodeButtonStyle())
+                        InkSection(kicker: "What I'm holding") {
+                            Text("Once you've listened, this is where we'll hold your reaction and what you want to keep.")
+                                .font(InkType.subhead)
+                            Button { store.selectedSection = .studio } label: { InkLinkLabel(title: "Choose an episode in Studio") }
+                                .buttonStyle(.inkLink)
+                        }
                     }
                     EpisodeErrorLine()
-                    Button("YOUR DAYS & LEARNINGS") { showHistory = true }
-                        .font(.system(size: 10, design: .monospaced)).tracking(1.3)
+                    InkSection(kicker: "Around you", spacing: 4) {
+                        NavigationLink { ContextEnrichmentView() } label: {
+                            InkLinkLabel(title: "About you", detail: "What she knows about you, open to your corrections")
+                        }.buttonStyle(.inkLink)
+                        InkRule(opacity: 0.6)
+                        NavigationLink { ContextGraphRoom() } label: {
+                            InkLinkLabel(title: "In the middle of", detail: "Your situation as she holds it today")
+                        }.buttonStyle(.inkLink).accessibilityIdentifier("alicia.contextGraph.open")
+                        InkRule(opacity: 0.6)
+                        WorkSessionsEntry()
+                        InkRule(opacity: 0.6)
+                        Button { showHistory = true } label: {
+                            InkLinkLabel(title: "Your days & learnings", detail: "Every day's reading, your words and what you kept")
+                        }.buttonStyle(.inkLink)
+                        InkRule(opacity: 0.6)
+                        Button { store.selectedSection = .dialogue } label: {
+                            InkLinkLabel(title: "Continue in Dialogue", detail: "Talk it through with her")
+                        }.buttonStyle(.inkLink)
+                    }
+                    InkSection(kicker: "Where you are") { PlaceAwareness() }
                     Text(AppVersion.tag).font(.system(size: 9, design: .monospaced)).foregroundStyle(Theme.inkSoft)
                 }
                 .padding(22)
@@ -445,23 +445,13 @@ struct WorkSessionsEntry: View {
     var body: some View {
         Button { open = true } label: {
             HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Your spoken sessions").font(.callout)
-                    Text(waiting > 0
-                         ? "\(waiting) waiting for you · \(total) in all"
-                         : total > 0 ? "\(total) recorded · none waiting on you"
-                                     : "Nothing spoken yet")
-                        .font(.caption).foregroundStyle(Theme.inkSoft)
-                }
-                Spacer(minLength: 0)
-                if waiting > 0 {
-                    Circle().fill(Theme.amber).frame(width: 7, height: 7)
-                }
-                InkChevron().frame(width: 9, height: 14).foregroundStyle(Theme.inkSoft)
+                if waiting > 0 { Circle().fill(Theme.amber).frame(width: 7, height: 7) }
+                InkLinkLabel(title: "Your spoken sessions",
+                             detail: waiting > 0 ? "\(waiting) waiting for you · \(total) in all"
+                                : total > 0 ? "\(total) recorded · none waiting on you" : "Nothing spoken yet")
             }
-            .frame(minHeight: 44).contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.inkLink)
         .accessibilityIdentifier("sessions.open")
         .accessibilityLabel(waiting > 0
             ? "Your spoken sessions, \(waiting) waiting for you"
@@ -481,8 +471,6 @@ struct PlaceAwareness: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("WHERE YOU ARE").font(.system(size: 10, design: .monospaced)).tracking(2)
-                .foregroundStyle(Theme.inkSoft)
             Text(tracker.summary)
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
@@ -493,8 +481,8 @@ struct PlaceAwareness: View {
                     .font(.caption).foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Let Alicia know where I am") { tracker.requestAccess() }
-                    .font(.callout).foregroundStyle(Theme.ink)
-                    .frame(minHeight: 44)
+                    .buttonStyle(.inkSecondaryCompact)
+                    .padding(.top, 4)
                     .accessibilityIdentifier("place.grant")
             case .denied, .restricted:
                 Text("Turn it on in Settings if you want her to know. Everything else works without it.")
@@ -504,7 +492,6 @@ struct PlaceAwareness: View {
                 EmptyView()
             }
         }
-        .buttonStyle(.plain)
         .task { tracker.begin() }
     }
 }

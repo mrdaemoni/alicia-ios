@@ -1,50 +1,50 @@
 import SwiftUI
 
+/// Our shared focus, as it appears on Us and Alicia. The parent owns the
+/// section kicker (InkSection); this is its content: her notices, the active
+/// goals as rows that open Together, and the ways in.
 struct CollaborationSummary: View {
     @Environment(AppStore.self) private var store
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("OUR SHARED FOCUS").font(.caption.monospaced()).tracking(1.2)
-                Spacer()
-                Button("Add goal") { store.collaboration.route = CollaborationRoute(newGoal: true) }
-                    .font(.callout).frame(minHeight: 44)
-                    .accessibilityIdentifier("collaboration.addGoal")
-            }
+        VStack(alignment: .leading, spacing: 8) {
             GoalClosureNotices { id in
                 store.collaboration.route = CollaborationRoute(finishedClosureID: id ?? "")
             }
             if let state = store.collaboration.state {
-                if !state.activeGoals.isEmpty {
-                    Text("\(state.activeGoals.count) active \(state.activeGoals.count == 1 ? "goal" : "goals")")
-                        .font(.caption).foregroundStyle(Theme.inkSoft)
-                        .accessibilityIdentifier("collaboration.goalCount")
-                    ForEach(state.activeGoals.prefix(3)) { goal in
-                        Button { store.collaboration.route = CollaborationRoute(goalID: goal.id) } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(goal.title.strippedEmojis).font(.system(size: 21, design: .serif))
-                                Text(goal.outcome.strippedEmojis).font(.subheadline).lineLimit(1)
-                                Text(goal.priority.capitalized + " attention").font(.caption).foregroundStyle(Theme.inkSoft)
-                            }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        }.accessibilityIdentifier("collaboration.summaryGoal." + goal.id)
-                    }
+                if state.activeGoals.isEmpty {
+                    Text(state.finishedGoals.isEmpty ? "What would you like us to work toward?"
+                         : "Ready for a next goal. What would you like us to work toward now?")
+                        .font(InkType.subhead)
                 } else {
-                    Text(state.finishedGoals.isEmpty ? "What would you like us to work toward?" : "Ready for a next goal. What would you like us to work toward now?")
-                        .font(.system(size: 21, design: .serif))
+                    ForEach(Array(state.activeGoals.prefix(3).enumerated()), id: \.element.id) { index, goal in
+                        if index > 0 { InkRule(opacity: 0.6) }
+                        Button { store.collaboration.route = CollaborationRoute(goalID: goal.id) } label: {
+                            InkLinkLabel(title: goal.title, detail: goal.outcome)
+                        }
+                        .buttonStyle(.inkLink)
+                        .accessibilityIdentifier("collaboration.summaryGoal." + goal.id)
+                    }
                 }
-                if let connection = state.connections.first(where: { $0.status == "proposed" }) {
-                    Text(connection.title.strippedEmojis).font(.subheadline).italic().lineLimit(2)
+                if let connection = state.connections.first(where: { c in c.status == "proposed" && state.activeGoals.contains { $0.id == c.goal_id } }) {
+                    Text("Alicia proposes · " + connection.title.strippedEmojis)
+                        .font(.subheadline).italic().foregroundStyle(Theme.inkSoft).lineLimit(2)
                 } else if let agreement = state.agreements.first(where: { $0.status == "active" }) {
-                    Text("Agreed: " + agreement.action.strippedEmojis).font(.subheadline).lineLimit(2)
+                    Text("Agreed · " + agreement.action.strippedEmojis).font(.subheadline).foregroundStyle(Theme.inkSoft).lineLimit(2)
                 }
-                if state.pending { Text("Revisiting the evidence…").font(.caption) }
-            } else { Text("Open goals, connections and agreements").font(.subheadline) }
+                if state.pending { InkNotice(text: "Revisiting the evidence…") }
+            }
+            InkRule(opacity: 0.6).padding(.top, 4)
             Button { store.collaboration.route = CollaborationRoute() } label: {
-                Text((store.collaboration.state?.activeGoals.count ?? 0) > 3 ? "VIEW ALL GOALS · OPEN TOGETHER" : "OPEN TOGETHER")
-                    .font(.caption.monospaced()).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            }.accessibilityIdentifier("collaboration.open")
-        }.frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 12).buttonStyle(.plain)
+                InkLinkLabel(title: "Open Together",
+                             detail: "Goals, connections, agreements" + (store.collaboration.state?.finishedGoals.isEmpty == false ? " and what we finished" : ""))
+            }
+            .buttonStyle(.inkLink)
+            .accessibilityIdentifier("collaboration.open")
+            Button("Add a goal") { store.collaboration.route = CollaborationRoute(newGoal: true) }
+                .buttonStyle(.inkSecondaryCompact)
+                .accessibilityIdentifier("collaboration.addGoal")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

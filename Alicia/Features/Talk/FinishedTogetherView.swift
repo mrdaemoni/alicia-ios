@@ -277,28 +277,35 @@ struct GoalClosureNotices: View {
 
     var body: some View {
         if let state = store.collaboration.state {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 ForEach(state.closure_proposals ?? []) { proposal in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("DID YOU MEAN TO CLOSE THIS?").font(.system(size: 10, design: .monospaced)).tracking(2)
-                            .foregroundStyle(Theme.inkSoft)
-                        Text(proposal.titles.joined(separator: " · ").strippedEmojis).font(.system(size: 19, design: .serif))
+                    // A question for him: its own card, with the two answers as actions.
+                    VStack(alignment: .leading, spacing: 10) {
+                        InkKicker(text: "Did you mean to close this?")
+                        Text(proposal.titles.joined(separator: " · ").strippedEmojis).font(InkType.subhead)
                         Text("You said: “" + proposal.words.strippedEmojis + "”").font(.system(size: 15, design: .serif)).italic()
-                        HStack(spacing: 16) {
+                            .foregroundStyle(Theme.inkSoft)
+                        HStack(spacing: 10) {
                             Button("Yes, close it") { decide(proposal, "confirm") }
+                                .buttonStyle(.inkSecondaryCompact)
                                 .accessibilityIdentifier("closure.proposal.confirm")
                             Button("Not yet") { decide(proposal, "dismiss") }
+                                .buttonStyle(.inkQuiet)
                                 .accessibilityIdentifier("closure.proposal.dismiss")
-                        }.disabled(!store.collaboration.canEdit).frame(minHeight: 44)
+                        }.disabled(!store.collaboration.canEdit)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .card(padding: 16, radius: 16)
                 }
                 if let closed = state.closureAcknowledgement, let line = closed.acknowledgement {
-                    Button { openFinished(closed.closure_id) } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(line.strippedEmojis).font(.system(size: 17, design: .serif))
-                            Text("SEE WHAT WE BUILT").font(.system(size: 10, design: .monospaced)).tracking(2)
-                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    }.buttonStyle(.plain).accessibilityIdentifier("closure.acknowledgement")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(line.strippedEmojis).font(.system(size: 16, design: .serif))
+                        Button { openFinished(closed.closure_id) } label: { InkLinkLabel(title: "See what we built", small: true) }
+                            .buttonStyle(.inkLink)
+                            .accessibilityIdentifier("closure.acknowledgement")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .card(padding: 16, radius: 16)
                 }
             }
         }

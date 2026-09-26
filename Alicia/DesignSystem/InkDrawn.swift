@@ -285,7 +285,8 @@ struct InkPlayPause: View {
 
 /// A chevron with a wrist in it — list affordances and back buttons.
 struct InkChevron: View {
-    enum Direction { case left, right }
+    /// left/right: back and "goes somewhere"; down/up: "opens here" (InkDisclosure).
+    enum Direction { case left, right, down, up }
     var pointing: Direction = .right
     var size: CGFloat = 14
     var color: Color = Theme.inkSoft
@@ -295,12 +296,17 @@ struct InkChevron: View {
         Canvas { ctx, s in
             var rand = InkRand(seed)
             let w = s.width, h = s.height
-            let tipX = pointing == .right ? w * 0.62 : w * 0.38
-            let baseX = pointing == .right ? w * 0.38 : w * 0.62
-            let tip = CGPoint(x: tipX, y: h * 0.5)
-            for endY in [0.22, 0.78] {
+            // Two strokes from the open ends to the tip.
+            let tip: CGPoint, ends: [CGPoint]
+            switch pointing {
+            case .right: tip = CGPoint(x: w * 0.62, y: h * 0.5); ends = [CGPoint(x: w * 0.38, y: h * 0.22), CGPoint(x: w * 0.38, y: h * 0.78)]
+            case .left:  tip = CGPoint(x: w * 0.38, y: h * 0.5); ends = [CGPoint(x: w * 0.62, y: h * 0.22), CGPoint(x: w * 0.62, y: h * 0.78)]
+            case .down:  tip = CGPoint(x: w * 0.5, y: h * 0.62); ends = [CGPoint(x: w * 0.22, y: h * 0.38), CGPoint(x: w * 0.78, y: h * 0.38)]
+            case .up:    tip = CGPoint(x: w * 0.5, y: h * 0.38); ends = [CGPoint(x: w * 0.22, y: h * 0.62), CGPoint(x: w * 0.78, y: h * 0.62)]
+            }
+            for end in ends {
                 let stroke = InkPen.stroke(
-                    from: CGPoint(x: baseX, y: h * endY), to: tip,
+                    from: end, to: tip,
                     rand: &rand, overshoot: 1.2, bow: 0.7, wobble: 0.35,
                     segments: 6)
                 ctx.stroke(stroke, with: .color(color),
