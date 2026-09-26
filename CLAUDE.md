@@ -56,14 +56,14 @@ Every stage detail now answers one question — do I need to do anything — and
 for all but `needsAttention` the answer is no.
 
 Evidence: `--mac-sent-preview` reproduces the exact archive shape (link, no
-submission) and `test_sessions_ui.py` fails if it reads as anything but arrived.
+submission) and the Sessions UI regression test fails if it reads as anything but arrived.
 
 ## A2-059 — the Sessions list scrolls, and a walk seals itself
 
 **The scroll bug was mine.** A2-058 hung a `DragGesture` on every row to get a
 swipe; it ate the vertical drag. `WorkSessionsView` is a `List` now — scrolling
 and `swipeActions` both come from the platform, nothing competes. Proved by
-`scripts/test_sessions_ui.py` against `--sessions-preview`, a fixture with
+the Sessions UI regression test against `--sessions-preview`, a fixture with
 enough rows to actually scroll (the old 2-row fixture could not show the bug).
 
 **"NEEDS YOU 13" was thirteen accidents.** Every real walk had reached her;
@@ -339,6 +339,7 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 |---|---|
 | `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds tap-to-play media. Reviewed Mac voice adds `client_request_id`, `recording_id`, machine source IDs and captured `episode_id`. |
 | `GET /api/body` · `POST /api/body` | Private overview and explicit wellness/ritual receipts |
+| `GET /api/presence` | Shared particle-field awareness: deterministic local signals plus an optional typed Jev reading, with no private text sent to Jev |
 | `GET /api/body/source` · `POST /api/body/ask` | Exact private report passages and optional local health answer |
 | `GET /api/thoughts` · `/api/tracks` · `/api/gallery` · `/api/health` | tab data |
 | `GET /api/proactive?limit=` | retained proactive feed and best-effort local notifications; never seeds Dialogue history |
