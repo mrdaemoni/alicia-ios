@@ -101,7 +101,7 @@ final class ContextUITests: XCTestCase {
   reveal(pending,app:app);XCTAssertTrue(pending.exists)
   capture("dialogue-frozen-pending-send",app:app)
   app.navigationBars.buttons.element(boundBy:0).tap()
-  app.buttons["CLOSE"].tap()
+  app.buttons["Close"].tap()
   app.buttons["dialogue.composer"].tap()
   XCTAssertEqual(app.textFields["conversation.field"].value as? String,expectedTyped)
   app.buttons["conversation.close"].tap()

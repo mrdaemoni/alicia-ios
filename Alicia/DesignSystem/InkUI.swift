@@ -159,9 +159,11 @@ struct InkButtonStyle: ButtonStyle {
         let fullWidth: Bool
 
         var body: some View {
+            // Capitals by the font, not by rewriting the words: `.textCase` changed
+            // what VoiceOver and the UI tests read ("SAVE MY CONTEXT"), so the
+            // label keeps his sentence case and small caps draw it as capitals.
             let label = configuration.label
-                .textCase(.uppercase)
-                .font(role == .quiet ? InkType.kicker.weight(.semibold) : InkType.action)
+                .font((role == .quiet ? InkType.kicker.weight(.semibold) : InkType.action).lowercaseSmallCaps())
                 .tracking(role == .quiet ? 1.6 : InkType.actionTracking)
                 .multilineTextAlignment(.center)
             switch role {
