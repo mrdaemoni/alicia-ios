@@ -38,39 +38,32 @@ struct StudioView: View {
                     // ── Her queues, above the podcast ────────────────────
                     // Studio is no longer only "Memories of My Future Self":
                     // it's where listening lives, and the queues he built
-                    // himself come first.
+                    // himself come first. Each group is one section; the
+                    // podcast's identity sits inside its own seasons section
+                    // instead of floating between two kickers.
                     if !store.playlists.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("YOUR PLAYLISTS")
-                                .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                                .tracking(2.0)
-                                .foregroundStyle(Theme.inkSoft)
-                                .padding(.leading, 2)
-                            ForEach(store.playlists) { playlist in
+                        InkSection(kicker: "Your playlists", rule: false, spacing: 4) {
+                            ForEach(Array(store.playlists.enumerated()), id: \.element.id) { index, playlist in
+                                if index > 0 { InkRule(opacity: 0.6) }
                                 NavigationLink(value: playlist) {
                                     PlaylistRow(playlist: playlist)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.inkLink)
                             }
                         }
-                        .padding(.bottom, 6)
-                        Theme.stroke.frame(height: 0.7)
                     }
 
-                    playlistHeader
                     // v35: each season is a row you open, not eighty rows to
                     // scroll past. Named runs come first.
-                    Text("SEASONS")
-                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                        .tracking(2.0)
-                        .foregroundStyle(Theme.inkSoft)
-                        .padding(.top, 6)
-                        .padding(.leading, 2)
-                    ForEach(collections) { collection in
-                        NavigationLink(value: collection) {
-                            CollectionRow(collection: collection)
+                    InkSection(kicker: "Seasons", rule: !store.playlists.isEmpty, spacing: 4) {
+                        playlistHeader.padding(.bottom, 10)
+                        ForEach(Array(collections.enumerated()), id: \.element.id) { index, collection in
+                            if index > 0 { InkRule(opacity: 0.6) }
+                            NavigationLink(value: collection) {
+                                CollectionRow(collection: collection)
+                            }
+                            .buttonStyle(.inkLink)
                         }
-                        .buttonStyle(.plain)
                     }
                     }
                 }
@@ -204,6 +197,8 @@ struct EpisodeDetailView: View {
                                 seed: (track.label ?? track.title).inkSeed,
                                 ringed: true)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(store.isPlaying && store.nowPlaying?.id == track.id ? "Pause episode" : "Play episode")
                     }
                     .padding(14)
                 }
@@ -219,10 +214,15 @@ struct EpisodeDetailView: View {
                     $0.evidence.contains { $0.episode_id == track.label }
                 }.map(\.goal_id))
                 ForEach((store.collaboration.state?.goals ?? []).filter { relatedGoalIDs.contains($0.id) }) { goal in
-                    Button("Explore with our goal · " + goal.title) {
+                    // Goes to the goal in Together: her chevron, not a tinted
+                    // system button.
+                    Button {
                         store.collaboration.route = CollaborationRoute(goalID: goal.id)
-                    }.font(.callout).frame(minHeight: 44)
-                        .accessibilityIdentifier("workReview.studioGoal." + goal.id)
+                    } label: {
+                        InkLinkLabel(title: "Explore with our goal", detail: goal.title)
+                    }
+                    .buttonStyle(.inkLink)
+                    .accessibilityIdentifier("workReview.studioGoal." + goal.id)
                 }
                 if loading {
                     ProgressView("Fetching shownotes…")
@@ -326,6 +326,8 @@ struct TrackRow: View {
             Text(track.duration.asClock)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(Theme.inkSoft)
+            // Opens the episode page.
+            InkChevron(pointing: .right, size: 12, color: Theme.inkSoft, seed: track.title.inkSeed)
         }
         .padding(10)
         .background(isCurrent ? Theme.card : .clear, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -363,21 +365,30 @@ struct PlayerBar: View {
                     Button { store.cycleRate() } label: {
                         Text(rateLabel)
                             .font(.caption.weight(.bold).monospacedDigit())
+                            .foregroundStyle(Theme.ink)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 4)
                             .background(Theme.card, in: Capsule())
                             .overlay(Capsule().strokeBorder(Theme.stroke))
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Speed " + rateLabel)
                     Button { store.skip(-15) } label: {
                         InkSkip(forward: false, size: 27, seed: 3)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back 15 seconds")
                     Button { store.togglePlay() } label: {
                         InkPlayPause(playing: store.isPlaying, size: 30,
                                      seed: 17)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(store.isPlaying ? "Pause" : "Play")
                     Button { store.skip(15) } label: {
                         InkSkip(forward: true, size: 27, seed: 7)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Forward 15 seconds")
                 }
                 .foregroundStyle(.primary)
 

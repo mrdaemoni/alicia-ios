@@ -73,10 +73,16 @@ struct ImmersiveReadingView: View {
             .onChange(of: store.reader.narrationChunks, initial: true) { _, _ in refreshDocument() }
             .onChange(of: store.reader.narrationText) { _, _ in refreshDocument() }
             .background(Theme.paper).safeAreaInset(edge: .bottom) { controls }
+            .inkSheetPage("Read along")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Close") { dismiss() } }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(follow ? "Following" : "Follow voice") { follow.toggle() }.accessibilityValue(follow ? "On" : "Off")
+                // Following is a switch he flips, not a place: a quiet action
+                // whose words say its state. The labels are what the UI tests
+                // (and VoiceOver) read, so they stay sentence case.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(follow ? "Following" : "Follow voice") { follow.toggle() }
+                        .buttonStyle(.inkQuiet)
+                        .accessibilityLabel(follow ? "Following" : "Follow voice")
+                        .accessibilityValue(follow ? "On" : "Off")
                 }
             }.toolbarBackground(Theme.paper, for: .navigationBar)
         }
@@ -84,24 +90,53 @@ struct ImmersiveReadingView: View {
     private var controls: some View {
         VStack(spacing: 10) {
             if let error = store.reader.failure {
-                Text(error).font(.callout).accessibilityIdentifier("reading.failure")
+                // Seal red like every error; a plain Text so the UI test still
+                // finds it as static text.
+                Text(error).font(.callout).foregroundStyle(Theme.rose)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("reading.failure")
             } else if store.reader.isPreparing || store.reader.isLoadingMedia {
-                Text(store.reader.isPreparing ? "Preparing her voice…" : "Loading recording…").font(.callout)
+                InkNotice(text: store.reader.isPreparing ? "Preparing her voice…" : "Loading recording…")
             }
-            HStack(spacing: 28) {
-                Button("−15s") { store.reader.skip(-15) }
-                Button(store.reader.failure != nil ? "Retry voice" : store.reader.isSpeaking ? "Pause" : "Listen") { store.reader.toggle() }
-                    .disabled(store.reader.isPreparing).accessibilityIdentifier("reading.play")
-                Button("+15s") { store.reader.skip(15) }
+            // Transport in her hand, like the reading bar: back, play/pause,
+            // forward, the rate, and — apart, in seal red — the one control
+            // that ends the reading.
+            HStack(spacing: 22) {
+                Button { store.reader.skip(-15) } label: {
+                    InkSkip(forward: false, size: 30, color: Theme.ink, seed: 5)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.plain).accessibilityLabel("Back 15 seconds")
+                Button { store.reader.toggle() } label: {
+                    InkPlayPause(playing: store.reader.isSpeaking, size: 40, color: Theme.ink, seed: 19)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .disabled(store.reader.isPreparing)
+                .opacity(store.reader.isPreparing ? 0.4 : 1)
+                .accessibilityLabel(store.reader.failure != nil ? "Retry voice" : store.reader.isSpeaking ? "Pause" : "Listen")
+                .accessibilityIdentifier("reading.play")
+                Button { store.reader.skip(15) } label: {
+                    InkSkip(forward: true, size: 30, color: Theme.ink, seed: 11)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.plain).accessibilityLabel("Forward 15 seconds")
                 Button(String(format: "%g×", store.reader.rate)) { store.reader.cycleRate() }
-            }.font(.callout).frame(minHeight: 44)
+                    .buttonStyle(.inkQuiet)
+                    .accessibilityLabel("Speed " + String(format: "%g", store.reader.rate))
+                Spacer(minLength: 8)
+                Button { store.reader.stop(); dismiss() } label: {
+                    InkCross(size: 20, color: Theme.rose, seed: 23)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.plain).accessibilityLabel("Stop")
+            }
             Slider(value: Binding(get: { store.reader.progress }, set: { store.reader.scrub(to: $0) }), in: 0...1,
                    onEditingChanged: { if !$0 { store.reader.commitScrub() } })
                 .disabled(store.reader.duration <= 0).accessibilityLabel("Reading position")
             HStack {
                 Text(store.reader.elapsed.asClock); Spacer(); Text(store.reader.duration.asClock)
-                Button("Stop") { store.reader.stop(); dismiss() }.padding(.leading, 18)
-            }.font(.caption.monospacedDigit())
-        }.padding(20).background(Theme.paper).tint(Theme.accent)
+            }.font(.caption.monospacedDigit()).foregroundStyle(Theme.inkSoft)
+        }.padding(20).background(Theme.paper).tint(Theme.ink)
     }
 }
