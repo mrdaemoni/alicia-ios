@@ -350,6 +350,7 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/context_graph/arrangement` | The day arranged around his active nodes: per node, the episode's questions, elevated items, mind/body findings, his place and his own words that bear on it, each with the line it was drawn from; `status` preparing/ready/refreshing. Rendered under each node of "In the middle of" (CL-20260919-context-arrangement) |
 | `GET /api/context_graph/elevate` · `GET /api/context_graph/translate?title=` | What Us elevates for his situation (thinkers, passages, goals with the line each was drawn from; `status` preparing/ready/refreshing) and a vault note translated into the one node it bears on |
 | `GET /api/context_graph/arrangement` | What today bears on each active context node: episode questions, validated elevation, mind/body findings, wellness goals, place, and his own words; incompatible episode/day groups are withheld while refreshing |
+| `GET /api/presence` | Her current motion-driving awareness: deterministic local signals plus an optional rate-limited Jev reading; the app ignores timestamp-only refreshes |
 | `GET /api/home` | retained home/library context; no longer the Us framing source |
 | `GET /api/timeline` | every lived day since she began (Timeline sheet) |
 | `GET /api/featured` · `/api/syntheses` · `/api/quote` | the day's synthesis, the shelf, the rotating quote |

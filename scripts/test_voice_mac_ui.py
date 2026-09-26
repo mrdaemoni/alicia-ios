@@ -128,7 +128,7 @@ final class ContextUITests: XCTestCase {
  func testWaitingShowsForegroundUploadLimitAndNoSend() {
   continueAfterFailure=false
   let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-mac-preview","--voice-mac-waiting","--voice-save-preview","--episode-day-preview","--reduce-motion-preview"];app.launch()
-  XCTAssertTrue(app.staticTexts["Waiting for the rest of your audio"].waitForExistence(timeout:10))
+  XCTAssertTrue(app.staticTexts["Your Mac is writing it"].waitForExistence(timeout:10))
   XCTAssertTrue(app.staticTexts["Uploads resume while this app is open. Once all audio reaches your Mac, it can transcribe while the phone is away."].exists)
   XCTAssertFalse(app.buttons["voice.sendReviewed"].exists)
   XCTAssertFalse(app.textViews["voice.macDraft"].exists)

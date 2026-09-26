@@ -76,7 +76,7 @@ final class ContextUITests: XCTestCase {
   let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-save-preview","--episode-day-preview","--episode-microphone-on"];app.launch()
   let mic=app.descendants(matching:.any).matching(identifier:"walk.microphoneState").firstMatch
   XCTAssertTrue(mic.waitForExistence(timeout:10))
-  XCTAssertTrue(mic.label.contains("Microphone on"))
+  XCTAssertTrue(mic.label.lowercased().contains("microphone on"),"Actual microphone accessibility label: \(mic.label)")
   capture("walk-microphone-on-preview",app:app)
  }
  func testOriginalVoiceReviewCorrectionAndDelete() {

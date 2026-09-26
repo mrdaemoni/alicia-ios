@@ -16,6 +16,16 @@ struct PresenceAwareness: Codable, Equatable {
 
     static let resting = PresenceAwareness(energy: 0.4, openness: 0.6, coherence: 0.75,
         direction: "inward", stance: "witness", attending_to: "", source: "local", updated_at: "")
+
+    /// `updated_at` is transport metadata, not a change in her awareness.
+    /// Ignoring it prevents the minute poll from restarting the field's ease
+    /// when every motion-driving value is unchanged.
+    static func == (lhs: PresenceAwareness, rhs: PresenceAwareness) -> Bool {
+        lhs.energy == rhs.energy && lhs.openness == rhs.openness &&
+        lhs.coherence == rhs.coherence && lhs.direction == rhs.direction &&
+        lhs.stance == rhs.stance && lhs.attending_to == rhs.attending_to &&
+        lhs.source == rhs.source
+    }
 }
 
 /// One body behind every room.

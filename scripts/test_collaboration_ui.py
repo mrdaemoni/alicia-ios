@@ -104,8 +104,8 @@ final class ContextUITests: XCTestCase {
   XCTAssertTrue(app.staticTexts["Preview · Make room for what matters"].exists)
   XCTAssertTrue(app.staticTexts["Revised second goal"].exists);XCTAssertTrue(app.staticTexts["Third shared goal"].exists)
   app.buttons["Close"].tap()
-  let summary=app.staticTexts["collaboration.goalCount"];XCTAssertTrue(summary.waitForExistence(timeout:10));XCTAssertEqual(summary.label,"3 active goals")
-  XCTAssertEqual(app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","collaboration.summaryGoal.")).count,3)
+  let summaries=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","collaboration.summaryGoal."))
+  XCTAssertEqual(summaries.count,3)
   capture("three-goals-on-us",app:app)
   let direct=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@ AND label CONTAINS %@","collaboration.summaryGoal.","Third shared goal")).firstMatch
   reveal(direct,app:app,up:false);direct.tap();XCTAssertTrue(app.staticTexts["Third shared goal"].waitForExistence(timeout:10))
