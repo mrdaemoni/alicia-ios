@@ -108,28 +108,24 @@ struct KnowledgeView: View {
 
     /// Segment 0 — the syntheses shelf, starred pieces held above it.
     @ViewBuilder private var shelf: some View {
+        // Two groups at the same level wear the same kicker; the hairline
+        // above the second one is where the first one ends.
         if !starred.isEmpty {
-            HStack(spacing: 8) {
+            InkSection(kicker: "Starred · kept", rule: false, spacing: 8) {
                 InkPinMark(pinned: true, size: 15, seed: 11)
-                Text("STARRED · KEPT")
-                    .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                    .tracking(2.0)
-                    .foregroundStyle(Theme.accent)
+            } content: {
+                let hotStars = hotWords
+                ForEach(Array(starred.enumerated()), id: \.element.title) { i, syn in
+                    SynthesisRow(syn: syn, rank: i, hot: hotStars) { reading = syn }
+                }
             }
-            let hotStars = hotWords
-            ForEach(Array(starred.enumerated()), id: \.element.title) { i, syn in
-                SynthesisRow(syn: syn, rank: i, hot: hotStars) { reading = syn }
-            }
-            Theme.stroke.frame(height: 0.7).padding(.vertical, 8)
         }
         if !store.syntheses.isEmpty {
-            Text("FRESH FROM THE SHELF")
-                .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                .tracking(2.0)
-                .foregroundStyle(Theme.inkSoft)
-            let hot = hotWords
-            ForEach(Array(store.syntheses.enumerated()), id: \.element.title) { i, syn in
-                SynthesisRow(syn: syn, rank: i, hot: hot) { reading = syn }
+            InkSection(kicker: "Fresh from the shelf", rule: !starred.isEmpty, spacing: 8) {
+                let hot = hotWords
+                ForEach(Array(store.syntheses.enumerated()), id: \.element.title) { i, syn in
+                    SynthesisRow(syn: syn, rank: i, hot: hot) { reading = syn }
+                }
             }
         } else {
             ProgressView("Reaching the shelf…")
@@ -141,37 +137,28 @@ struct KnowledgeView: View {
     /// Segment 1 — the whole network, searchable + filterable by theme.
     @ViewBuilder private var thinkersRoom: some View {
         // v29: 313 minds need a way in — a simple line to write a name on.
-        VStack(spacing: 2) {
+        HStack(spacing: 10) {
             HStack(spacing: 8) {
                 InkSpark(size: 11, color: Theme.inkSoft, seed: 43)
-                TextField("find a mind…", text: $searchText)
-                    .font(.system(size: 14, design: .serif))
-                    .italic()
+                TextField("Find a mind…", text: $searchText)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
-                if !searchText.isEmpty {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { searchText = "" }
-                    } label: {
-                        Text("CLEAR")
-                            .font(.system(size: 8, design: .monospaced).weight(.semibold))
-                            .tracking(1.2)
-                            .underline()
-                            .foregroundStyle(Theme.inkSoft)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
-            InkUnderline(color: Theme.ink.opacity(0.35), seed: 43)
-                .frame(height: 5)
+            .inkField()
+            if !searchText.isEmpty {
+                Button("Clear") {
+                    withAnimation(.easeInOut(duration: 0.15)) { searchText = "" }
+                }
+                .buttonStyle(.inkQuiet)
+            }
         }
         .padding(.bottom, 4)
 
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                themeChip(nil, label: "ALL")
+                themeChip(nil, label: "All")
                 ForEach(store.thinkerNetwork?.themes ?? [], id: \.self) { th in
-                    themeChip(th, label: th.uppercased())
+                    themeChip(th, label: th)
                 }
             }
         }
@@ -188,8 +175,9 @@ struct KnowledgeView: View {
                             GridItem(.flexible(), spacing: 14)],
                   spacing: 14) {
             ForEach(visible) { thinker in
-                ThinkerCell(thinker: thinker)
-                    .onTapGesture { openThinker = thinker }
+                Button { openThinker = thinker } label: { ThinkerCell(thinker: thinker) }
+                    .buttonStyle(.inkLink)
+                    .accessibilityLabel(thinker.name)
             }
         }
     }
@@ -203,21 +191,11 @@ struct KnowledgeView: View {
         }
     }
 
+    /// Choosing a theme is a choice, so it wears the app's one chip.
     private func themeChip(_ value: String?, label: String) -> some View {
-        Button {
+        WorkReviewChoice(title: label, selected: themeFilter == value, compact: true) {
             withAnimation(.easeInOut(duration: 0.15)) { themeFilter = value }
-        } label: {
-            Text(label)
-                .font(.system(size: 10, design: .monospaced)
-                    .weight(themeFilter == value ? .bold : .regular))
-                .tracking(1.4)
-                .foregroundStyle(themeFilter == value ? Theme.paper : Theme.ink)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(themeFilter == value ? Theme.ink : Color.white.opacity(0.3),
-                            in: Capsule())
         }
-        .buttonStyle(.plain)
     }
 }
 
@@ -233,20 +211,31 @@ struct SynthesisRow: View {
 
     var body: some View {
         VStack(alignment: leading ? .leading : .trailing, spacing: 5) {
-            VStack(alignment: leading ? .leading : .trailing, spacing: 5) {
-                Text(syn.date)
-                    .font(.system(size: 9, design: .monospaced))
-                    .tracking(1.4)
-                    .foregroundStyle(Theme.inkSoft)
-                InkHighlightedText(text: syn.title.strippedEmojis,
-                                   emphasize: hot,
-                                   size: rank == 0 ? 20 : 15,
-                                   weight: .semibold,
-                                   trailing: !leading)
+            // The title goes somewhere (the reader), so it is a Button with
+            // her chevron at the trailing edge — the alternating alignment
+            // stays on the words, the chevron always sits at the edge.
+            Button(action: open) {
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: leading ? .leading : .trailing, spacing: 5) {
+                        Text(syn.date)
+                            .font(.system(size: 9, design: .monospaced))
+                            .tracking(1.4)
+                            .foregroundStyle(Theme.inkSoft)
+                        InkHighlightedText(text: syn.title.strippedEmojis,
+                                           emphasize: hot,
+                                           size: rank == 0 ? 20 : 15,
+                                           weight: .semibold,
+                                           trailing: !leading)
+                    }
+                    .frame(maxWidth: .infinity, alignment: leading ? .leading : .trailing)
+                    InkChevron(pointing: .right, size: 12, color: Theme.inkSoft, seed: syn.title.inkSeed)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity, alignment: leading ? .leading : .trailing)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: open)
+            .buttonStyle(.inkLink)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
             // Every piece on the shelf can be listened to, not only read —
             // the row's own control, so the tap that opens it still opens it.
             HStack(spacing: 12) {
@@ -256,7 +245,7 @@ struct SynthesisRow: View {
                 SynthesisPin(syn: syn, size: 19)
                 if leading { Spacer() }
             }
-            Theme.stroke.frame(height: 0.7)
+            InkRule(opacity: 0.6)
         }
         .frame(maxWidth: .infinity, alignment: leading ? .leading : .trailing)
     }
@@ -434,9 +423,11 @@ struct ThinkerSheet: View {
                             }
                         } label: {
                             InkChevron(pointing: .left, size: 14,
-                                       color: Theme.accent, seed: 37)
+                                       color: Theme.ink, seed: 37)
+                                .frame(minWidth: 44, minHeight: 44)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Back to " + (path.last?.name ?? ""))
                         Text((path.map(\.name) + [shown.name])
                             .joined(separator: " → "))
                             .font(.system(size: 9, design: .monospaced))
@@ -485,67 +476,52 @@ struct ThinkerSheet: View {
                     .italic()
                     .multilineTextAlignment(.center)
                     .lineSpacing(5)
-                // Wraps instead of squeezing — six themes broke mid-word.
-                FlexWrap(spacing: 6) {
-                    ForEach(shown.themes, id: \.self) { th in
-                        Text(th.uppercased())
-                            .font(.system(size: 8, design: .monospaced))
-                            .tracking(1.4)
-                            .fixedSize()
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.white.opacity(0.35), in: Capsule())
-                    }
-                }
-                .frame(maxWidth: 300)
-                if !shown.relation.isEmpty {
-                    InkDividerCurl(seed: shown.name.inkSeed)
-                        .frame(width: 96, height: 14)
-                    Text("IN YOUR VAULT")
-                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                        .tracking(2.0)
-                        .foregroundStyle(Theme.accent)
-                    // Her marginalia: the load-bearing words underlined,
-                    // a faint thread arcing between them (v27).
-                    InkAnnotatedText(text: shown.relation, size: 14)
-                }
-                if !extract.isEmpty {
-                    InkDividerCurl(seed: shown.name.inkSeed &+ 7)
-                        .frame(width: 96, height: 14)
-                    Text("THE WORK")
-                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                        .tracking(2.0)
-                        .foregroundStyle(Theme.accent)
-                    Text(extract)
-                        .font(.system(size: 14, design: .serif))
-                        .lineSpacing(5)
+                // Themes are description, not controls — a meta line, not
+                // capsules that look tappable.
+                if !shown.themes.isEmpty {
+                    Text(shown.themes.map { $0.uppercased() }.joined(separator: " · "))
+                        .font(InkType.kicker).tracking(1.4)
+                        .foregroundStyle(Theme.inkSoft)
                         .multilineTextAlignment(.center)
+                        .frame(maxWidth: 300)
                 }
-                if let page {
-                    Link(destination: page) {
-                        Text("READ MORE ON THE OPEN WEB")
-                            .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                            .tracking(1.6)
-                            .underline()
-                            .foregroundStyle(Theme.accent)
+                if !shown.relation.isEmpty {
+                    InkSection(kicker: "In your vault") {
+                        // Her marginalia: the load-bearing words underlined,
+                        // a faint thread arcing between them (v27).
+                        InkAnnotatedText(text: shown.relation, size: 14)
                     }
                     .padding(.top, 6)
+                }
+                if !extract.isEmpty {
+                    InkSection(kicker: "The work") {
+                        Text(extract)
+                            .font(.system(size: 14, design: .serif))
+                            .lineSpacing(5)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let page {
+                            Link(destination: page) {
+                                InkLinkLabel(title: "Read more on the open web", small: true, external: true)
+                            }
+                            .buttonStyle(.inkLink)
+                        }
+                    }
+                } else if let page {
+                    Link(destination: page) {
+                        InkLinkLabel(title: "Read more on the open web", small: true, external: true)
+                    }
+                    .buttonStyle(.inkLink)
                 }
 
                 // ── The graph, hand-stitched: her threads connecting the
                 // minds, faces staggered like a constellation she drew ──
                 if let related = shown.related, !related.isEmpty {
-                    InkDividerCurl(seed: shown.name.inkSeed &+ 13)
-                        .frame(width: 96, height: 14)
-                    Text("MINDS LIKE THIS ONE")
-                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                        .tracking(2.0)
-                        .foregroundStyle(Theme.accent)
-                        .padding(.top, 8)
-                    ThinkerConstellation(
-                        related: related,
-                        isResolvable: { resolve($0) != nil },
-                        hop: { hop(to: $0) })
+                    InkSection(kicker: "Minds like this one") {
+                        ThinkerConstellation(
+                            related: related,
+                            isResolvable: { resolve($0) != nil },
+                            hop: { hop(to: $0) })
+                    }
                 }
             }
             .padding(24)
