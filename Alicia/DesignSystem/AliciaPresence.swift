@@ -180,9 +180,12 @@ struct AliciaPresence: View {
     /// Her awareness: one field, read each frame on the main actor, drawn as a value.
     private func fieldBody(_ field: PresenceField) -> some View {
         let shouldReduceMotion = reduceMotion || previewsReduceMotion
-        let paused = shouldReduceMotion || !isActive || scenePhase != .active
-        return TimelineView(.animation(minimumInterval: 1.0 / Double(Self.framesPerSecond), paused: paused)) { timeline in
-            let frame = paused ? field.stillFrame() : field.frame(at: timeline.date)
+        let animating = !shouldReduceMotion && isActive && scenePhase == .active
+        return TimelineView(.animation(minimumInterval: 1.0 / Double(Self.framesPerSecond), paused: !animating)) { timeline in
+            // A surface that is not animating (a tab behind another) still draws
+            // her as she is NOW, never a stored pose: build 35 showed the still
+            // frame for an instant on every tab switch, and she jumped.
+            let frame = shouldReduceMotion ? field.stillFrame() : field.frame(at: animating ? timeline.date : .now)
             Canvas(opaque: false, colorMode: .linear, rendersAsynchronously: true) { context, size in
                 Self.drawField(in: &context, size: size, frame: frame)
             }
@@ -195,13 +198,16 @@ struct AliciaPresence: View {
         let families = Family.allCases
         let a = families[frame.primary], b = families[frame.secondary]
         let base = Double(a.basePoints) * (1 - frame.mix) + Double(b.basePoints) * frame.mix
-        let total = min(2_600, max(800, Int(base * (0.78 + frame.energy * 0.5))))
-        let contraction = 0.9 + frame.openness * 0.24
+        let total = min(3_000, max(950, Int(base * (0.92 + frame.energy * 0.55))))
+        // Listening, she opens wide and breathes with his voice.
+        let breath = frame.listening ? 1 + 0.22 * frame.level : 1
+        // Listening she opens further than any room: the widest she gets.
+        let contraction = (0.9 + frame.openness * 0.24) * (frame.listening ? 1.28 : 1) * breath
         let jitter = (1 - frame.coherence) * 20
         let side = min(size.width, size.height)
         let origin = CGPoint(x: (size.width - side) / 2, y: (size.height - side) / 2)
         let bounds = CGRect(origin: .zero, size: size)
-        let dot = max(0.65, side / 400)
+        let dot = max(0.85, side / 330)
         let target = CGPoint(x: frame.focus.x * 400, y: frame.focus.y * 400)
         let pull = 0.12 * (1.15 - frame.openness * 0.5)
         var path = Path()
@@ -228,7 +234,8 @@ struct AliciaPresence: View {
             guard point.x.isFinite, point.y.isFinite, bounds.contains(point) else { continue }
             path.addRect(CGRect(x: point.x, y: point.y, width: dot, height: dot))
         }
-        let opacity = 0.3 + frame.coherence * 0.16
+        // Firmer than build 35 ("a bit too faint on my phone").
+        let opacity = 0.42 + frame.coherence * 0.2
         context.fill(path, with: .color(Theme.ink.opacity(opacity)))
     }
 

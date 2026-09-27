@@ -4,6 +4,7 @@ struct EpisodeHomeView: View {
     @Environment(AppStore.self) private var store
     @State private var showHistory = false
 
+    @State private var briefingPlaylistID: String?
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -30,7 +31,10 @@ struct EpisodeHomeView: View {
                         playbackError: store.reader.failure,
                         isRefreshing: store.morningBriefingRefreshing,
                         onTogglePlayback: store.toggleMorningBriefing,
-                        onOpenPlaylist: store.openMorningPlaylist,
+                        // Pushed inside Us, so BACK returns home. It used to switch
+                        // to the Studio tab, where BACK could only reach Studio
+                        // (build 35 on the phone, 2026-09-27).
+                        onOpenPlaylist: { briefingPlaylistID = $0 },
                         onRefresh: { Task { await store.refreshMorningBriefing() } })
                     MindBodyOverview()
                     // Option A (CL-20260918-context-graph-behaviours): his situation,
@@ -69,6 +73,7 @@ struct EpisodeHomeView: View {
             .refreshable { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.refreshEpisodeDay(); await store.bodyStore.refresh(); await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
             .presenceBackground(.us, store: store)
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(item: $briefingPlaylistID) { PlaylistDetailView(playlistID: $0) }
             .sheet(isPresented: $showHistory) { EpisodeHistoryView() }
         }
     }
@@ -127,7 +132,10 @@ private struct IntelligenceModeControl: View {
     @State private var confirmPaidAPIs = false
 
     var body: some View {
-        InkSection(kicker: "Intelligence", rule: false) {
+        // One row (2026-09-27, "optimize real estate"): the switch and what it
+        // means in a line. What paid APIs would do is said where it matters —
+        // in the confirmation before that direction can happen.
+        VStack(alignment: .leading, spacing: 6) {
             Toggle(isOn: Binding(
                 get: { store.intelligenceMode.isLocalFirst },
                 set: { enabled in
@@ -135,13 +143,12 @@ private struct IntelligenceModeControl: View {
                     else { confirmPaidAPIs = true }
                 }
             )) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Qwen on this Mac").font(InkType.link)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Qwen on this Mac").font(InkType.linkSmall)
                     Text(store.intelligenceMode.isLocalFirst
-                         ? "Everyday replies stay local. Claude subscription takes heavier work. Jev, Gemini audio enrichment, and Gemini natural voice may use paid APIs."
-                         : "Hybrid routing is on and may use paid model APIs.")
+                         ? "Everyday replies stay local"
+                         : "Hybrid: paid model APIs allowed")
                         .font(InkType.meta).foregroundStyle(Theme.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .tint(Theme.accent)

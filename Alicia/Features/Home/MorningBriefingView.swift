@@ -19,40 +19,43 @@ struct MorningBriefingView: View {
         // Date honesty survives leaving Us visible through midnight. This is a
         // clock update, with no animation or activity indicator.
         TimelineView(.periodic(from: .now, by: 60)) { clock in
-            InkSection(kicker: "Morning briefing", rule: false, spacing: 14) {
+            // Build 35 on the phone, 2026-09-27: the kicker said "Morning
+            // briefing", then the date (already under the page title), then a
+            // heading saying "morning briefing" again. One kicker, the title as
+            // the thing you tap to listen, and the date only when it isn't today.
+            InkSection(kicker: "Morning briefing", rule: false, spacing: 10) {
                 if let briefing {
-                    MorningBriefingDate(briefing: briefing, now: clock.date)
-                    Text(briefing.displayTitle.strippedEmojis)
-                        .font(.title2).fontDesign(.serif)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
+                    if briefing.dayRelation(to: clock.date) != .today {
+                        MorningBriefingDate(briefing: briefing, now: clock.date)
+                    }
                     if briefing.hasPlayableAudio {
                         playbackButton(briefing)
                         if loadingBriefingID == briefing.id { InkNotice(text: "Loading audio…") }
                         if failedBriefingID == briefing.id, let playbackError { InkNotice(text: playbackError, kind: .error) }
                     } else {
-                        Text(briefing.availabilityText).font(.body).fontDesign(.serif)
+                        Text(briefing.displayTitle.strippedEmojis)
+                            .font(.system(size: 19, design: .serif))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(briefing.availabilityText).font(.subheadline).fontDesign(.serif)
                             .foregroundStyle(Theme.inkSoft)
                             .accessibilityIdentifier("morningBriefing.status")
                     }
-                    VStack(alignment: .leading, spacing: 0) {
-                        InkRule(opacity: 0.6)
+                    HStack(spacing: 18) {
                         inspectButton(briefing)
-                        if briefing.hasPlaylist { InkRule(opacity: 0.6) }
                         playlistButton(briefing)
                     }
                     if !briefing.hasPlayableAudio || briefing.dayRelation(to: clock.date) != .today {
                         refreshButton
                     }
                 } else {
-                    Text(clock.date.formatted(date: .complete, time: .omitted))
-                        .font(.caption).foregroundStyle(Theme.inkSoft)
-                    Text("Your morning briefing")
-                        .font(.title2).fontDesign(.serif).accessibilityAddTraits(.isHeader)
-                    Text("The briefing hasn't loaded yet.")
-                        .font(.body).fontDesign(.serif).foregroundStyle(Theme.inkSoft)
-                        .accessibilityIdentifier("morningBriefing.status")
-                    refreshButton
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Not ready yet.")
+                            .font(.subheadline).italic().foregroundStyle(Theme.inkSoft)
+                            .accessibilityIdentifier("morningBriefing.status")
+                        Spacer(minLength: 8)
+                        refreshButton
+                    }
                 }
             }
         }
@@ -73,8 +76,7 @@ struct MorningBriefingView: View {
 
     private func inspectButton(_ item: MorningBriefing) -> some View {
         Button { inspectedBriefing = item } label: {
-            InkLinkLabel(title: item.hasText ? "Read the briefing" : "View details",
-                         detail: item.hasText ? "The full text and its sources" : "What was supplied with it")
+            InkLinkLabel(title: item.hasText ? "Read it" : "Details", small: true)
         }
         .buttonStyle(.inkLink)
         .accessibilityIdentifier("morningBriefing.read")
@@ -84,7 +86,7 @@ struct MorningBriefingView: View {
     @ViewBuilder private func playlistButton(_ item: MorningBriefing) -> some View {
         if item.hasPlaylist {
             Button { onOpenPlaylist(item.playlist_id) } label: {
-                InkLinkLabel(title: "Open the playlist in Studio", detail: "Everything this briefing drew on, to listen to")
+                InkLinkLabel(title: "Its playlist", small: true)
             }
             .buttonStyle(.inkLink)
             .accessibilityLabel("Open this briefing's playlist in Studio")
@@ -139,12 +141,16 @@ private struct MorningBriefingPlayButton: View {
             HStack(spacing: 13) {
                 InkPlayPause(playing: isPlaying, size: 34, color: Theme.ink, ringed: true)
                     .accessibilityHidden(true)
-                Text(hasFailed ? "Retry" : isPlaying ? "Pause" : "Listen")
-                    .font(.title3).fontDesign(.serif)
-                Spacer(minLength: 8)
-                if let duration = briefing.durationLabel {
-                    Text(duration).font(.body.monospacedDigit())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(briefing.displayTitle.strippedEmojis)
+                        .font(.system(size: 19, design: .serif))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text([hasFailed ? "Retry" : isPlaying ? "Pause" : "Listen", briefing.durationLabel]
+                            .compactMap { $0 }.joined(separator: " · "))
+                        .font(InkType.meta.monospacedDigit()).foregroundStyle(Theme.inkSoft)
                 }
+                Spacer(minLength: 0)
             }
             .frame(minHeight: 48).contentShape(Rectangle())
         }
@@ -174,9 +180,12 @@ private struct MorningBriefingReading: View {
                     TimelineView(.periodic(from: .now, by: 60)) { clock in
                         MorningBriefingDate(briefing: briefing, now: clock.date)
                     }
-                    Text(briefing.displayTitle.strippedEmojis).font(.title2).fontDesign(.serif)
-                        .accessibilityAddTraits(.isHeader)
+                    if !briefing.hasPlayableAudio {
+                        Text(briefing.displayTitle.strippedEmojis).font(.title2).fontDesign(.serif)
+                            .accessibilityAddTraits(.isHeader)
+                    }
                     if briefing.hasPlayableAudio {
+                        // The title is the play control, as on Us.
                         MorningBriefingPlayButton(briefing: briefing, isPlaying: playingBriefingID == briefing.id,
                                                  isLoading: loadingBriefingID == briefing.id, hasFailed: failedBriefingID == briefing.id,
                                                  accessibilityID: "morningBriefing.reading.play",
@@ -234,7 +243,7 @@ private struct MorningBriefingReading: View {
                             dismiss()
                             onOpenPlaylist(briefing.playlist_id)
                         } label: {
-                            InkLinkLabel(title: "Open the playlist in Studio", detail: "Everything this briefing drew on, to listen to")
+                            InkLinkLabel(title: "Its playlist", small: true)
                         }
                         .buttonStyle(.inkLink).accessibilityIdentifier("morningBriefing.reading.playlist")
                     }

@@ -69,7 +69,7 @@ final class PresenceContinuityUITests: XCTestCase {
   let app=launch("body")
   capture("body-with-her-behind-it",app)
   app.buttons["composer.walk"].tap()
-  XCTAssertTrue(app.staticTexts["listening.transcript"].waitForExistence(timeout:15))
+  XCTAssertTrue(app.descendants(matching:.any)["listening.presence"].waitForExistence(timeout:15))
   capture("microphone-same-field",app)
  }
 }
