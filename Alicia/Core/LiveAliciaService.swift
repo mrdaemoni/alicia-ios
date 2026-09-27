@@ -20,6 +20,14 @@ struct LiveAliciaService: AliciaService {
     let baseURL: URL
     let token: String
 
+    func intelligenceMode() async -> IntelligenceModeState? {
+        await fetchOne("/api/intelligence")
+    }
+
+    func setIntelligenceMode(_ mode: String) async -> IntelligenceModeState? {
+        await post("/api/intelligence", body: ["mode": mode])
+    }
+
     func askBody(_ text: String) async -> BodyAnswer? {
         let data = try? JSONSerialization.data(withJSONObject: ["text": text])
         return await privateBodyRequest(method: "POST", data: data, path: "/api/body/ask")

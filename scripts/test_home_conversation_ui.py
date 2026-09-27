@@ -58,6 +58,21 @@ final class HomeConversationUITests: XCTestCase {
   let shot=XCTAttachment(screenshot:app.screenshot());shot.name=name;shot.lifetime = .keepAlways;add(shot)
  }
 
+ /// The switch is global and defaults to the local lane in the preview. The
+ /// cost-increasing direction must never happen on one accidental tap.
+ func testQwenModeIsVisibleAndPaidAPIsNeedConfirmation() {
+  let app=launch()
+  let mode=app.switches["intelligence.localFirst"]
+  XCTAssertTrue(mode.waitForExistence(timeout:10))
+  XCTAssertEqual(mode.value as? String,"1")
+  XCTAssertTrue(mode.label.contains("Qwen on this Mac"))
+  mode.tap()
+  XCTAssertTrue(app.alerts["Allow paid model APIs?"].waitForExistence(timeout:5))
+  app.alerts.buttons["Keep Qwen"].tap()
+  XCTAssertEqual(mode.value as? String,"1")
+  capture("qwen-local-first",app)
+ }
+
  /// "It should always be present right above the bottom bar of navigation."
  func testTheBandAndTheNavigationAreBothPermanent() {
   let app=launch()

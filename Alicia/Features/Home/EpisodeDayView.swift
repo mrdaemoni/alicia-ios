@@ -22,6 +22,7 @@ struct EpisodeHomeView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Us — open what she's holding and the whole arc")
                     .accessibilityIdentifier("us.openArc")
+                    IntelligenceModeControl()
                     MorningBriefingView(briefing: store.morningBriefing,
                         playingBriefingID: store.playingMorningBriefingID,
                         loadingBriefingID: store.reader.isLoadingMedia ? store.currentMorningBriefingID : nil,
@@ -61,11 +62,11 @@ struct EpisodeHomeView: View {
                 .padding(22)
                 .padding(.bottom, 20)
             }
-            .task { await store.refreshMorningBriefing(); await store.bodyStore.refresh() }
+            .task { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.bodyStore.refresh() }
             // The graph and its elevation load on their own task so a slow body
             // refresh never holds the section back.
             .task { await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
-            .refreshable { await store.refreshMorningBriefing(); await store.refreshEpisodeDay(); await store.bodyStore.refresh(); await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
+            .refreshable { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.refreshEpisodeDay(); await store.bodyStore.refresh(); await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
             .presenceBackground(.us, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showHistory) { EpisodeHistoryView() }
@@ -115,6 +116,52 @@ struct EpisodeHomeView: View {
                     store.showWalk = true
                 }
             }
+        }
+    }
+}
+
+/// A truthful global switch, not a chat-only model picker. Turning local-first
+/// off can create marginal spend, so that direction requires confirmation.
+private struct IntelligenceModeControl: View {
+    @Environment(AppStore.self) private var store
+    @State private var confirmPaidAPIs = false
+
+    var body: some View {
+        InkSection(kicker: "Intelligence", rule: false) {
+            Toggle(isOn: Binding(
+                get: { store.intelligenceMode.isLocalFirst },
+                set: { enabled in
+                    if enabled { Task { await store.setLocalIntelligence(true) } }
+                    else { confirmPaidAPIs = true }
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Qwen on this Mac").font(InkType.link)
+                    Text(store.intelligenceMode.isLocalFirst
+                         ? "Everyday replies stay local. Claude subscription takes heavier work. Paid model APIs are off."
+                         : "Hybrid routing is on and may use paid model APIs.")
+                        .font(InkType.meta).foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Theme.accent)
+            .disabled(store.intelligenceModeSaving)
+            .accessibilityIdentifier("intelligence.localFirst")
+            if store.intelligenceModeSaving {
+                ProgressView().controlSize(.small).accessibilityLabel("Saving intelligence mode")
+            }
+            if !store.intelligenceModeError.isEmpty {
+                Text(store.intelligenceModeError).font(.caption).foregroundStyle(Theme.rose)
+                    .accessibilityIdentifier("intelligence.error")
+            }
+        }
+        .alert("Allow paid model APIs?", isPresented: $confirmPaidAPIs) {
+            Button("Keep Qwen", role: .cancel) {}
+            Button("Allow paid APIs", role: .destructive) {
+                Task { await store.setLocalIntelligence(false) }
+            }
+        } message: {
+            Text("Alicia may use configured Anthropic, Gemini, OpenAI, or TypeSafe APIs again. Your Mac subscriptions remain separate.")
         }
     }
 }

@@ -39,6 +39,41 @@ final class ConnectionStatus {
     private var lastSuccess = Date.distantPast
 }
 
+/// The one backend-owned boundary between local/subscription intelligence and
+/// paid model APIs. It is intentionally global: a screen must never imply that
+/// only chat is free while voice or a background reader can still spend.
+struct IntelligenceModeState: Codable, Equatable {
+    var version: Int
+    var mode: String
+    var changedAt: String
+    var source: String
+    var primary: String
+    var heavyLane: String
+    var paidModelAPIs: Bool
+    var notice: String
+
+    var isLocalFirst: Bool { mode == "local_first" }
+
+    static let balanced = IntelligenceModeState(
+        version: 1, mode: "balanced", changedAt: "", source: "default",
+        primary: "hybrid", heavyLane: "cloud_api_allowed",
+        paidModelAPIs: true, notice: "Hybrid routing may use paid model APIs."
+    )
+    static let localPreview = IntelligenceModeState(
+        version: 1, mode: "local_first", changedAt: "", source: "preview",
+        primary: "qwen_local", heavyLane: "claude_subscription",
+        paidModelAPIs: false,
+        notice: "Qwen is the default. Paid model APIs are off; heavier work may use the signed-in Claude subscription."
+    )
+
+    enum CodingKeys: String, CodingKey {
+        case version, mode, source, primary, notice
+        case changedAt = "changed_at"
+        case heavyLane = "heavy_lane"
+        case paidModelAPIs = "paid_model_apis"
+    }
+}
+
 /// One rendered piece of a reading, in speaking order.
 struct SpeechChunk: Hashable {
     var url: URL
@@ -68,6 +103,8 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
+    func intelligenceMode() async -> IntelligenceModeState?
+    func setIntelligenceMode(_ mode: String) async -> IntelligenceModeState?
     func askBody(_ text: String) async -> BodyAnswer?
     func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage?
     func bodyOverview() async -> BodyOverview?
@@ -206,6 +243,18 @@ protocol AliciaService {
 }
 
 extension AliciaService {
+    func intelligenceMode() async -> IntelligenceModeState? {
+#if DEBUG
+        if self is MockAliciaService { return .localPreview }
+#endif
+        return nil
+    }
+    func setIntelligenceMode(_ mode: String) async -> IntelligenceModeState? {
+#if DEBUG
+        if self is MockAliciaService { return mode == "local_first" ? .localPreview : .balanced }
+#endif
+        return nil
+    }
     func contextGraph() async -> ContextGraph? { nil }
     func contextNode(id: String) async -> (node: ContextNode, related: [ContextNode])? { nil }
     func contextGraphAct(_ mutation: ContextGraphMutation) async -> ContextGraphMutationResult? { nil }
