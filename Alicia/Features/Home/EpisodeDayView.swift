@@ -138,7 +138,7 @@ private struct IntelligenceModeControl: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Qwen on this Mac").font(InkType.link)
                     Text(store.intelligenceMode.isLocalFirst
-                         ? "Everyday replies stay local. Claude subscription takes heavier work. Paid model APIs are off."
+                         ? "Everyday replies stay local. Claude subscription takes heavier work. Only Jev may use a paid API."
                          : "Hybrid routing is on and may use paid model APIs.")
                         .font(InkType.meta).foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -161,7 +161,7 @@ private struct IntelligenceModeControl: View {
                 Task { await store.setLocalIntelligence(false) }
             }
         } message: {
-            Text("Alicia may use configured Anthropic, Gemini, OpenAI, or TypeSafe APIs again. Your Mac subscriptions remain separate.")
+            Text("Alicia may use configured Anthropic, Gemini, and OpenAI APIs again. Jev is already allowed. Your Mac subscriptions remain separate.")
         }
     }
 }

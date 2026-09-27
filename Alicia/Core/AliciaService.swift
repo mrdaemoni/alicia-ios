@@ -63,7 +63,7 @@ struct IntelligenceModeState: Codable, Equatable {
         version: 1, mode: "local_first", changedAt: "", source: "preview",
         primary: "qwen_local", heavyLane: "claude_subscription",
         paidModelAPIs: false,
-        notice: "Qwen is the default. Paid model APIs are off; heavier work may use the signed-in Claude subscription."
+        notice: "Qwen is the default. Anthropic, Gemini and OpenAI model APIs are off; Jev remains allowed."
     )
 
     enum CodingKeys: String, CodingKey {
