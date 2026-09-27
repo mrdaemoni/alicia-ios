@@ -101,7 +101,7 @@ final class ContextUITests: XCTestCase {
   reveal(pending,app:app);XCTAssertTrue(pending.exists)
   capture("dialogue-frozen-pending-send",app:app)
   app.navigationBars.buttons.element(boundBy:0).tap()
-  app.buttons["CLOSE"].tap()
+  app.buttons["Close"].tap()
   app.buttons["dialogue.composer"].tap()
   XCTAssertEqual(app.textFields["conversation.field"].value as? String,expectedTyped)
   app.buttons["conversation.close"].tap()
@@ -120,15 +120,15 @@ final class ContextUITests: XCTestCase {
   XCTAssertTrue(done.waitForExistence(timeout:5));XCTAssertTrue(done.isHittable)
   capture("walk-review-keyboard-done",app:app);done.tap()
   capture("walk-mac-review",app:app)
-  XCTAssertTrue(app.buttons["REVIEW ORIGINAL AUDIO"].exists)
-  app.buttons["REVIEW ORIGINAL AUDIO"].tap()
+  XCTAssertTrue(app.buttons["Original recording"].exists)
+  app.buttons["Original recording"].tap()
   XCTAssertTrue(app.buttons["voice.playOriginal"].waitForExistence(timeout:10))
   capture("walk-original-with-mac-draft",app:app)
  }
  func testWaitingShowsForegroundUploadLimitAndNoSend() {
   continueAfterFailure=false
   let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-mac-preview","--voice-mac-waiting","--voice-save-preview","--episode-day-preview","--reduce-motion-preview"];app.launch()
-  XCTAssertTrue(app.staticTexts["Waiting for the rest of your audio"].waitForExistence(timeout:10))
+  XCTAssertTrue(app.staticTexts["Your Mac is writing it"].waitForExistence(timeout:10))
   XCTAssertTrue(app.staticTexts["Uploads resume while this app is open. Once all audio reaches your Mac, it can transcribe while the phone is away."].exists)
   XCTAssertFalse(app.buttons["voice.sendReviewed"].exists)
   XCTAssertFalse(app.textViews["voice.macDraft"].exists)

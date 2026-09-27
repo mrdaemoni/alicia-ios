@@ -86,6 +86,16 @@ struct AliciaApp: App {
                         store.walkDraft = "Preview reflection: I keep returning to the difference between commitment and control. I want to give this idea a real test today."
                         store.openWalk(probe: "Where would choosing less give you room to go deeper?")
                     }
+                    if let i = args.firstIndex(of: "--presence-stance"), args.index(after: i) < args.endIndex {
+                        // DEBUG: a reading as the backend would send it, to see each state.
+                        let stance = args[args.index(after: i)]
+                        let direction = ["ask": "toward_hector", "celebrate": "toward_hector", "offer": "toward_work",
+                                         "hold": "resting"][stance] ?? "inward"
+                        store.presenceField.receive(PresenceAwareness(
+                            energy: stance == "hold" ? 0.2 : 0.7, openness: stance == "offer" ? 0.35 : 0.8,
+                            coherence: stance == "celebrate" ? 0.55 : 0.8, direction: direction, stance: stance,
+                            attending_to: "Preview · " + stance, source: "jev+local", updated_at: ""))
+                    }
                     if args.contains("--finished-goals-preview") {
                         await store.collaboration.load()
                         if args.contains("--open-finished-record") {

@@ -22,6 +22,8 @@ struct ListeningStage<Controls: View>: View {
     var words: String
     var placeholder: String
     var note: String
+    /// A failure (the microphone, the recognizer) reads in seal red.
+    var noteIsError = false
     var close: () -> Void
     @ViewBuilder var controls: () -> Controls
 
@@ -69,7 +71,7 @@ struct ListeningStage<Controls: View>: View {
                 head
                 transcript
                 Text(note)
-                    .font(.caption).foregroundStyle(Theme.inkSoft)
+                    .font(InkType.meta).foregroundStyle(noteIsError ? Theme.rose : Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 24).padding(.bottom, 12)
                 controls()
@@ -84,9 +86,7 @@ struct ListeningStage<Controls: View>: View {
     private var head: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(kicker)
-                    .font(.system(size: 9, design: .monospaced)).tracking(1.2)
-                    .foregroundStyle(Theme.inkSoft)
+                InkKicker(text: kicker)
                     .lineLimit(1)
                 HStack(spacing: 10) {
                     // A drawn mark, not a level meter: it says "on" at a glance
@@ -107,15 +107,10 @@ struct ListeningStage<Controls: View>: View {
                 .accessibilityIdentifier("walk.microphoneState")
             }
             Spacer()
-            Button(action: close) {
-                Text("CLOSE")
-                    .font(.system(size: 10, design: .monospaced)).tracking(1.2)
-                    .foregroundStyle(Theme.inkSoft)
-                    .frame(minWidth: 56, minHeight: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("listening.close")
+            // The same CLOSE every sheet ends with. It still runs `close`,
+            // which pauses and seals the walk — not a plain dismiss.
+            InkCloseButton(action: close)
+                .accessibilityIdentifier("listening.close")
         }
         .padding(.horizontal, 24).padding(.top, 18)
     }

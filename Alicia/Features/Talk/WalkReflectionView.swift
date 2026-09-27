@@ -37,27 +37,33 @@ struct WalkReflectionView: View {
         VStack(alignment: .leading, spacing: 20) {
             if let record = store.voiceArchive.recording(store.walkRecordingID), record.finalization != nil {
                 HStack {
-                    Text(record.context.episode_id).font(.system(size: 11, design: .monospaced))
+                    InkKicker(text: record.context.episode_id)
                     Spacer()
-                    Button("CLOSE") { pause(); store.showWalk = false }.frame(minHeight: 44)
+                    InkCloseButton { pause(); store.showWalk = false }
                 }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         if !store.walkDraft.isEmpty {
-                            DisclosureGroup("Earlier typed words · kept separately") {
+                            InkDisclosure("Earlier typed words · kept separately") {
                                 Text(store.walkDraft).textSelection(.enabled)
-                            }.font(.caption)
+                            }
                         }
+                        // The stage card and SEND, the one primary here.
                         VoiceProcessingView(id: record.id).id(record.id)
                     }
                 }
-                Button("RECORD ANOTHER THOUGHT") {
-                    store.walkRecordingID = UUID().uuidString
-                    Task { await begin() }
-                }.font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
-                Button("REVIEW ORIGINAL AUDIO") { showRecording = true }.frame(minHeight: 44)
-                if record.submissionStatus?.state == "completed" {
-                    Button("DONE") { store.showWalk = false; store.selectedSection = .mind }.buttonStyle(EpisodeButtonStyle())
+                Button { showRecording = true } label: { InkLinkLabel(title: "Original recording", small: true) }
+                    .buttonStyle(.inkLink)
+                HStack(spacing: 16) {
+                    Button("Record another thought") {
+                        store.walkRecordingID = UUID().uuidString
+                        Task { await begin() }
+                    }.buttonStyle(.inkQuiet)
+                    Spacer(minLength: 0)
+                    if record.submissionStatus?.state == "completed" {
+                        Button("DONE") { store.showWalk = false; store.selectedSection = .mind }
+                            .buttonStyle(.inkSecondaryCompact)
+                    }
                 }
             } else if didSave {
                 savedView
@@ -70,10 +76,9 @@ struct WalkReflectionView: View {
                 episodeListening
             } else {
             HStack {
-                Text(subjectKicker).font(.system(size: 11, design: .monospaced)).tracking(1.5)
+                InkKicker(text: subjectKicker)
                 Spacer()
-                Button("CLOSE") { pause(); store.pauseEpisodeWalk(); store.showWalk = false }
-                    .font(.system(size: 10, design: .monospaced)).tracking(1.2)
+                InkCloseButton { pause(); store.pauseEpisodeWalk(); store.showWalk = false }
             }
             ListeningPresence(isRecording: visibleRecording, isStarting: starting || restarting,
                 seconds: speech.recordedSeconds, level: speech.inputLevel,
@@ -88,9 +93,9 @@ struct WalkReflectionView: View {
                 Text("Finish to get a Mac transcript. Review it before sending.")
                     .font(.body).foregroundStyle(Theme.inkSoft).fixedSize(horizontal: false, vertical: true)
                 if !store.walkDraft.isEmpty {
-                    DisclosureGroup("Earlier typed words · kept separately") {
+                    InkDisclosure("Earlier typed words · kept separately") {
                         Text(store.walkDraft).textSelection(.enabled)
-                    }.font(.caption)
+                    }
                 }
                 Spacer(minLength: 16)
             } else {
@@ -98,24 +103,22 @@ struct WalkReflectionView: View {
                 .font(.system(size: 20, design: .serif))
                 .disabled(listening || store.pendingWalkSave != nil)
                 .scrollContentBackground(.hidden)
+                .inkField()
                 .accessibilityLabel("Your walk reflection")
             }
             Text(reviewingWords ? (speech.transcriptNeedsReview ? "Live text was interrupted. These words may be incomplete. Review the audio, edit the words, or save just the recording." : "Check these words before sending. Your original recording is kept separately.") : speech.lastError ?? (status.isEmpty ? "Original audio is kept on this phone and synced to your Mac." : status))
-                .font(.caption).foregroundStyle(Theme.inkSoft)
-            HStack {
-                Text("Audio stays until you delete it.").font(.caption).foregroundStyle(Theme.inkSoft)
-                Spacer()
-                if store.voiceArchive.hasAudio(store.walkRecordingID) {
-                    Button("REVIEW AUDIO") { pause(); showRecording = true }
-                        .font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
-                }
+                .font(.caption)
+                .foregroundStyle(!reviewingWords && speech.lastError != nil ? Theme.rose : Theme.inkSoft)
+            Text("Audio stays until you delete it.").font(.caption).foregroundStyle(Theme.inkSoft)
+            if store.voiceArchive.hasAudio(store.walkRecordingID) {
+                Button { pause(); showRecording = true } label: { InkLinkLabel(title: "Original recording", small: true) }
+                    .buttonStyle(.inkLink)
             }
             EpisodeErrorLine()
             Button(listening ? "PAUSE LISTENING" : "KEEP TALKING") {
                 if listening { Task { await finishListening() } } else { Task { await begin() } }
             }
-            .font(.system(size: 11, design: .monospaced)).tracking(1.3)
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .buttonStyle(.inkSecondary)
             .disabled(starting || speech.isFinishing || store.pendingWalkSave != nil)
             Button(store.isSavingWalk ? "SAVING YOUR REFLECTION…" : store.pendingWalkSave != nil ? "RETRY SAVE" : reviewingWords ? "SEND THESE WORDS & REFLECT" : "FINISH & REVIEW") {
                 let wasListening = listening
@@ -128,13 +131,13 @@ struct WalkReflectionView: View {
                     else { await save(audioOnly: false) }
                 }
             }
-            .buttonStyle(EpisodeButtonStyle())
+            .buttonStyle(.inkPrimary)
             .disabled(store.isSavingWalk || speech.isFinishing || (!listening && !store.voiceArchive.hasAudio(store.walkRecordingID)
                 && store.walkDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             .accessibilityIdentifier("episode.finishWalk")
             if !listening, store.pendingWalkSave == nil, store.voiceArchive.hasAudio(store.walkRecordingID), store.voiceArchive.recording(store.walkRecordingID)?.macProcessing != true {
-                Button("SAVE AUDIO ONLY") { Task { await save(audioOnly: true) } }
-                    .font(.system(size: 11, design: .monospaced)).frame(minHeight: 44)
+                Button("Save audio only") { Task { await save(audioOnly: true) } }
+                    .buttonStyle(.inkQuiet)
                     .accessibilityIdentifier("walk.saveAudioOnly")
             }
             }
@@ -208,6 +211,7 @@ struct WalkReflectionView: View {
                     : store.walkPrompt.strippedEmojis)
                 : "Stay with the thought. Tap Keep talking when you're ready.",
             note: listeningNote,
+            noteIsError: speech.lastError != nil,
             close: { pause(); store.pauseEpisodeWalk(); store.showWalk = false },
             controls: { episodeControls }
         )
@@ -254,10 +258,7 @@ struct WalkReflectionView: View {
                 Button(listening ? "PAUSE" : "KEEP TALKING") {
                     if listening { Task { await finishListening() } } else { Task { await begin() } }
                 }
-                .font(.system(size: 10, design: .monospaced)).tracking(1.2)
-                .foregroundStyle(Theme.inkSoft)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.stroke, lineWidth: 0.9))
+                .buttonStyle(.inkSecondary)
                 .disabled(starting || speech.isFinishing || store.pendingWalkSave != nil)
                 Button(store.isSavingWalk ? "SAVING…" : store.pendingWalkSave != nil ? "RETRY SAVE" : "FINISH & REVIEW") {
                     let wasListening = listening
@@ -267,27 +268,22 @@ struct WalkReflectionView: View {
                         _ = store.finalizeVoice(store.walkRecordingID, speech: speech)
                     }
                 }
-                .font(.system(size: 11, design: .monospaced).weight(.semibold)).tracking(1.2)
-                .foregroundStyle(Theme.paper)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(Theme.ink, in: RoundedRectangle(cornerRadius: 14))
+                .buttonStyle(.inkPrimary)
                 .disabled(store.isSavingWalk || speech.isFinishing
                           || (!listening && !store.voiceArchive.hasAudio(store.walkRecordingID)))
                 .accessibilityIdentifier("episode.finishWalk")
             }
             if store.voiceArchive.hasAudio(store.walkRecordingID), !listening {
-                Button("REVIEW ORIGINAL AUDIO") { pause(); showRecording = true }
-                    .font(.system(size: 9, design: .monospaced)).tracking(1)
-                    .foregroundStyle(Theme.inkSoft).frame(minHeight: 32)
+                Button { pause(); showRecording = true } label: { InkLinkLabel(title: "Original recording", small: true) }
+                    .buttonStyle(.inkLink)
             }
         }
-        .buttonStyle(.plain)
         .disabled(store.isSavingWalk)
     }
 
     private var savedView: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("SAVED").font(.system(size: 11, design: .monospaced)).tracking(1.5)
+            InkKicker(text: "Saved")
             InkTitle(text: savedAudioOnly ? "Your recording is kept" : "Your reflection is saved", size: 30)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(savedAudioOnly ? "Your recording is kept" : "Your reflection is saved")
@@ -297,11 +293,11 @@ struct WalkReflectionView: View {
                 Text(recording.syncSummary).font(.callout).foregroundStyle(Theme.inkSoft)
                     .accessibilityIdentifier("walk.audioSaveStatus")
             }
-            if !store.voiceArchive.lastError.isEmpty { Text(store.voiceArchive.lastError).font(.caption).foregroundStyle(Theme.inkSoft) }
-            Button("REVIEW RECORDING") { showRecording = true }
-                .font(.system(size: 11, design: .monospaced)).frame(minHeight: 44)
+            InkNotice(text: store.voiceArchive.lastError, kind: .error)
+            Button { showRecording = true } label: { InkLinkLabel(title: "Original recording", small: true) }
+                .buttonStyle(.inkLink)
             Button("DONE") { store.showWalk = false; if !savedAudioOnly { store.selectedSection = .mind } }
-                .buttonStyle(EpisodeButtonStyle())
+                .buttonStyle(.inkPrimary)
         }
     }
 

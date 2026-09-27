@@ -16,6 +16,13 @@ final class AppStore {
     var gallery: [Artwork] = []
     var health: [HealthMetric] = []
 
+    // One global spend boundary, read from and written to the Mac Mini. The
+    // phone does not keep an independent preference that could lie after a
+    // reinstall or while another client changes the mode.
+    var intelligenceMode: IntelligenceModeState = .balanced
+    var intelligenceModeSaving = false
+    var intelligenceModeError = ""
+
     // Player state — real AVPlayer for backend tracks, ticker fallback for
     // sample data (see "Studio player" below)
     var nowPlaying: Track?
@@ -197,6 +204,31 @@ final class AppStore {
     func refreshContextGraph() async {
         if let fresh = await service.contextGraph() { contextGraph = fresh; contextGraphError = "" }
         else if contextGraph == nil { contextGraphError = "Your context graph could not be reached." }
+    }
+
+    func refreshIntelligenceMode() async {
+        if let fresh = await service.intelligenceMode() {
+            intelligenceMode = fresh
+            intelligenceModeError = ""
+        } else if !isMock {
+            intelligenceModeError = "The Mac Mini did not report its intelligence mode."
+        }
+    }
+
+    func setLocalIntelligence(_ enabled: Bool) async {
+        guard !intelligenceModeSaving else { return }
+        intelligenceModeSaving = true
+        intelligenceModeError = ""
+        let previous = intelligenceMode
+        intelligenceMode.mode = enabled ? "local_first" : "balanced"
+        intelligenceMode.paidModelAPIs = !enabled
+        defer { intelligenceModeSaving = false }
+        if let saved = await service.setIntelligenceMode(enabled ? "local_first" : "balanced") {
+            intelligenceMode = saved
+        } else {
+            intelligenceMode = previous
+            intelligenceModeError = "That change was not saved. Alicia kept the previous mode."
+        }
     }
     func refreshContextElevation() async {
         if let fresh = await service.contextElevation() { contextElevation = fresh }
@@ -852,6 +884,7 @@ final class AppStore {
     private var liveTimelineSeeded = false
 
     func load() async {
+        Task { await refreshPresence() }
         Task { await refreshMorningBriefing() }
         Task { await collaboration.load() }
         Task { await refreshVoiceArchive() }
@@ -967,6 +1000,7 @@ final class AppStore {
     }
 
     private func pollProactive() async {
+        await refreshPresence()
         await collaboration.load()
         await refreshEpisodeDay()
         await flushPlaybackOutbox()
@@ -1194,7 +1228,17 @@ final class AppStore {
     }
     /// Programmatic tab switching (Dialogue chips → Alicia tab).
     var selectedSection: AppSection = .us {
-        didSet { if selectedSection != .dialogue { dialogueOrigin = selectedSection } }
+        didSet {
+            if selectedSection != .dialogue { dialogueOrigin = selectedSection }
+            presenceField.enter(selectedSection)
+        }
+    }
+    /// One body behind every room, moved by her awareness (PresenceField.swift).
+    let presenceField = PresenceField()
+
+    func refreshPresence() async {
+        guard !isMock, let reading = await service.presence() else { return }
+        if reading != presenceField.awareness { presenceField.receive(reading) }
     }
     var dialogueOrigin: AppSection = .us
     var composerDrafts = ComposerDrafts()

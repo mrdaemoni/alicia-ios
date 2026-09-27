@@ -34,72 +34,106 @@ struct MindBodyOverview: View {
         return "What is helping your body feel well and your mind feel clear today?"
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("A CLEAR MIND · A HEALTHY BODY").font(.system(size: 10, design: .monospaced)).tracking(1.2)
-            HStack(alignment: .top, spacing: 20) {
+        InkSection(kicker: "A clear mind · a healthy body", spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
                 Button { store.selectedSection = .knowledge } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Mind").font(.title2)
-                        let finished = store.collaboration.state?.finishedGoals.count ?? 0
-                        Text(mindGoals.isEmpty && finished > 0 ? "\(finished) finished · ready for a next goal"
-                             : "\(mindGoals.count) active shared goal(s)").font(.caption)
-                        Text(mindGoals.first?.title ?? "Explore your knowledge").font(.subheadline).lineLimit(3)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    let finished = store.collaboration.state?.finishedGoals.count ?? 0
+                    InkLinkLabel(title: "Mind",
+                                 detail: (mindGoals.isEmpty && finished > 0 ? "\(finished) finished · ready for a next goal"
+                                          : "\(mindGoals.count) active shared goal(s)")
+                                    + " · " + (mindGoals.first?.title ?? "Explore your knowledge"))
                 }
+                .buttonStyle(.inkLink)
+                InkRule(opacity: 0.6)
                 Button { store.selectedSection = .body } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Body").font(.title2)
-                        Text("\(bodyGoals.count) active wellness goal(s)").font(.caption)
-                        Text(recorded.isEmpty ? "Log your daily rituals" : recorded.joined(separator: " · ")).font(.subheadline).lineLimit(3)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    InkLinkLabel(title: "Body",
+                                 detail: "\(bodyGoals.count) active wellness goal(s) · "
+                                    + (recorded.isEmpty ? "Log your daily rituals" : recorded.joined(separator: " · ")))
                 }
-            }.buttonStyle(.plain)
-            Divider()
+                .buttonStyle(.inkLink)
+            }
+            InkRule(opacity: 0.6)
             if let observation { Text(observation).font(.subheadline).foregroundStyle(Theme.inkSoft) }
-            if let error = store.bodyStore.error { Text(error).font(.caption).foregroundStyle(Theme.inkSoft) }
-            Text(question).font(.system(size: 21, design: .serif))
+            if let error = store.bodyStore.error { InkNotice(text: error, kind: .error) }
+            Text(question).font(InkType.subhead)
+                .fixedSize(horizontal: false, vertical: true)
             Text("A connection to explore · your experience tells us whether it fits.").font(.caption).foregroundStyle(Theme.inkSoft)
-            Button(expanded ? "Close reflection" : "Connect this to my day") { expanded.toggle(); saved = false }
-                .inkAction("connect").accessibilityIdentifier("body.connectDay")
+            InkDisclosureToggle(title: "Connect this to my day", open: expanded) { expanded.toggle(); saved = false }
+                .accessibilityIdentifier("body.connectDay")
             if expanded {
-                // These two read the tint the same way a bare Button does,
-                // and were the last sea-slate left on the surface. The
-                // segmented control below is deliberately not tinted: ink
-                // behind its selected segment would swallow the label.
-                Picker("Mind goal", selection: $mindGoalID) {
-                    Text("Today's episode / open reflection").tag("")
-                    ForEach(mindGoals) { goal in Text(goal.title).tag(goal.id) }
-                }.tint(Theme.ink)
-                Picker("Wellness goal", selection: $wellnessGoalID) {
-                    Text("My general wellbeing").tag("")
-                    ForEach(bodyGoals) { goal in Text(goal.text).tag(goal.goal_id) }
-                }.tint(Theme.ink)
-                Picker("Does this connection fit?", selection: $verdict) {
-                    Text("Choose").tag(""); Text("Fits").tag("Fits")
-                    Text("Not sure").tag("Not sure"); Text("Doesn't fit").tag("Doesn't fit")
-                }.pickerStyle(.segmented)
-                Text("What did you notice? (optional)").font(.caption)
-                TextEditor(text: $note)
-                    .frame(minHeight: 110)
-                    .scrollContentBackground(.hidden)
-                    .padding(6)
-                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.stroke, lineWidth: 0.7))
-                    .accessibilityLabel("What did you notice?")
-                    .accessibilityIdentifier("body.reflection")
-                Button(saving ? "Saving…" : "Keep this reflection") {
-                    var event = BodyEvent(kind: "reflection")
-                    event.text = [verdict, note].filter { !$0.isEmpty }.joined(separator: " — ")
-                    event.criterion = [observation, question].compactMap { $0 }.joined(separator: "\n")
-                    event.goal_id = wellnessGoalID; event.mind_goal_id = mindGoalID
-                    event.episode_id = store.episodeDay?.episode?.id ?? ""
-                    saving = true
-                    Task { saved = await store.bodyStore.capture(event); saving = false; if saved { note = ""; verdict = "" } }
-                }.inkAction("keep").disabled(saving || (verdict.isEmpty && note.isEmpty) || note.count > 3900)
-                if saved { Text("Saved on this phone" + (store.bodyStore.pendingIDs.isEmpty ? " and with Alicia." : "; waiting to sync.")).font(.caption) }
-                Text("This reflection stays in your private Body record, linked to the selected goals and episode.").font(.caption)
+                HStack(alignment: .top, spacing: 12) {
+                    Rectangle().fill(Theme.stroke).frame(width: 0.7)
+                    VStack(alignment: .leading, spacing: 14) { reflection }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .foregroundStyle(Theme.ink)
         .accessibilityElement(children: .contain)
+    }
+
+    /// The private reflection: which goals it bears on, whether the
+    /// connection fits (chips — choosing, not doing), his words, and keep.
+    @ViewBuilder private var reflection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            InkKicker(text: "Mind goal")
+            choiceRow {
+                WorkReviewChoice(title: "Today's episode / open reflection", selected: mindGoalID.isEmpty, compact: true) { mindGoalID = "" }
+                ForEach(mindGoals) { goal in
+                    WorkReviewChoice(title: goal.title.strippedEmojis, selected: mindGoalID == goal.id, compact: true) { mindGoalID = goal.id }
+                }
+            }
+        }
+        VStack(alignment: .leading, spacing: 8) {
+            InkKicker(text: "Wellness goal")
+            choiceRow {
+                WorkReviewChoice(title: "My general wellbeing", selected: wellnessGoalID.isEmpty, compact: true) { wellnessGoalID = "" }
+                ForEach(bodyGoals) { goal in
+                    WorkReviewChoice(title: goal.text, selected: wellnessGoalID == goal.goal_id, compact: true) { wellnessGoalID = goal.goal_id }
+                }
+            }
+        }
+        VStack(alignment: .leading, spacing: 8) {
+            InkKicker(text: "Does this connection fit?")
+            // Tapping the chosen answer again returns to "not chosen", as
+            // the old segmented control's "Choose" did.
+            HStack(spacing: 8) {
+                ForEach(["Fits", "Not sure", "Doesn't fit"], id: \.self) { option in
+                    WorkReviewChoice(title: option, selected: verdict == option, compact: true) {
+                        verdict = verdict == option ? "" : option
+                    }
+                }
+            }
+        }
+        VStack(alignment: .leading, spacing: 8) {
+            InkKicker(text: "What did you notice? (optional)")
+            TextEditor(text: $note)
+                .scrollContentBackground(.hidden)
+                .inkField(minHeight: 110)
+                .accessibilityLabel("What did you notice?")
+                .accessibilityIdentifier("body.reflection")
+        }
+        Button(saving ? "Saving…" : "Keep this reflection") {
+            var event = BodyEvent(kind: "reflection")
+            event.text = [verdict, note].filter { !$0.isEmpty }.joined(separator: " — ")
+            event.criterion = [observation, question].compactMap { $0 }.joined(separator: "\n")
+            event.goal_id = wellnessGoalID; event.mind_goal_id = mindGoalID
+            event.episode_id = store.episodeDay?.episode?.id ?? ""
+            saving = true
+            Task { saved = await store.bodyStore.capture(event); saving = false; if saved { note = ""; verdict = "" } }
+        }
+        .buttonStyle(.inkPrimary)
+        .disabled(saving || (verdict.isEmpty && note.isEmpty) || note.count > 3900)
+        if saved {
+            InkNotice(text: "Saved on this phone" + (store.bodyStore.pendingIDs.isEmpty ? " and with Alicia." : "; waiting to sync."), kind: .success)
+        }
+        Text("This reflection stays in your private Body record, linked to the selected goals and episode.")
+            .font(.caption).foregroundStyle(Theme.inkSoft)
+    }
+
+    private func choiceRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) { content() }
+        }
     }
 }

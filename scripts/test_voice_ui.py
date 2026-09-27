@@ -76,7 +76,7 @@ final class ContextUITests: XCTestCase {
   let app=XCUIApplication();app.launchArguments=["--voice-evidence-preview","--voice-save-preview","--episode-day-preview","--episode-microphone-on"];app.launch()
   let mic=app.descendants(matching:.any).matching(identifier:"walk.microphoneState").firstMatch
   XCTAssertTrue(mic.waitForExistence(timeout:10))
-  XCTAssertTrue(mic.label.contains("Microphone on"))
+  XCTAssertTrue(mic.label.lowercased().contains("microphone on"),"Actual microphone accessibility label: \(mic.label)")
   capture("walk-microphone-on-preview",app:app)
  }
  func testOriginalVoiceReviewCorrectionAndDelete() {
@@ -98,9 +98,9 @@ final class ContextUITests: XCTestCase {
   capture("voice-correction-with-keyboard",app:app)
   let save=app.buttons["SAVE CORRECTION"];reveal(save,app:app);XCTAssertTrue(save.isHittable);save.tap()
   XCTAssertTrue(app.staticTexts["Correction kept. Sync status shows whether it reached Alicia."].waitForExistence(timeout:10))
-  let delete=app.buttons["DELETE AUDIO"];reveal(delete,app:app,up:false);XCTAssertTrue(delete.isHittable);delete.tap()
+  let delete=app.buttons["DELETE AUDIO"];reveal(delete,app:app);XCTAssertTrue(delete.isHittable);delete.tap()
   let confirm=app.buttons["Delete original audio"];XCTAssertTrue(confirm.waitForExistence(timeout:5));confirm.tap()
-  XCTAssertTrue(app.staticTexts["Audio deleted on this phone. Deletion on the Mac is pending; tap Sync."].waitForExistence(timeout:10))
+  XCTAssertTrue(app.staticTexts["Audio deleted on this phone. Deletion on the Mac is pending; tap Check your Mac."].waitForExistence(timeout:10))
   capture("original-audio-deleted-words-kept",app:app)
  }
 }

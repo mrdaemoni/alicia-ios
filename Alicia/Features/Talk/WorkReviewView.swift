@@ -54,7 +54,7 @@ struct GoalWorkProgress: View {
                     answered: progress.reduce(0) { $0 + $1.answered }))
             }
             Text(goal.status == "completed" ? "Goal completed · marked by you" : goal.status == "paused" ? "Goal paused" : "Goal in progress")
-                .font(.caption.monospaced()).accessibilityIdentifier("workReview.goalStatus")
+                .font(InkType.meta.weight(.semibold)).accessibilityIdentifier("workReview.goalStatus")
             Text(agreements.isEmpty ? "No agreed steps yet. You decide what finishing looks like."
                  : "\(complete) of \(agreements.count) agreed steps completed · based on your outcome reports")
                 .font(.caption).foregroundStyle(Theme.inkSoft)
@@ -77,8 +77,8 @@ struct CollaborationResultView: View {
                     .padding(22)
             }
             .task { if let sectionID { scroll.scrollTo(sectionID, anchor: .top) } }
-        }.background(Theme.paper).foregroundStyle(Theme.ink)
-            .navigationTitle("Prepared work").navigationBarTitleDisplayMode(.inline)
+        }.background(Theme.paper).foregroundStyle(Theme.ink).tint(Theme.ink)
+            .inkPushedPage("Prepared work")
             .scrollDismissesKeyboard(.interactively)
     }
 }
@@ -89,26 +89,27 @@ struct WorkReviewContent: View {
     var available = true
     var requestedSectionID: String? = nil
     var jump: ((String) -> Void)? = nil
-    @State private var showHidden = false
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Text(result.title).font(.title2)
-            Text(result.status == "blocked" ? "Blocked · your input may help" : "Prepared by Alicia · awaiting your review")
-                .font(.caption).foregroundStyle(Theme.inkSoft)
-            if let goal = store.collaboration.state?.goal(for: result) {
-                Text("FOR · " + goal.title).font(.caption.monospaced())
+            VStack(alignment: .leading, spacing: 8) {
+                if let goal = store.collaboration.state?.goal(for: result) {
+                    InkKicker(text: "For · " + goal.title)
+                }
+                Text(result.title).font(InkType.subhead)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(result.status == "blocked" ? "Blocked · your input may help" : "Prepared by Alicia · awaiting your review")
+                    .font(InkType.meta).foregroundStyle(Theme.inkSoft)
             }
             if !available {
-                Text("This passage is unavailable in the current work. Its original text and your draft stay here. Return to Together to refresh the goal.")
-                    .font(.callout).foregroundStyle(Theme.rose)
+                InkNotice(text: "This passage is unavailable in the current work. Its original text and your draft stay here. Return to Together to refresh the goal.", kind: .error)
             }
             if let progress = result.review_progress { WorkReviewMeter(progress: progress) }
             if let jump, let sections = result.review_sections, sections.filter({ $0.kind == "question" }).count > 1 {
-                Menu("Jump to a question") {
+                Menu {
                     ForEach(sections.filter { $0.kind == "question" && !$0.review.hidden }) { section in
                         Button(section.title) { jump(section.id) }
                     }
-                }.frame(minHeight: 44)
+                } label: { InkMenuLabel(title: "Jump to a question") }
             }
             Text("Mark what matters, or answer in your own words.")
                 .font(.callout).foregroundStyle(Theme.inkSoft)
@@ -120,30 +121,45 @@ struct WorkReviewContent: View {
                 }
                 let hidden = sections.filter { $0.review.hidden }
                 if !hidden.isEmpty {
-                    DisclosureGroup("Set aside · \(hidden.count)", isExpanded: $showHidden) {
+                    // Opens by itself when he arrived for a piece he had set aside.
+                    InkDisclosure("Set aside · \(hidden.count)",
+                                  initiallyOpen: requestedSectionID.map { id in hidden.contains { $0.id == id } } ?? false) {
                         ForEach(hidden) { section in
                             WorkReviewCard(result: result, section: section, available: available).id(section.id)
                         }
                     }
                 }
             } else {
-                Text(result.body).textSelection(.enabled)
-                Text("Section review is unavailable for this version. Refresh Together to check for an update.")
-                    .font(.caption).foregroundStyle(Theme.inkSoft)
+                Text(result.body).font(InkType.body).textSelection(.enabled)
+                InkNotice(text: "Section review is unavailable for this version. Refresh Together to check for an update.")
             }
             if !result.evidence.isEmpty {
-                Divider()
-                Text("What this draws on").font(.title3)
-                ForEach(result.evidence) { evidence in
-                    NavigationLink(evidence.title) { CollaborationEvidenceView(evidence: evidence, resultID: result.id) }
-                        .frame(minHeight: 44)
+                InkSection(kicker: "What this draws on", spacing: 4) {
+                    ForEach(Array(result.evidence.enumerated()), id: \.element.id) { index, evidence in
+                        if index > 0 { InkRule(opacity: 0.6) }
+                        NavigationLink { CollaborationEvidenceView(evidence: evidence, resultID: result.id) } label: {
+                            InkLinkLabel(title: evidence.title)
+                        }.buttonStyle(.inkLink)
+                    }
                 }
             }
-        }.task {
-            if let requestedSectionID, result.review_sections?.first(where: { $0.id == requestedSectionID })?.review.hidden == true {
-                showHidden = true
-            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A Menu's label drawn as a quiet action (a Menu takes no ButtonStyle): mono
+/// capitals with her underline, the same face as `.inkQuiet`.
+private struct InkMenuLabel: View {
+    let title: String
+    var body: some View {
+        Text(title.uppercased())
+            .font(InkType.kicker.weight(.semibold)).tracking(1.6)
+            .foregroundStyle(Theme.ink)
+            .inkUnderlined(seed: "quiet", color: Theme.ink.opacity(0.7))
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel(title)
     }
 }
 
@@ -161,13 +177,17 @@ private struct WorkReviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
-                Text(section.kind == "question" ? "A QUESTION FOR YOU" : "A PIECE TO CONSIDER")
-                    .font(.caption.monospaced()).foregroundStyle(Theme.inkSoft)
+                InkKicker(text: section.kind == "question" ? "A question for you" : "A piece to consider")
                 Spacer(minLength: 8)
-                if section.review.salient { Text("Important").font(.caption).italic() }
+                if section.review.salient {
+                    // Status, not a control: a meta badge, not the chip's word.
+                    Text("Marked important").font(InkType.meta).italic().foregroundStyle(Theme.inkSoft)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .overlay(Capsule().stroke(Theme.stroke, lineWidth: 0.7))
+                }
             }
             Text(section.text.trimmingCharacters(in: .whitespacesAndNewlines))
-                .font(.system(.body, design: .serif)).textSelection(.enabled)
+                .font(InkType.body).textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
             if !section.review.edited_text.isEmpty {
                 savedWords("Your edit", text: section.review.edited_text)
@@ -175,15 +195,18 @@ private struct WorkReviewCard: View {
             if !section.review.answer.isEmpty { savedWords("Your answer", text: section.review.answer) }
             if !section.review.comment.isEmpty { savedWords("Your note", text: section.review.comment) }
             if section.review.hidden {
-                WorkReviewChoice(title: "Restore this piece") { send("restore") }.disabled(!canEdit)
+                Button("Restore this piece") { send("restore") }
+                    .buttonStyle(.inkSecondaryCompact)
+                    .accessibilityLabel("Restore this piece")
+                    .disabled(!canEdit)
             } else {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 7) { choices }
                     VStack(alignment: .leading, spacing: 7) { choices }
                 }.disabled(!canEdit || editor != nil)
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 16) { writingActions }
-                    VStack(alignment: .leading, spacing: 5) { writingActions }
+                    HStack(spacing: 10) { writingActions }
+                    VStack(alignment: .leading, spacing: 8) { writingActions }
                 }.disabled(!canEdit || editor != nil)
                 if let editor {
                     WorkReviewEditor(resultID: result.id, section: section, mode: editor,
@@ -191,20 +214,20 @@ private struct WorkReviewCard: View {
                         .id(key + "." + editor)
                 }
                 if goal != nil {
-                    Button("Discuss this in Dialogue") { discuss() }
-                        .font(.callout).underline().frame(minHeight: 44)
+                    Button { discuss() } label: { InkLinkLabel(title: "Discuss this in Dialogue", small: true) }
+                        .buttonStyle(.inkLink)
                         .disabled(!available || editor != nil || !shared.canEdit)
                         .accessibilityIdentifier("workReview.discuss." + section.id)
                 }
             }
             if lastRequestID == shared.lastConfirmedID, !lastRequestID.isEmpty {
-                Text("Saved for Alicia's next revision.").font(.caption).accessibilityIdentifier("workReview.saved." + section.id)
+                InkNotice(text: "Saved for Alicia's next revision.", kind: .success)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("workReview.saved." + section.id)
             }
         }
-        .padding(16)
-        .background(Theme.ink.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.stroke, lineWidth: 0.7))
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 16, radius: 16)
         .task { if editor == nil { editor = ["answer", "edit", "comment"].first { shared.draft(key + "." + $0) != nil } } }
     }
     @ViewBuilder private var choices: some View {
@@ -220,8 +243,11 @@ private struct WorkReviewCard: View {
     }
     @ViewBuilder private var writingActions: some View {
         Button(section.review.answer.isEmpty ? "Answer this" : "Edit my answer") { editor = "answer" }
+            .buttonStyle(.inkSecondaryCompact)
             .accessibilityIdentifier("workReview.answer." + section.id)
-        Button("Edit this") { editor = "edit" }.accessibilityIdentifier("workReview.edit." + section.id)
+        Button("Edit this") { editor = "edit" }
+            .buttonStyle(.inkSecondaryCompact)
+            .accessibilityIdentifier("workReview.edit." + section.id)
         Menu {
             Button("Add a note") { editor = "comment" }
             Button("Set aside") { send("hide") }
@@ -229,13 +255,13 @@ private struct WorkReviewCard: View {
             Button("Read this aloud") {
                 store.readAloud(Readable(title: section.title, body: section.text, kind: "collaboration_review"))
             }
-        } label: { Text("More").frame(minHeight: 44) }
+        } label: { InkMenuLabel(title: "More") }
             .accessibilityIdentifier("workReview.more." + section.id)
     }
     private func savedWords(_ label: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.caption.monospaced())
-            Text(text).textSelection(.enabled)
+            Text(label).font(InkType.meta.weight(.semibold)).foregroundStyle(Theme.inkSoft)
+            Text(text).font(InkType.body).textSelection(.enabled)
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.paper, in: RoundedRectangle(cornerRadius: 8))
     }
@@ -276,25 +302,29 @@ private struct WorkReviewEditor: View {
     private var label: String { mode == "edit" ? "Your version" : mode == "answer" ? "Your answer" : "Your note" }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(label).font(.headline)
+            Text(label).font(InkType.linkSmall.weight(.semibold))
             Text(mode == "edit" ? "The original stays above. Your version is saved separately." : "Saved with the exact passage above, for this goal.")
-                .font(.caption).foregroundStyle(Theme.inkSoft)
+                .font(InkType.meta).foregroundStyle(Theme.inkSoft)
             TextField(label, text: $text, axis: .vertical).lineLimit(4...16)
-                .focused($writing).padding(12).background(Theme.paper, in: RoundedRectangle(cornerRadius: 8))
+                .focused($writing).inkField()
                 .disabled(!available || !shared.canEdit)
                 .accessibilityIdentifier("workReview.editor." + section.id)
-            if text.unicodeScalars.count > 8000 { Text("Please keep this under 8,000 characters. Your full draft is retained.").font(.caption) }
+            if text.unicodeScalars.count > 8000 { InkNotice(text: "Please keep this under 8,000 characters. Your full draft is retained.", kind: .error) }
             HStack(spacing: 18) {
-                WorkReviewChoice(title: "Save " + label.lowercased()) { save() }
+                Button("Save " + label.lowercased()) { save() }
+                    .buttonStyle(.inkPrimary)
                     .disabled(!available || !shared.canEdit || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.unicodeScalars.count > 8000)
                     .accessibilityIdentifier("workReview.save." + section.id)
-                Button("Keep draft") { writing = false; persist(); close() }.frame(minHeight: 44)
+                Button("Keep draft") { writing = false; persist(); close() }
+                    .buttonStyle(.inkQuiet)
+                    .accessibilityLabel("Keep draft")
             }
             CollaborationSaveStatus()
             if section.review.revision != revision {
-                Text("This piece has newer feedback. Your words remain unchanged.").font(.caption)
+                InkNotice(text: "This piece has newer feedback. Your words remain unchanged.")
                 Button("Use current review version") { revision = section.review.revision; requestID = ""; persist() }
-                    .frame(minHeight: 44).disabled(!shared.canEdit)
+                    .buttonStyle(.inkQuiet)
+                    .disabled(!shared.canEdit)
             }
         }.padding(.vertical, 6)
             .task {
@@ -313,7 +343,7 @@ private struct WorkReviewEditor: View {
             }
             .toolbar { ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("OK") { writing = false }.font(.callout).accessibilityLabel("Done writing")
+                Button("Done writing") { writing = false }
             } }
     }
     private func persist() {

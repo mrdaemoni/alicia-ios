@@ -8,23 +8,22 @@ struct VoiceEnrichmentView: View {
     @State private var error = ""
     @State private var olderPending: [VoiceEnrichmentFeedback] = []
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("What Alicia heard").font(.system(size: 24, design: .serif))
-                Spacer()
-                Button("Refresh") { Task { await refresh() } }.disabled(loading)
-            }
+        InkSection(kicker: "What Alicia heard", spacing: 14, trailing: {
+            Button(loading ? "Checking…" : "Check your Mac") { Task { await refresh() } }
+                .buttonStyle(.inkQuiet).disabled(loading)
+        }) {
             Text("Interpretations from your recording. These do not submit a message, change your words, or commit you to a goal.")
-                .font(.caption).foregroundStyle(Theme.inkSoft)
+                .font(InkType.meta).foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
             if let enrichment {
                 Text(enrichment.analysis_state.replacingOccurrences(of: "_", with: " ").capitalized)
-                    .font(.caption.monospaced())
-                if let reason = enrichment.stale_reason ?? enrichment.ineligible_reason, !reason.isEmpty { Text(reason).font(.caption) }
+                    .font(InkType.meta).foregroundStyle(Theme.inkSoft)
+                if let reason = enrichment.stale_reason ?? enrichment.ineligible_reason, !reason.isEmpty { InkNotice(text: reason, kind: .info) }
                 if let coverage = enrichment.coverage {
                     Text("\(Int(coverage.covered_seconds ?? 0)) of \(Int(coverage.recorded_seconds ?? 0)) seconds covered · ending \(coverage.tail_covered == true ? "included" : "not verified")")
-                        .font(.caption)
+                        .font(InkType.meta).foregroundStyle(Theme.inkSoft)
                 }
-                ForEach(enrichment.notes ?? [], id: \.self) { Text($0).font(.callout).italic() }
+                ForEach(enrichment.notes ?? [], id: \.self) { Text($0.strippedEmojis).font(.callout).italic() }
                 if let analysisID = enrichment.analysis_id {
                     ForEach(enrichment.insights ?? []) { insight in
                         VoiceInsightCard(recordingID: recordingID, analysisID: analysisID, itemID: insight.id,
@@ -45,7 +44,7 @@ struct VoiceEnrichmentView: View {
                             .id(analysisID + ":" + answer.id)
                     }
                 }
-                DisclosureGroup("Analysis passes") {
+                InkDisclosure("Analysis passes") {
                     ForEach(Array((enrichment.pass_receipts ?? []).enumerated()), id: \.offset) { _, receipt in
                         VStack(alignment: .leading, spacing: 4) {
                             Text((receipt.pass ?? "Pass").capitalized).font(.callout)
@@ -54,11 +53,11 @@ struct VoiceEnrichmentView: View {
                         }.padding(.vertical, 4)
                     }
                 }
-            } else if !loading { Text("No analysis is available yet.").font(.callout) }
+            } else if !loading { InkNotice(text: "No analysis is available yet.", kind: .info) }
             ForEach(olderPending, id: \.request_id) { feedback in
                 EarlierVoiceFeedback(feedback: feedback)
             }
-            if !error.isEmpty { Text(error).font(.caption) }
+            InkNotice(text: error, kind: .error)
         }
         .task(id: recordingID) { await refresh() }
     }
@@ -91,15 +90,17 @@ private struct VoiceInsightCard: View {
     private var key: String { "alicia.voiceEnrichmentFeedback." + recordingID + "." + analysisID + "." + itemID }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if provisional { Text("POSSIBLE ANSWER · NOT YET YOUR AGREEMENT").font(.caption2.monospaced()) }
-            Text(text).font(.system(size: 20, design: .serif)).textSelection(.enabled)
+            if provisional { InkKicker(text: "Possible answer · not yet your agreement") }
+            Text(text.strippedEmojis).font(.system(size: 20, design: .serif)).textSelection(.enabled)
             if !uncertainty.isEmpty { Text(uncertainty).font(.caption).italic() }
             ForEach(goalIDs, id: \.self) { goalID in
                 if let goal = store.collaboration.state?.goals.first(where: { $0.id == goalID }) {
-                    Button("With our goal · " + goal.title) { goalRoute = CollaborationRoute(goalID: goalID) }.font(.callout)
+                    Button { goalRoute = CollaborationRoute(goalID: goalID) } label: {
+                        InkLinkLabel(title: goal.title, detail: "With our goal", small: true)
+                    }.buttonStyle(.inkLink)
                 }
             }
-            DisclosureGroup("From the recording and context") {
+            InkDisclosure("From the recording and context") {
                 ForEach(Array(evidence.enumerated()), id: \.offset) { _, source in
                     VStack(alignment: .leading, spacing: 5) {
                         if let quote = source.quote { Text(quote).font(.callout).textSelection(.enabled) }
@@ -109,17 +110,21 @@ private struct VoiceInsightCard: View {
                 }
             }
             TextField("Add precision, if you want", text: $note, axis: .vertical)
-                .lineLimit(2...6).disabled(pending != nil || !canReview)
+                .lineLimit(2...6).inkField().disabled(pending != nil || !canReview)
             if pending == nil {
+                // These chips save on tap; say so, so they don't read as toggles.
+                Text("Tap one to save").font(InkType.meta).foregroundStyle(Theme.inkSoft)
                 ViewThatFits {
-                    HStack { feedbackButtons }
-                    VStack(alignment: .leading) { feedbackButtons }
+                    HStack(spacing: 8) { feedbackButtons }
+                    VStack(alignment: .leading, spacing: 8) { feedbackButtons }
                 }.disabled(!canReview || saving)
             } else {
-                Button(saving ? "Saving…" : "Retry this feedback") { Task { await send() } }.disabled(saving)
+                Button(saving ? "Saving…" : "Try again") { Task { await send() } }
+                    .buttonStyle(.inkQuiet).disabled(saving)
             }
-            if !status.isEmpty { Text(status).font(.caption) }
-        }.padding(.vertical, 14).overlay(alignment: .bottom) { Theme.stroke.frame(height: 0.7) }
+            InkNotice(text: status, kind: status.hasPrefix("Feedback saved") ? .success
+                      : status.hasPrefix("This exact feedback") ? .info : .error)
+        }.padding(.vertical, 14).overlay(alignment: .bottom) { InkRule(opacity: 0.6) }
         .sheet(item: $goalRoute) { route in NavigationStack { CollaborationView(target: route) } }
         .task(id: key) {
             note = ""; pending = nil; saving = false; status = ""
@@ -129,12 +134,12 @@ private struct VoiceInsightCard: View {
     }
     private var feedbackButtons: some View {
         ForEach([("Right", "right"), ("Not right", "wrong"), ("Salient", "salient"), ("Clarify", "clarify")], id: \.1) { label, verdict in
-            Button(label) {
+            WorkReviewChoice(title: label, compact: true) {
                 let mutation = VoiceEnrichmentFeedback(originalText: text, recording_id: recordingID, analysis_id: analysisID, item_id: itemID,
                                                       verdict: verdict, text: note)
                 mutation.persist(); pending = mutation
                 Task { await send() }
-            }.font(.callout).frame(minHeight: 44)
+            }
         }
     }
     private func send() async {
@@ -155,12 +160,12 @@ private struct EarlierVoiceFeedback: View {
     @State private var confirmed = false
     @State private var status = "An earlier analysis has feedback waiting for confirmation. It has not been moved to this analysis."
     var body: some View {
-        DisclosureGroup("Earlier feedback · " + feedback.verdict) {
+        InkDisclosure("Earlier feedback · " + feedback.verdict) {
             Text(feedback.originalText ?? "Earlier item: " + feedback.item_id).font(.callout)
             if !feedback.text.isEmpty { Text(feedback.text).font(.callout).italic() }
-            Text(status).font(.caption)
+            InkNotice(text: status, kind: confirmed ? .success : status.hasPrefix("An earlier analysis") ? .info : .error)
             if !confirmed {
-                Button(saving ? "Saving…" : "Retry the original feedback") {
+                Button(saving ? "Saving…" : "Try again") {
                     saving = true
                     Task {
                         defer { saving = false }
@@ -169,8 +174,8 @@ private struct EarlierVoiceFeedback: View {
                         UserDefaults.standard.removeObject(forKey: feedback.storageKey)
                         confirmed = true; status = "Original feedback confirmed."
                     }
-                }.disabled(saving).frame(minHeight: 44)
+                }.buttonStyle(.inkQuiet).disabled(saving)
             }
-        }.font(.caption)
+        }
     }
 }

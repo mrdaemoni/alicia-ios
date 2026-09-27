@@ -10,6 +10,7 @@ choice = section('    func chooseEpisode(', '    func loadEpisodeDay(')
 walk = section('    func openWalk(', '    func beginWalkRecording(')
 flush = section('    private func flushPlaybackOutbox()', '    // MARK: playlists')
 models = (root/'Alicia/Core/EpisodeDay.swift').read_text().split('#if DEBUG')[0]
+surface = (root/'Alicia/Core/SurfaceContext.swift').read_text().split('/// Separate durable drafts')[0]
 program = r'''
 import Foundation
 struct Track { var label: String?; var title: String }
@@ -30,7 +31,7 @@ struct VoiceArchiveStub { func hasAudio(_ id:String)->Bool { false } }
  var playbackFlushing=false, episodeChoiceNeedsRefresh=false
  var episodeDay: EpisodeDay?
  var playbackOutbox:[[String:Any]]=[]
- var walkEpisodeID="", walkDraft="", walkPrompt="", walkRequestID="initial", episodeError=""
+ var walkEpisodeID="", walkDraft="", walkPrompt="", walkRequestID="initial", walkSurface="", episodeError=""
  var pendingWalkSave:[String:String]?
  var showWalk=false
  func noteContextActivity() {}
@@ -42,7 +43,7 @@ __WALK__
 }
 @main struct Checks {
  @MainActor static func main() async {
-  let keys=["alicia.playbackOutbox","alicia.episodeWalkDrafts","alicia.walkEpisodeID","alicia.walkRequestID","alicia.rejectedEpisodeReceipts"]
+  let keys=["alicia.playbackOutbox","alicia.episodeWalkDrafts","alicia.walkEpisodeID","alicia.walkRequestID","alicia.walkSurface","alicia.rejectedEpisodeReceipts"]
   for key in keys { UserDefaults.standard.removeObject(forKey:key) }
   defer { for key in keys { UserDefaults.standard.removeObject(forKey:key) } }
   let h=Harness()
@@ -112,7 +113,7 @@ __WALK__
 with tempfile.TemporaryDirectory(prefix='alicia-episode-checks-') as tmp:
     code=Path(tmp)/'Checks.swift';binary=Path(tmp)/'checks'
     receipt = (root/'Alicia/Core/EpisodeContinuation.swift').read_text().split('/// Continuation')[0]
-    code.write_text(receipt+models+program)
+    code.write_text(receipt+models+surface+program)
     env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
     subprocess.run(['xcrun','swiftc','-parse-as-library',str(code),'-o',str(binary)],env=env,check=True)
     subprocess.run([str(binary)],check=True)

@@ -6,6 +6,11 @@ struct BodyView: View {
     @State private var editor: BodyEvent?
     @State private var search = ""
     @State private var ask = false
+
+    private var conflicted: [BodyEvent] {
+        store.bodyStore.local.filter { store.bodyStore.conflictedIDs.contains($0.id) }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -15,62 +20,82 @@ struct BodyView: View {
                         .font(.system(size: 22, design: .serif))
                     InkTabs(items: ["Today", "Goals", "Evidence"], selection: $segment)
                     BodyStatus()
-                    Button("Ask Alicia about my wellbeing") { ask = true }.inkAction("ask")
+                    // Conflicts and captures waiting to sync belong to the
+                    // whole surface, not to one segment: one section, at the
+                    // top, instead of captions trailing every segment.
+                    if !conflicted.isEmpty || !store.bodyStore.pendingIDs.isEmpty {
+                        InkSection(kicker: "Needs attention", rule: false) {
+                            ForEach(conflicted) { event in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Not accepted by Alicia: " + (event.text.isEmpty ? event.ritual : event.text)).font(.subheadline)
+                                    Text("Discard this rejected edit to edit the current version. The original capture remains in your local files.")
+                                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                                    Button("Discard rejected edit") { store.bodyStore.discardRejected(event) }
+                                        .buttonStyle(.inkDestructiveCompact)
+                                }
+                                .card(padding: 16, radius: 16)
+                            }
+                            if !store.bodyStore.pendingIDs.isEmpty {
+                                InkNotice(text: "\(store.bodyStore.pendingIDs.count) capture(s) saved on this phone, awaiting Alicia.")
+                            }
+                        }
+                    }
+                    Button { ask = true } label: {
+                        InkLinkLabel(title: "Ask Alicia about my wellbeing", detail: "A private answer, from your Mac")
+                    }
+                    .buttonStyle(.inkLink)
                     if segment == 0 {
-                        RitualCaptureView()
+                        InkSection(kicker: "Daily rituals") { RitualCaptureView() }
                         // Only a bridge the backend actually accepted draws
                         // measurements. A refused one used to render this whole
                         // block anyway — "OURA · AS OF unknown" over an empty
                         // grid — which is the shape of data where there is
                         // none. BodyStatus above says what happened instead.
                         if let overview = store.bodyStore.overview, overview.status == "ready" {
-                            Text("OURA · AS OF " + (overview.as_of ?? "unknown"))
-                                .font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.inkSoft)
-                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 20) {
-                                ForEach(overview.metrics) { metric in
-                                    NavigationLink {
-                                        MetricHistory(metric: metric)
-                                    } label: {
-                                        VStack(alignment: .leading, spacing: 7) {
-                                            Text(metric.label).font(.subheadline)
-                                            Text(metric.display(metric.value)).font(.system(size: 20, design: .serif))
-                                            Text(metric.date ?? "No measurement").font(.caption).foregroundStyle(Theme.inkSoft)
-                                            Text("View history").font(.caption)
-                                                .inkUnderlined(seed: metric.id, color: Theme.ink)
-                                        }.frame(maxWidth: .infinity, minHeight: 110, alignment: .leading)
-                                    }.buttonStyle(.plain)
+                            InkSection(kicker: "Oura · as of " + (overview.as_of ?? "unknown")) {
+                                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], alignment: .leading, spacing: 12) {
+                                    ForEach(overview.metrics) { metric in
+                                        NavigationLink {
+                                            MetricHistory(metric: metric)
+                                        } label: {
+                                            // Each measurement opens its
+                                            // history: a card with her chevron.
+                                            HStack(alignment: .center, spacing: 6) {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text(metric.label).font(.subheadline).foregroundStyle(Theme.ink)
+                                                    Text(metric.display(metric.value)).font(.system(size: 20, design: .serif))
+                                                        .foregroundStyle(Theme.ink)
+                                                    Text(metric.date ?? "No measurement").font(.caption).foregroundStyle(Theme.inkSoft)
+                                                }
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                InkChevron(pointing: .right, size: 12, color: Theme.inkSoft, seed: metric.id.inkSeed)
+                                            }
+                                            .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
+                                            .card(padding: 14, radius: 16)
+                                        }
+                                        .buttonStyle(.inkLink)
+                                        .accessibilityHint("View history")
+                                    }
                                 }
                             }
                         }
                         goalSection
                     } else if segment == 1 { goalSection }
                     else {
-                        Text("Past evidence").font(.title2)
-                        Text("Reports retain their original source. An unknown date stays unknown.").font(.subheadline).foregroundStyle(Theme.inkSoft)
-                        TextField("Find a report", text: $search).textFieldStyle(.roundedBorder)
-                        ForEach((store.bodyStore.overview?.sources ?? []).filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }) { source in
-                            NavigationLink { BodySourceView(source: source) } label: {
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(source.title).font(.headline)
-                                    Text(source.category + " · " + (source.report_date ?? "Report date unknown"))
-                                        .font(.caption).foregroundStyle(Theme.inkSoft)
-                                    Text("Read evidence").font(.caption)
-                                        .inkUnderlined(seed: source.id, color: Theme.ink)
-                                }.frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
-                            }.buttonStyle(.plain)
-                            Divider()
+                        InkSection(kicker: "Past evidence") {
+                            Text("Reports retain their original source. An unknown date stays unknown.")
+                                .font(.subheadline).foregroundStyle(Theme.inkSoft)
+                            TextField("Find a report", text: $search).inkField()
+                            let sources = (store.bodyStore.overview?.sources ?? []).filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+                            ForEach(Array(sources.enumerated()), id: \.element.id) { index, source in
+                                if index > 0 { InkRule(opacity: 0.6) }
+                                NavigationLink { BodySourceView(source: source) } label: {
+                                    InkLinkLabel(title: source.title,
+                                                 detail: source.category + " · " + (source.report_date ?? "Report date unknown"))
+                                }
+                                .buttonStyle(.inkLink)
+                            }
                         }
-                    }
-                    ForEach(store.bodyStore.local.filter { store.bodyStore.conflictedIDs.contains($0.id) }) { event in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Not accepted by Alicia: " + (event.text.isEmpty ? event.ritual : event.text)).font(.subheadline)
-                            Text("Discard this rejected edit to edit the current version. The original capture remains in your local files.").font(.caption)
-                            Button("Discard rejected edit") { store.bodyStore.discardRejected(event) }.inkAction("discard", quiet: true)
-                        }
-                    }
-                    if !store.bodyStore.pendingIDs.isEmpty {
-                        Text("\(store.bodyStore.pendingIDs.count) capture(s) saved on this phone, awaiting Alicia.")
-                            .font(.caption).foregroundStyle(Theme.inkSoft)
                     }
                 }.padding(22)
             }
@@ -89,19 +114,17 @@ struct BodyView: View {
         }
     }
     private var goalSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                Text("Wellness goals").font(.title2)
-                Spacer()
-                Button("Add goal") { editor = BodyEvent(kind: "goal", goal_id: UUID().uuidString) }
-                    .inkAction("add goal").accessibilityIdentifier("body.addGoal")
-            }
+        InkSection(kicker: "Wellness goals", spacing: 14) {
             Text("Choose what better means. Measurements inform the work; you decide whether the outcome is achieved.")
                 .font(.subheadline).foregroundStyle(Theme.inkSoft)
-            if store.bodyStore.goals.isEmpty { Text("No wellness goals chosen yet.").italic() }
+            if store.bodyStore.goals.isEmpty {
+                Text("No wellness goals chosen yet.").font(InkType.body).italic().foregroundStyle(Theme.inkSoft)
+            }
+            // A goal and everything that belongs to it — its state, its
+            // measurement, its sources, its notes — sit in one card.
             ForEach(store.bodyStore.goals.filter { $0.status != "archived" }) { goal in
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(goal.text).font(.system(size: 21, design: .serif))
+                    Text(goal.text).font(InkType.subhead)
                     Text(goal.criterion).font(.subheadline)
                     Text(goal.status.capitalized + (store.bodyStore.pendingIDs.contains(goal.id) ? " · Waiting to sync" : " · Saved with Alicia"))
                         .font(.caption).foregroundStyle(Theme.inkSoft)
@@ -109,32 +132,33 @@ struct BodyView: View {
                         Text(metric.label + ": " + metric.display(metric.value) + " · " + (metric.date ?? "date unknown"))
                             .font(.caption)
                     }
-                    HStack {
-                        Button("Review or edit") { editor = goal }.inkAction("review " + goal.goal_id)
-                            .disabled(store.bodyStore.pendingIDs.contains(goal.id))
-                        Spacer()
-                        Text("\(goal.source_ids.count) source(s)").font(.caption)
-                    }
-                    ForEach(goal.source_ids, id: \.self) { id in
-                        if let source = store.bodyStore.overview?.sources.first(where: { $0.id == id }) {
-                            // The last tinted control on the surface. Plain
-                            // alone would leave it indistinguishable from the
-                            // caption beside it, so it takes this file's own
-                            // affordance — the underline already under "View
-                            // history" and "Read evidence".
-                            NavigationLink(source.title) { BodySourceView(source: source) }
-                                .buttonStyle(.plain).font(.caption)
-                                .foregroundStyle(Theme.ink)
-                                .inkUnderlined(seed: source.id, color: Theme.ink)
-                        }
-                    }
                     let notes = store.bodyStore.events.filter { $0.kind == "reflection" && $0.goal_id == goal.goal_id }
                     ForEach(notes.suffix(3)) { note in
                         Text(note.local_day + " · " + note.text).font(.subheadline).italic()
                     }
+                    if !goal.source_ids.isEmpty {
+                        InkKicker(text: "\(goal.source_ids.count) source(s)").padding(.top, 4)
+                    }
+                    ForEach(goal.source_ids, id: \.self) { id in
+                        if let source = store.bodyStore.overview?.sources.first(where: { $0.id == id }) {
+                            NavigationLink { BodySourceView(source: source) } label: {
+                                InkLinkLabel(title: source.title, small: true)
+                            }
+                            .buttonStyle(.inkLink)
+                        }
+                    }
+                    InkRule(opacity: 0.6)
+                    Button { editor = goal } label: { InkLinkLabel(title: "Review or edit", small: true) }
+                        .buttonStyle(.inkLink)
+                        .disabled(store.bodyStore.pendingIDs.contains(goal.id))
+                        .opacity(store.bodyStore.pendingIDs.contains(goal.id) ? 0.45 : 1)
                 }
-                Divider()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .card(padding: 16, radius: 16)
             }
+            // The same secondary compact as "Add a goal" in CollaborationSummary.
+            Button("Add goal") { editor = BodyEvent(kind: "goal", goal_id: UUID().uuidString) }
+                .buttonStyle(.inkSecondaryCompact).accessibilityIdentifier("body.addGoal")
         }
     }
 }
@@ -144,7 +168,7 @@ struct BodyStatus: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(store.isMock ? "Preview · synthetic data, not your health record" : "Private · your Mac and phone").font(.caption).foregroundStyle(Theme.inkSoft)
-            if let message = store.bodyStore.error { Text(message).font(.subheadline) }
+            if let message = store.bodyStore.error { InkNotice(text: message, kind: .error) }
             if let overview = store.bodyStore.overview, overview.status != "ready" {
                 // v39. This used to read "Oura evidence is stale" — true, and
                 // useless: it did not say how stale, why, or what would fix
@@ -171,7 +195,7 @@ struct BodyStatus: View {
                 Text(store.bodyStore.refreshing ? "Reading your private evidence…" : "Connect to your Mac to load Body.").font(.subheadline)
             }
             if store.bodyStore.error != nil || store.bodyStore.overview?.status != "ready" {
-                Button("Refresh Body") { Task { await store.bodyStore.refresh() } }.inkAction("refresh")
+                Button("Refresh Body") { Task { await store.bodyStore.refresh() } }.buttonStyle(.inkQuiet)
             }
         }
     }
@@ -181,31 +205,33 @@ struct RitualCaptureView: View {
     @Environment(AppStore.self) private var store
     @State private var saving = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Daily rituals").font(.title3)
+        VStack(alignment: .leading, spacing: 10) {
             Text("A small record of what you did today.")
                 .font(.caption).foregroundStyle(Theme.inkSoft)
-            ForEach(BodyCapture.rituals, id: \.0) { ritual in
+            ForEach(Array(BodyCapture.rituals.enumerated()), id: \.element.0) { index, ritual in
                 let done = BodyCapture.completed(ritual.0, events: store.bodyStore.events)
+                if index > 0 { InkRule(opacity: 0.6) }
                 HStack {
-                    Text(ritual.1)
+                    Text(ritual.1).font(InkType.body)
                     Spacer()
+                    // Recording is an action: a mono word in an outline. The
+                    // done state keeps the same shape and says so in words.
                     Button(done ? "Recorded · undo" : "Log it") {
                         var event = BodyEvent(kind: "ritual")
                         event.ritual = ritual.0; event.completed = !done
                         saving = true
                         Task { await store.bodyStore.capture(event); saving = false }
                     }
-                    .inkAction(ritual.0).disabled(saving).frame(minWidth: 100)
+                    .buttonStyle(.inkSecondaryCompact).disabled(saving)
                     .accessibilityIdentifier("body.ritual." + ritual.0)
                 }
-                Divider()
             }
         }
     }
 }
 
 private struct MetricHistory: View {
+    @Environment(AppStore.self) private var store
     let metric: BodyOverview.Metric
     var body: some View {
         ScrollView {
@@ -215,13 +241,17 @@ private struct MetricHistory: View {
                 Text(metric.date ?? "Measurement date unavailable").foregroundStyle(Theme.inkSoft)
                 Text("Baseline: " + metric.display(metric.baseline))
                 Text("\(metric.baseline_days ?? 0) recorded days · \(metric.baseline_from ?? "unknown") to \(metric.baseline_to ?? "unknown")").font(.caption)
-                Divider()
-                ForEach(metric.series.reversed(), id: \.date) { point in
-                    HStack { Text(point.date); Spacer(); Text(metric.display(point.value)) }
+                InkSection(kicker: "Every measurement", spacing: 8) {
+                    ForEach(metric.series.reversed(), id: \.date) { point in
+                        HStack { Text(point.date); Spacer(); Text(metric.display(point.value)) }
+                    }
                 }
-                Text("Oura observations. Differences can have several causes; these values alone do not establish one.").font(.caption)
+                Text("Oura observations. Differences can have several causes; these values alone do not establish one.")
+                    .font(.caption).foregroundStyle(Theme.inkSoft)
             }.padding(22)
-        }.background(Theme.paper)
+        }
+        .presenceBackground(.body, store: store)
+        .inkPushedPage("History")
     }
 }
 
@@ -235,60 +265,80 @@ struct BodyGoalEditor: View {
     @State private var status = "active"
     @State private var selected: Set<String> = []
     @State private var saving = false
+
+    private var canSave: Bool {
+        !(saving || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || criterion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 4000 || criterion.count > 1000)
+    }
+
+    private func save() {
+        var event = BodyEvent(kind: "goal", goal_id: original.goal_id)
+        event.previous_id = original.text.isEmpty ? "" : original.id
+        event.text = text; event.criterion = criterion; event.metric = metric
+        event.status = status; event.source_ids = selected.sorted()
+        saving = true
+        Task { let kept = await store.bodyStore.capture(event); saving = false; if kept { dismiss() } }
+    }
+
+    // One page in the app's grammar instead of a system Form: sections with
+    // kickers, fields in ink, choices as chips (the system Picker and Toggle
+    // drew their own glyphs), Save as the one primary.
     var body: some View {
         NavigationStack {
-            Form {
-                Section("What do you want to improve?") {
-                    TextEditor(text: $text).frame(minHeight: 80).accessibilityIdentifier("body.goalIntention")
-                }
-                Section("How will you recognize progress?") {
-                    TextEditor(text: $criterion).frame(minHeight: 80).accessibilityIdentifier("body.goalCriterion")
-                    Text("Use your own words. No score or streak completes a goal for you.").font(.caption)
-                }
-                Section("Evidence to follow") {
-                    Picker("Daily signal", selection: $metric) {
-                        Text("My own observations").tag("")
-                        ForEach(store.bodyStore.overview?.metrics ?? []) { item in Text(item.label).tag(item.id) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    InkSection(kicker: "What do you want to improve?", rule: false) {
+                        TextEditor(text: $text).scrollContentBackground(.hidden)
+                            .inkField(minHeight: 100).accessibilityIdentifier("body.goalIntention")
                     }
-                    DisclosureGroup("Historical sources (\(selected.count))") {
-                        ForEach(store.bodyStore.overview?.sources ?? []) { source in
-                            Toggle(source.title, isOn: Binding(get: { selected.contains(source.id) }, set: { value in
-                                if value { selected.insert(source.id) } else { selected.remove(source.id) }
-                            })).disabled(!selected.contains(source.id) && selected.count >= 20)
+                    InkSection(kicker: "How will you recognize progress?") {
+                        TextEditor(text: $criterion).scrollContentBackground(.hidden)
+                            .inkField(minHeight: 100).accessibilityIdentifier("body.goalCriterion")
+                        Text("Use your own words. No score or streak completes a goal for you.")
+                            .font(.caption).foregroundStyle(Theme.inkSoft)
+                    }
+                    InkSection(kicker: "Evidence to follow") {
+                        Text("Daily signal").font(.subheadline)
+                        FlexWrap(spacing: 8) {
+                            WorkReviewChoice(title: "My own observations", selected: metric.isEmpty) { metric = "" }
+                            ForEach(store.bodyStore.overview?.metrics ?? []) { item in
+                                WorkReviewChoice(title: item.label, selected: metric == item.id) { metric = item.id }
+                            }
+                        }
+                        InkDisclosure("Historical sources (\(selected.count))") {
+                            ForEach(store.bodyStore.overview?.sources ?? []) { source in
+                                let on = selected.contains(source.id)
+                                WorkReviewChoice(title: source.title, selected: on) {
+                                    if on { selected.remove(source.id) } else { selected.insert(source.id) }
+                                }
+                                .disabled(!on && selected.count >= 20)
+                            }
                         }
                     }
-                }
-                Section("Your assessment") {
-                    Picker("State", selection: $status) {
-                        Text("Active").tag("active"); Text("Paused").tag("paused")
-                        Text("Achieved — I confirm").tag("achieved"); Text("Archived").tag("archived")
+                    InkSection(kicker: "Your assessment") {
+                        FlexWrap(spacing: 8) {
+                            ForEach([("active", "Active"), ("paused", "Paused"), ("achieved", "Achieved — I confirm"), ("archived", "Archived")], id: \.0) { option in
+                                WorkReviewChoice(title: option.1, selected: status == option.0) { status = option.0 }
+                            }
+                        }
+                    }
+                    InkSection(kicker: "Keeping it") {
+                        Text("Private wellness work stays separate from cloud goal agents. Your previous versions are retained.")
+                            .font(.caption).foregroundStyle(Theme.inkSoft)
+                        if let error = store.bodyStore.error { InkNotice(text: error, kind: .error) }
+                        Button(saving ? "Saving…" : "Save", action: save)
+                            .buttonStyle(.inkPrimary).disabled(!canSave)
+                        Button("Cancel") { dismiss() }
+                            .buttonStyle(.inkQuiet).disabled(saving)
+                            .accessibilityLabel("Cancel")
                     }
                 }
-                Section {
-                    Text("Private wellness work stays separate from cloud goal agents. Your previous versions are retained.").font(.caption)
-                    if let error = store.bodyStore.error { Text(error).font(.caption) }
-                }
+                .padding(22)
             }
-            .navigationTitle("Wellness goal").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        var event = BodyEvent(kind: "goal", goal_id: original.goal_id)
-                        event.previous_id = original.text.isEmpty ? "" : original.id
-                        event.text = text; event.criterion = criterion; event.metric = metric
-                        event.status = status; event.source_ids = selected.sorted()
-                        saving = true
-                        Task { let kept = await store.bodyStore.capture(event); saving = false; if kept { dismiss() } }
-                    }.disabled(saving || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || criterion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 4000 || criterion.count > 1000)
-                }
-            }
+            .background(Theme.paper)
+            .inkSheetPage("Wellness goal", close: { if !saving { dismiss() } })
             .onAppear { text = original.text; criterion = original.criterion; metric = original.metric; status = original.status; selected = Set(original.source_ids) }
             .interactiveDismissDisabled()
         }
-        // Cancel/Save, the pickers' values and the source toggles all read the
-        // tint. One statement puts the whole sheet in ink, the way the voice
-        // archive already does.
         .tint(Theme.ink)
     }
 }
@@ -308,21 +358,24 @@ struct BodySourceView: View {
                 if let page, page.status == "ready" {
                     ForEach(page.passages ?? []) { passage in Text(passage.excerpt).textSelection(.enabled) }
                     HStack {
-                        if offset > 0 { Button("Previous passages") { offset = max(0, offset - 5) }.inkAction("previous", quiet: true) }
+                        if offset > 0 { Button("Previous passages") { offset = max(0, offset - 5) }.buttonStyle(.inkQuiet) }
                         Spacer()
-                        if let next = page.next_offset { Button("More passages") { offset = next }.inkAction("more", quiet: true) }
+                        if let next = page.next_offset { Button("More passages") { offset = next }.buttonStyle(.inkQuiet) }
                     }.frame(minHeight: 44)
                     if page.passages?.isEmpty == true { Text("No extracted text is available for this source.") }
                 } else {
                     Text(loading ? "Reading the local report…" : "Report text unavailable. The original source remains on your Mac.")
-                    Button("Retry") { Task { await load() } }.inkAction("retry")
+                    Button("Retry") { Task { await load() } }.buttonStyle(.inkQuiet)
                 }
-                Divider()
+                InkRule()
                 Text("Local evidence · extracted text may contain errors. Historical findings are not automatically current findings.").font(.caption)
                 Text(source.source_path).font(.caption2).textSelection(.enabled)
                 if let hash = source.sha256 { Text("SHA256 " + hash).font(.caption2).textSelection(.enabled) }
             }.padding(22)
-        }.background(Theme.paper).task(id: offset) { await load() }
+        }
+        .presenceBackground(.body, store: store)
+        .inkPushedPage("Evidence")
+        .task(id: offset) { await load() }
     }
     private func load() async { loading = true; page = await store.bodyStore.source(source.id, offset: offset, expectedHash: source.sha256 ?? ""); loading = false }
 }
@@ -340,11 +393,11 @@ private struct BodyQuestionView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Your goals, recent private reflections, and available Oura evidence inform this answer. It runs on your Mac.").font(.subheadline)
                     TextField("What would you like to understand?", text: $question, axis: .vertical)
-                        .lineLimit(3...8).textFieldStyle(.roundedBorder).disabled(working)
+                        .lineLimit(3...8).inkField().disabled(working)
                     Button(working ? "Thinking on your Mac…" : "Ask privately") {
                         working = true
                         Task { answer = await store.bodyStore.ask(question) ?? .init(status: "unavailable", text: "Cannot reach your private answer. Please retry."); working = false }
-                    }.inkAction("ask privately").disabled(working || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || question.count > 4000)
+                    }.buttonStyle(.inkPrimary).disabled(working || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || question.count > 4000)
                     if let answer {
                         Text(answer.text).font(.system(size: 20, design: .serif)).textSelection(.enabled)
                         if let model = answer.model { Text("Local model · " + model).font(.caption) }
@@ -352,8 +405,8 @@ private struct BodyQuestionView: View {
                     }
                     Text("This exchange is not saved or used for training. Keep what matters as a private reflection in Us. Private audio is not available yet.").font(.caption).foregroundStyle(Theme.inkSoft)
                 }.padding(22)
-            }.background(Theme.paper).navigationTitle("With Alicia")
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(working) } }
+            }.background(Theme.paper)
+                .inkSheetPage("With Alicia", close: { if !working { dismiss() } })
                 .interactiveDismissDisabled(working || !question.isEmpty)
         }
         .tint(Theme.ink)

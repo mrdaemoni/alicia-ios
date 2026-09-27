@@ -103,13 +103,33 @@ struct AliciaPresence: View {
         var isSafe: Bool { failures == 0 }
     }
 
-    fileprivate enum Family {
+    /// The six forms. Public so the shared `PresenceField` can blend them.
+    enum Family: CaseIterable {
         case drift
         case weave
         case depth
         case singular
         case bloom
         case knot
+
+        var index: Int { Self.allCases.firstIndex(of: self) ?? 0 }
+
+        /// Source resolution and a rendering budget per form (as the voices use).
+        fileprivate var sourceCount: Int {
+            switch self {
+            case .drift, .singular: 10_000
+            default: 20_000
+            }
+        }
+        fileprivate var basePoints: Int {
+            switch self {
+            case .drift: 1_200
+            case .weave: 1_450
+            case .depth: 1_650
+            case .singular, .bloom: 1_100
+            case .knot: 1_750
+            }
+        }
     }
 
     fileprivate struct Configuration {
@@ -142,14 +162,80 @@ struct AliciaPresence: View {
     /// DEBUG lab seam for exercising the intentional still state even when
     /// the simulator's system Reduce Motion setting is off.
     var previewsReduceMotion = false
+    /// When set, the body is the shared field of her awareness (one body,
+    /// continuous across rooms) and `voice` is ignored.
+    var field: PresenceField? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
+        if let field {
+            fieldBody(field)
+        } else {
+            voiceBody
+        }
+    }
+
+    /// Her awareness: one field, read each frame on the main actor, drawn as a value.
+    private func fieldBody(_ field: PresenceField) -> some View {
+        let shouldReduceMotion = reduceMotion || previewsReduceMotion
+        let paused = shouldReduceMotion || !isActive || scenePhase != .active
+        return TimelineView(.animation(minimumInterval: 1.0 / Double(Self.framesPerSecond), paused: paused)) { timeline in
+            let frame = paused ? field.stillFrame() : field.frame(at: timeline.date)
+            Canvas(opaque: false, colorMode: .linear, rendersAsynchronously: true) { context, size in
+                Self.drawField(in: &context, size: size, frame: frame)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Alicia's presence")
+    }
+
+    static func drawField(in context: inout GraphicsContext, size: CGSize, frame: PresenceField.Frame) {
+        let families = Family.allCases
+        let a = families[frame.primary], b = families[frame.secondary]
+        let base = Double(a.basePoints) * (1 - frame.mix) + Double(b.basePoints) * frame.mix
+        let total = min(2_600, max(800, Int(base * (0.78 + frame.energy * 0.5))))
+        let contraction = 0.9 + frame.openness * 0.24
+        let jitter = (1 - frame.coherence) * 20
+        let side = min(size.width, size.height)
+        let origin = CGPoint(x: (size.width - side) / 2, y: (size.height - side) / 2)
+        let bounds = CGRect(origin: .zero, size: size)
+        let dot = max(0.65, side / 400)
+        let target = CGPoint(x: frame.focus.x * 400, y: frame.focus.y * 400)
+        let pull = 0.12 * (1.15 - frame.openness * 0.5)
+        var path = Path()
+        for index in 1...total {
+            let pa = sourcePoint(family: a, sourceIndex: Double(index) * Double(a.sourceCount) / Double(total), time: frame.phase)
+            let pb = frame.mix > 0.001
+                ? sourcePoint(family: b, sourceIndex: Double(index) * Double(b.sourceCount) / Double(total), time: frame.phase)
+                : pa
+            guard pa.x.isFinite, pa.y.isFinite, pb.x.isFinite, pb.y.isFinite else { continue }
+            // Two forms, one body: every particle travels between its place in each.
+            var x = pa.x + (pb.x - pa.x) * frame.mix
+            var y = pa.y + (pb.y - pa.y) * frame.mix
+            x = 200 + (x - 200) * contraction
+            y = 200 + (y - 200) * contraction
+            // Scattered when she is unsettled, gathered when she is coherent.
+            let n = Double(index)
+            x += jitter * sin(n * 12.9898 + frame.phase * 1.7)
+            y += jitter * cos(n * 78.233 + frame.phase * 1.3)
+            // Where her attention points, the body leans.
+            let dx = target.x - x, dy = target.y - y
+            let amount = min(1, 150 / max(1, hypot(dx, dy))) * pull
+            x += dx * amount; y += dy * amount
+            let point = CGPoint(x: origin.x + x / 400 * side, y: origin.y + y / 400 * side)
+            guard point.x.isFinite, point.y.isFinite, bounds.contains(point) else { continue }
+            path.addRect(CGRect(x: point.x, y: point.y, width: dot, height: dot))
+        }
+        let opacity = 0.3 + frame.coherence * 0.16
+        context.fill(path, with: .color(Theme.ink.opacity(opacity)))
+    }
+
+    private var voiceBody: some View {
         let shouldReduceMotion = reduceMotion || previewsReduceMotion
         let paused = phase != nil || shouldReduceMotion || !isActive || scenePhase != .active
-        TimelineView(.animation(
+        return TimelineView(.animation(
             minimumInterval: 1.0 / Double(Self.framesPerSecond),
             paused: paused
         )) { timeline in
@@ -340,7 +426,7 @@ struct AliciaPresence: View {
         return point
     }
 
-    private static func sourcePoint(family: Family, sourceIndex: Double,
+    fileprivate static func sourcePoint(family: Family, sourceIndex: Double,
                                     time: Double) -> CGPoint {
         switch family {
         case .drift:

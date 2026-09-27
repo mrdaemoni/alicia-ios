@@ -10,32 +10,42 @@ struct ContextEnrichmentView: View {
     @State private var pending: ContextChange?
     @FocusState private var writing: Bool
     private var key: String { "alicia.context." + replyID }
+    /// A confirmed save is reported in `error` too; only its drawing differs.
+    private static let savedMessage = "Context saved. It will shape future replies."
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Text("Your context, open to revision").font(.title2)
                 Text("See what Alicia is holding, correct a reading, or give an idea more attention. Changes guide future replies.")
                     .font(.callout).foregroundStyle(Theme.inkSoft)
-                NavigationLink("Our shared focus · goals and agreements") { CollaborationView() }
-                    .frame(minHeight: 44)
+                NavigationLink { CollaborationView(pushed: true) } label: {
+                    InkLinkLabel(title: "Our shared focus", detail: "Goals and agreements, in Together")
+                }.buttonStyle(.inkLink)
                 if let value {
                     context(value)
                 } else {
                     Button("Load context") { Task { await load() } }
+                        .buttonStyle(.inkSecondaryCompact)
                 }
-                if !error.isEmpty { Text(error).font(.callout).foregroundStyle(Theme.rose) }
+                InkNotice(text: error, kind: error == Self.savedMessage ? .success : .error)
                 if pending != nil {
-                    Text("Your exact change is kept until its save is confirmed.").font(.caption)
-                    Button("Retry saved change") { Task { await retry() } }.disabled(busy)
-                    Button("Edit instead") { pending = nil; UserDefaults.standard.removeObject(forKey: key + ".pending") }
-                        .disabled(busy)
+                    VStack(alignment: .leading, spacing: 4) {
+                        InkNotice(text: "Your exact change is kept until its save is confirmed.")
+                        HStack(spacing: 24) {
+                            Button("Retry saved change") { Task { await retry() } }
+                                .buttonStyle(.inkQuiet)
+                                .disabled(busy)
+                            Button("Edit instead") { pending = nil; UserDefaults.standard.removeObject(forKey: key + ".pending") }
+                                .buttonStyle(.inkQuiet)
+                                .disabled(busy)
+                        }
+                    }
                 }
-            }.padding(22)
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(22)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Theme.paper).foregroundStyle(Theme.ink)
-        .navigationTitle("Context enrichment").navigationBarTitleDisplayMode(.inline)
+        .background(Theme.paper).foregroundStyle(Theme.ink).tint(Theme.ink)
+        .inkPushedPage("Context enrichment")
         .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done writing") { writing = false } } }
         .task {
             note = UserDefaults.standard.string(forKey: key + ".note") ?? ""
@@ -48,56 +58,71 @@ struct ContextEnrichmentView: View {
     }
 
     @ViewBuilder private func context(_ value: ContextEnrichment) -> some View {
-        Text("ABOUT YOU").font(.caption.monospaced()).tracking(1.5)
-        Text("Her working picture is tentative. Your words and corrections are labelled separately.")
-            .font(.caption).foregroundStyle(Theme.inkSoft)
-        if value.about.isEmpty { Text("No working picture is available yet. You can add context below.") }
-        ForEach(value.about) { row in link(row) }
+        InkSection(kicker: "About you", spacing: 4) {
+            Text("Her working picture is tentative. Your words and corrections are labelled separately.")
+                .font(InkType.meta).foregroundStyle(Theme.inkSoft).padding(.bottom, 6)
+            if value.about.isEmpty { InkNotice(text: "No working picture is available yet. You can add context below.") }
+            rows(value.about)
+        }
         if !replyID.isEmpty {
-            Text("SUPPLIED FOR THIS REPLY").font(.caption.monospaced()).tracking(1.5)
-            if value.items.isEmpty { Text("This older reply has no detailed context snapshot.") }
-            ForEach(value.items) { row in link(row) }
+            InkSection(kicker: "Supplied for this reply", spacing: 4) {
+                if value.items.isEmpty { InkNotice(text: "This older reply has no detailed context snapshot.") }
+                rows(value.items)
+            }
         }
-        Divider()
-        Text("Something she should know now").font(.headline)
-        TextField("In your words…", text: $note, axis: .vertical)
-            .focused($writing).lineLimit(3...8).padding(14).disabled(pending != nil)
-            .background(Theme.ink.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
-        Button("Add to my context") {
-            submit(ContextChange(action: "add_note", reply_id: replyID, priority: "more", text: note))
-        }.frame(minHeight: 44)
+        InkSection(kicker: "Something she should know now") {
+            TextField("In your words…", text: $note, axis: .vertical)
+                .focused($writing).lineLimit(3...8).inkField().disabled(pending != nil)
+            Button("Add to my context") {
+                submit(ContextChange(action: "add_note", reply_id: replyID, priority: "more", text: note))
+            }
+            .buttonStyle(.inkPrimary)
             .disabled(busy || pending != nil || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || note.unicodeScalars.count > 2000)
-        if note.unicodeScalars.count > 2000 { Text("Keep the note under 2,000 characters; your draft is retained.").font(.caption) }
-        Divider()
+            if note.unicodeScalars.count > 2000 { InkNotice(text: "Keep the note under 2,000 characters; your draft is retained.", kind: .error) }
+        }
+        // The old gentle-return policy, shown only when the shared focus
+        // (which supersedes it) is not loaded.
         if store.collaboration.state == nil {
-        Text("A gentle return").font(.headline)
-        Text("At most one prepared invitation a day, at least two hours after a conversation or reflection, between 9am and 7pm. It needs a specific unresolved idea; quiet days stay quiet.")
-            .font(.callout)
-        if let next = value.followup {
-            Text(next.text).font(.body)
-            Text("From your words: “\(next.anchor)”").font(.caption).foregroundStyle(Theme.inkSoft)
+            InkSection(kicker: "A gentle return") {
+                Text("At most one prepared invitation a day, at least two hours after a conversation or reflection, between 9am and 7pm. It needs a specific unresolved idea; quiet days stay quiet.")
+                    .font(.callout)
+                if let next = value.followup {
+                    Text(next.text).font(InkType.body)
+                    Text("From your words: “\(next.anchor)”").font(InkType.meta).foregroundStyle(Theme.inkSoft)
+                }
+                let enabled = value.followups_enabled && !ThoughtReturnNotifier.locallyStopped
+                Button(enabled ? "Stop these follow-ups" : "Allow gentle follow-ups") {
+                    submit(ContextChange(action: "settings", reply_id: replyID, followups_enabled: !(value.followups_enabled && !ThoughtReturnNotifier.locallyStopped)))
+                }
+                .buttonStyle(InkButtonStyle(role: enabled ? .destructive : .secondary, fullWidth: false))
+                .disabled(busy || pending != nil)
+                Text("Scheduled on this iPhone when the app syncs. New activity here cancels the pending invitation. Activity elsewhere is checked on the next sync.")
+                    .font(InkType.meta).foregroundStyle(Theme.inkSoft)
+                Button("Allow iPhone notifications") { ProactiveNotifier.requestPermission() }
+                    .buttonStyle(.inkQuiet)
+            }
         }
-        Button(value.followups_enabled && !ThoughtReturnNotifier.locallyStopped ? "Stop these follow-ups" : "Allow gentle follow-ups") {
-            submit(ContextChange(action: "settings", reply_id: replyID, followups_enabled: !(value.followups_enabled && !ThoughtReturnNotifier.locallyStopped)))
-        }.frame(minHeight: 44).disabled(busy || pending != nil)
-        Text("Scheduled on this iPhone when the app syncs. New activity here cancels the pending invitation. Activity elsewhere is checked on the next sync.")
-            .font(.caption).foregroundStyle(Theme.inkSoft)
-        Button("Allow iPhone notifications") { ProactiveNotifier.requestPermission() }.font(.callout).frame(minHeight: 44)
+        InkDisclosure("When context is shared") { Text(value.exposure).font(.callout) }
+    }
+
+    @ViewBuilder private func rows(_ items: [ContextItem]) -> some View {
+        ForEach(Array(items.enumerated()), id: \.element.id) { index, row in
+            if index > 0 { InkRule(opacity: 0.6) }
+            link(row)
         }
-        DisclosureGroup("When context is shared") { Text(value.exposure).font(.callout) }
     }
 
     private func link(_ row: ContextItem) -> some View {
         NavigationLink {
             ContextItemView(item: row, replyID: replyID)
         } label: {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(row.title).font(.headline)
-                Text(row.correction.isEmpty ? row.text : row.correction).font(.callout).lineLimit(3)
-                Text((row.kind == "inferred" ? "Tentative interpretation" : row.kind == "your_words" || row.kind == "your_note" ? "Your words" : "Captured context") + " · " + row.priority.capitalized)
-                    .font(.caption).foregroundStyle(Theme.inkSoft)
-            }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(.vertical, 8)
-        }.buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 2) {
+                InkLinkLabel(title: row.title,
+                             detail: (row.kind == "inferred" ? "Tentative interpretation" : row.kind == "your_words" || row.kind == "your_note" ? "Your words" : "Captured context") + " · " + row.priority.capitalized)
+                Text(row.correction.isEmpty ? row.text : row.correction).font(.callout).foregroundStyle(Theme.inkSoft)
+                    .lineLimit(3).multilineTextAlignment(.leading).padding(.bottom, 8)
+            }
+        }.buttonStyle(.inkLink)
     }
 
     private func load() async {
@@ -118,7 +143,7 @@ struct ContextEnrichmentView: View {
         guard let result = await store.changeContext(request), result.ok, let fresh = result.context else {
             error = "The change was not confirmed. Retry sends the same request."; return
         }
-        value = fresh; pending = nil; error = "Context saved. It will shape future replies."
+        value = fresh; pending = nil; error = Self.savedMessage
         UserDefaults.standard.removeObject(forKey: key + ".pending")
         if request.action == "add_note" { note = "" }
     }
@@ -136,45 +161,63 @@ private struct ContextItemView: View {
     @State private var source: ContextSource?
     @FocusState private var writing: Bool
     private var key: String { "alicia.context.item." + item.id }
+    private static let savedMessage = "Saved for future replies. Open a new reply to see what was actually supplied."
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text(item.title).font(.title2)
-                Text(item.kind == "inferred" ? "A tentative interpretation, open to correction." : item.kind == "source" ? "Material supplied for this reply. A retrieval summary can differ from the source file." : "The saved material, preserved as it was.")
-                    .font(.caption).foregroundStyle(Theme.inkSoft)
-                Text(item.text).textSelection(.enabled)
-                Button("Listen") { store.readAloud(Readable(title: item.title, body: item.text, kind: "context")) }
-                Text(item.source).font(.caption).textSelection(.enabled)
-                if !item.as_of.isEmpty { Text("Recorded: " + item.as_of).font(.caption) }
-                Picker("Attention", selection: $priority) {
-                    Text("Less").tag("less"); Text("Normal").tag("normal"); Text("More").tag("more")
-                }.pickerStyle(.segmented).disabled(pending != nil)
-                Text("More requests attention in the next reply; the latest choices come first. Long items use a labelled excerpt, and space may limit what fits. Less asks for less emphasis. These controls do not delete sources or change model weights.").font(.caption)
-                TextField("What should she understand differently?", text: $correction, axis: .vertical)
-                    .focused($writing).accessibilityIdentifier("context.correction").lineLimit(3...8).padding(14).background(Theme.ink.opacity(0.04))
-                    .disabled(pending != nil)
-                if correction.unicodeScalars.count > 2000 { Text("Keep the correction under 2,000 characters. Your draft is retained.").font(.caption) }
-                Button(pending == nil ? "Save context" : "Retry saved change") { Task { await save() } }
-                    .frame(minHeight: 44).disabled(busy || correction.unicodeScalars.count > 2000)
-                if pending != nil {
-                    Button("Edit instead") { pending = nil; UserDefaults.standard.removeObject(forKey: key + ".pending") }
-                        .disabled(busy)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(item.title).font(InkType.subhead)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(item.kind == "inferred" ? "A tentative interpretation, open to correction." : item.kind == "source" ? "Material supplied for this reply. A retrieval summary can differ from the source file." : "The saved material, preserved as it was.")
+                        .font(InkType.meta).foregroundStyle(Theme.inkSoft)
                 }
-                Text(status).font(.callout).foregroundStyle(Theme.inkSoft)
-                if item.kind == "source" {
-                    Button("Open the source here") {
-                        Task { source = await store.contextSource(replyID, itemID: item.id); if source == nil { status = "The source could not be opened." } }
-                    }.frame(minHeight: 44)
+                Text(item.text).font(InkType.body).textSelection(.enabled)
+                ListenLine(item: Readable(title: item.title, body: item.text, kind: "context"))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.source).font(InkType.meta).foregroundStyle(Theme.inkSoft).textSelection(.enabled)
+                    if !item.as_of.isEmpty { Text("Recorded: " + item.as_of).font(InkType.meta).foregroundStyle(Theme.inkSoft) }
                 }
-                if let source {
-                    Text(source.notice).font(.caption)
-                    Text(source.text).textSelection(.enabled)
-                    Button("Listen to the source") { store.readAloud(Readable(title: source.title, body: source.text, kind: "context")) }
+                InkSection(kicker: "Attention") {
+                    Picker("Attention", selection: $priority) {
+                        Text("Less").tag("less"); Text("Normal").tag("normal"); Text("More").tag("more")
+                    }.pickerStyle(.segmented).disabled(pending != nil)
+                    Text("More requests attention in the next reply; the latest choices come first. Long items use a labelled excerpt, and space may limit what fits. Less asks for less emphasis. These controls do not delete sources or change model weights.")
+                        .font(InkType.meta).foregroundStyle(Theme.inkSoft)
                 }
-            }.padding(22)
-        }.background(Theme.paper).foregroundStyle(Theme.ink)
-        .navigationTitle("Enrich this context").navigationBarTitleDisplayMode(.inline)
+                InkSection(kicker: "Your correction") {
+                    TextField("What should she understand differently?", text: $correction, axis: .vertical)
+                        .focused($writing).accessibilityIdentifier("context.correction").lineLimit(3...8).inkField()
+                        .disabled(pending != nil)
+                    if correction.unicodeScalars.count > 2000 { InkNotice(text: "Keep the correction under 2,000 characters. Your draft is retained.", kind: .error) }
+                    Button(pending == nil ? "Save context" : "Retry saved change") { Task { await save() } }
+                        .buttonStyle(.inkPrimary)
+                        .disabled(busy || correction.unicodeScalars.count > 2000)
+                    if pending != nil {
+                        Button("Edit instead") { pending = nil; UserDefaults.standard.removeObject(forKey: key + ".pending") }
+                            .buttonStyle(.inkQuiet)
+                            .disabled(busy)
+                    }
+                    InkNotice(text: status, kind: status == Self.savedMessage ? .success : .error)
+                }
+                if item.kind == "source" || source != nil {
+                    InkSection(kicker: "The source") {
+                        if item.kind == "source" {
+                            Button("Open the source here") {
+                                Task { source = await store.contextSource(replyID, itemID: item.id); if source == nil { status = "The source could not be opened." } }
+                            }
+                            .buttonStyle(.inkSecondaryCompact)
+                        }
+                        if let source {
+                            InkNotice(text: source.notice)
+                            Text(source.text).font(InkType.body).textSelection(.enabled)
+                            ListenLine(item: Readable(title: source.title, body: source.text, kind: "context"), label: "LISTEN TO THE SOURCE")
+                        }
+                    }
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(22)
+        }.background(Theme.paper).foregroundStyle(Theme.ink).tint(Theme.ink)
+        .inkPushedPage("Enrich this context")
         .scrollDismissesKeyboard(.interactively)
         .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done writing") { writing = false } } }
         .task {
@@ -198,6 +241,6 @@ private struct ContextItemView: View {
         UserDefaults.standard.removeObject(forKey: key + ".pending")
         UserDefaults.standard.removeObject(forKey: key + ".priority")
         UserDefaults.standard.removeObject(forKey: key + ".correction")
-        status = "Saved for future replies. Open a new reply to see what was actually supplied."
+        status = Self.savedMessage
     }
 }

@@ -2,49 +2,53 @@ import SwiftUI
 
 struct TalkView: View {
     @Environment(AppStore.self) private var store
-    @AppStorage("alicia.dialogueDraft") private var draft = ""
-    @AppStorage("alicia.dialogueRecordingID") private var recordingID = ""
     @State private var inspectedMessage: Message?
     @State private var speech = SpeechTranscriber()
     @FocusState private var focused: Bool
     @Environment(\.scenePhase) private var scenePhase
     @State private var showRecordings = false
     @State private var selectedRecordingID: String?
-    @State private var microphoneError = ""
     @State private var microphoneGeneration = 0
     @State private var microphoneStarting = false
-    @State private var lastSavedRecordingID = ""
-    @State private var visible = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
                     SectionHeader(title: "Dialogue", kicker: "STAY WITH THE QUESTION")
-                    if let episode = store.episodeDay?.episode {
-                        HStack(alignment: .top) {
-                            Text(episode.title.strippedEmojis).font(.subheadline).italic()
-                            Spacer()
-                            Button { focused = false; store.openWalk() } label: {
-                                Text("THINK ALOUD")
-                                    .font(.system(size: 10, design: .monospaced)).tracking(1)
-                                    .frame(minHeight: 44).contentShape(Rectangle())
+                    // One block: the episode and its walk, the sync state with
+                    // its one quiet retry, then where he can go from here.
+                    InkSection(kicker: "Around this dialogue", rule: false, spacing: 2) {
+                        if let episode = store.episodeDay?.episode {
+                            HStack(alignment: .center, spacing: 12) {
+                                Text(episode.title.strippedEmojis).font(.subheadline).italic()
+                                    .foregroundStyle(Theme.inkSoft)
+                                Spacer(minLength: 8)
+                                Button("Walk") { focused = false; store.openWalk() }
+                                    .buttonStyle(.inkSecondaryCompact)
+                                    .accessibilityIdentifier("episode.talkFromDialogue")
                             }
-                            .accessibilityIdentifier("episode.talkFromDialogue")
                         }
+                        if store.episodeChoiceSyncing {
+                            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                Text("Syncing your episode choice").font(InkType.meta).foregroundStyle(Theme.inkSoft)
+                                Spacer(minLength: 8)
+                                Button("Try again") { store.retryEpisodeSync() }.buttonStyle(.inkQuiet)
+                            }
+                        }
+                        Button {
+                            cancelMicrophoneStart(); speech.stop(); focused = false
+                            store.collaboration.route = CollaborationRoute()
+                        } label: { InkLinkLabel(title: "Our shared focus", small: true) }
+                            .buttonStyle(.inkLink)
+                        InkRule(opacity: 0.6)
+                        Button { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = nil; showRecordings = true } label: {
+                            InkLinkLabel(title: "Original recordings", small: true)
+                        }
+                        .buttonStyle(.inkLink)
+                        .accessibilityIdentifier("voice.recordings")
+                        EpisodeErrorLine()
                     }
-                    if store.episodeChoiceSyncing {
-                        Button("Syncing your episode choice · tap to retry") { store.retryEpisodeSync() }
-                            .font(.caption).foregroundStyle(Theme.inkSoft)
-                    }
-                    Button("OUR SHARED FOCUS") {
-                        cancelMicrophoneStart(); speech.stop(); focused = false
-                        store.collaboration.route = CollaborationRoute()
-                    }.font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
-                    EpisodeErrorLine()
-                    Button("RECORDINGS") { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = nil; showRecordings = true }
-                        .font(.system(size: 10, design: .monospaced)).tracking(1)
-                        .frame(minHeight: 44).accessibilityIdentifier("voice.recordings")
                 }.padding(.horizontal, 18).padding(.bottom, 12)
                 messageList
             }
@@ -58,8 +62,7 @@ struct TalkView: View {
                     .presentationDetents([.large])
             }
             .sheet(isPresented: $showRecordings) { VoiceRecordingsView(recordingID: selectedRecordingID) }
-            .onAppear { visible = true }
-            .onDisappear { visible = false; cancelMicrophoneStart(); speech.stop() }
+            .onDisappear { cancelMicrophoneStart(); speech.stop() }
             .onChange(of: scenePhase) { _, phase in if phase != .active { cancelMicrophoneStart(); speech.stop() } }
         }
     }
@@ -69,17 +72,28 @@ struct TalkView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(store.composerSection == .body ? store.privateBodyMessages : store.messages) { message in
-                        MessageBubble(message: message, inspect: { inspectedMessage = $0 }).id(message.id)
-                        if let context = message.workContext {
-                            Button("RETURN TO · " + context.goalTitle) {
-                                cancelMicrophoneStart(); speech.stop(); focused = false
-                                store.collaboration.route = CollaborationRoute(goalID: context.goal_id, resultID: context.result_id, sectionID: context.section_id, originalQuote: context.quote)
-                            }.font(.caption.monospaced()).frame(minHeight: 44)
-                        }
-                        if let id = message.recordingID {
-                            Button("REVIEW ORIGINAL RECORDING") { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = id; showRecordings = true }
-                                .font(.system(size: 10, design: .monospaced)).frame(minHeight: 44)
-                        }
+                        VStack(spacing: 0) {
+                            MessageBubble(message: message, inspect: { inspectedMessage = $0 })
+                            // What belongs to this message hangs under its
+                            // bubble, on the bubble's side.
+                            if let context = message.workContext {
+                                MessageAttachment(isMe: message.sender == .me) {
+                                    Button {
+                                        cancelMicrophoneStart(); speech.stop(); focused = false
+                                        store.collaboration.route = CollaborationRoute(goalID: context.goal_id, resultID: context.result_id, sectionID: context.section_id, originalQuote: context.quote)
+                                    } label: { InkLinkLabel(title: context.goalTitle, detail: "Return to our goal", small: true) }
+                                        .buttonStyle(.inkLink)
+                                }
+                            }
+                            if let id = message.recordingID {
+                                MessageAttachment(isMe: message.sender == .me) {
+                                    Button { cancelMicrophoneStart(); speech.stop(); focused = false; selectedRecordingID = id; showRecordings = true } label: {
+                                        InkLinkLabel(title: "Original recording", small: true)
+                                    }
+                                    .buttonStyle(.inkLink)
+                                }
+                            }
+                        }.id(message.id)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -101,45 +115,17 @@ struct TalkView: View {
     private func cancelMicrophoneStart() { microphoneGeneration += 1; microphoneStarting = false }
 }
 
-/// A proactive message as an editorial interlude — no bubble, no wash:
-/// a mono-caps rule with her emblem, and the line itself in serif italic,
-/// centered like a section break in a book. Tapping opens the Alicia tab.
-struct ProactiveWhisper: View {
-    @Environment(AppStore.self) private var store
-    let message: Message
-
-    private var archetypeID: String {
-        let label = (message.proactiveLabel ?? "").lowercased()
-        return Archetypes.order.first(where: { label.contains($0) }) ?? "musubi"
-    }
-
+/// A link that belongs to one message, set under its bubble on the bubble's
+/// side and inset to the bubble's text.
+struct MessageAttachment<Content: View>: View {
+    var isMe: Bool
+    @ViewBuilder var content: () -> Content
     var body: some View {
-        Button {
-            store.pendingMindFocusID = message.proactiveID
-            store.selectedSection = .mind
-        } label: {
-            VStack(spacing: 7) {
-                HStack(spacing: 9) {
-                    Theme.stroke.frame(height: 0.7)
-                    ArchetypeEmblem(id: archetypeID, size: 15)
-                    Text((message.proactiveLabel ?? "from her").uppercased())
-                        .font(.system(size: 8.5, design: .monospaced).weight(.semibold))
-                        .tracking(1.8)
-                        .foregroundStyle(Theme.ink.opacity(0.65))
-                        .fixedSize()
-                    Theme.stroke.frame(height: 0.7)
-                }
-                Text("“" + message.text.strippedEmojis.prefix(90) + "”")
-                    .font(.system(size: 13, design: .serif))
-                    .italic()
-                    .foregroundStyle(Theme.ink.opacity(0.8))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-            }
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+        HStack(spacing: 0) {
+            if isMe { Spacer(minLength: 40) }
+            content().padding(.horizontal, 14)
+            if !isMe { Spacer(minLength: 40) }
         }
-        .buttonStyle(.plain)
     }
 }
 
@@ -184,21 +170,12 @@ struct MessageBubble: View {
                 // v23: her explicit asks carry the door to answer them —
                 // the reply lands in her capture loops, not a fresh chat.
                 if message.isAsk, message.proactiveID != nil {
-                    Button {
+                    // An action (it sets reply mode), not a place: quiet.
+                    Button(store.answeringAskID == message.proactiveID ? "Answering…" : "Answer her") {
                         store.beginAnswering(message)
-                    } label: {
-                        HStack(spacing: 5) {
-                            InkSpark(size: 9, seed: (message.proactiveID ?? "a").inkSeed)
-                            Text(store.answeringAskID == message.proactiveID
-                                 ? "ANSWERING…" : "ANSWER HER →")
-                                .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                                .tracking(1.6)
-                                .underline()
-                        }
-                        .foregroundStyle(Theme.accent)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 4)
+                    .buttonStyle(.inkQuiet)
+                    .padding(.leading, 14)
                 }
             }
             if !isMe { Spacer(minLength: 40) }
@@ -211,12 +188,16 @@ struct MessageBubble: View {
                 Text(message.text.isEmpty ? AttributedString("…") : rendered)
                     .foregroundStyle(Theme.ink)
                 if !isMe, !message.text.isEmpty {
-                    Button("BEHIND THIS REPLY") { inspect(message) }
-                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                        .tracking(1.2)
-                        .foregroundStyle(Theme.accentSoft)
-                        .frame(minHeight: 44)
-                        .buttonStyle(.plain)
+                    // Goes somewhere (the review sheet): her small link,
+                    // hugging its words so the bubble keeps its width.
+                    Button { inspect(message) } label: {
+                        HStack(spacing: 6) {
+                            Text("Behind this reply").font(InkType.linkSmall).foregroundStyle(Theme.ink)
+                            InkChevron(pointing: .right, size: 12, color: Theme.inkSoft, seed: 61)
+                        }
+                        .frame(minHeight: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.inkLink)
                 }
             }
 

@@ -64,17 +64,13 @@ struct ConversationSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("WRITING TO ALICIA")
-                        .font(.system(size: 9, design: .monospaced)).tracking(1.2)
-                        .foregroundStyle(Theme.inkSoft)
+                    InkKicker(text: "Writing to Alicia")
                     Text("about " + section.title)
                         .font(.system(size: 22, design: .serif))
                         .accessibilityIdentifier("conversation.context")
                 }
                 Spacer()
-                Button("CLOSE") { focused = false; dismiss() }
-                    .font(.system(size: 10, design: .monospaced)).tracking(1)
-                    .frame(minHeight: 44)
+                InkCloseButton { focused = false; dismiss() }
                     .accessibilityIdentifier("conversation.close")
             }
             if privateBody {
@@ -85,22 +81,20 @@ struct ConversationSheet: View {
             // being silently dropped by the change of surface.
             if !privateBody, let work = store.collaboration.dialogueContext {
                 HStack {
-                    Text("Passage · " + work.sectionTitle).font(.caption).lineLimit(1)
+                    Text("Passage · " + work.sectionTitle.strippedEmojis).font(.caption).foregroundStyle(Theme.inkSoft).lineLimit(1)
                     Spacer()
-                    Button("Clear") { store.collaboration.dialogueContext = nil }.font(.caption)
+                    Button("Clear") { store.collaboration.dialogueContext = nil }.buttonStyle(.inkQuiet)
                 }.accessibilityIdentifier("workReview.dialogueContext")
             }
             if !privateBody, store.answeringAskID != nil {
                 HStack {
-                    Text("Replying to · " + store.answeringAskExcerpt).font(.caption).lineLimit(1)
+                    Text("Replying to · " + store.answeringAskExcerpt.strippedEmojis).font(.caption).foregroundStyle(Theme.inkSoft).lineLimit(1)
                     Spacer()
-                    Button("Cancel") { store.cancelAnswering() }.font(.caption)
+                    Button("Cancel") { store.cancelAnswering() }.buttonStyle(.inkQuiet)
                 }
             }
-            EpisodeErrorLine()
         }
         .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 10)
-        .buttonStyle(.plain)
     }
 
     private var conversation: some View {
@@ -143,34 +137,34 @@ struct ConversationSheet: View {
                                  : "Sent. Her reply appears above, and stays in Dialogue.")
                     .font(.caption).foregroundStyle(Theme.inkSoft)
             }
+            // The error sits beside the send it is about.
+            EpisodeErrorLine()
             HStack(spacing: 10) {
                 TextField("Say what you're thinking…", text: draft, axis: .vertical)
                     .lineLimit(1...6)
                     .font(.system(size: 17, design: .serif))
                     .focused($focused)
                     .padding(.horizontal, 13).padding(.vertical, 11)
-                    .background(Theme.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+                    .background(Theme.paper.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.stroke, lineWidth: 0.7))
                     .accessibilityIdentifier("conversation.field")
                 Button { send() } label: {
                     InkSubmitArrow(size: 27, color: canSend ? Theme.ink : Theme.inkSoft.opacity(0.4), seed: 23)
                         .frame(width: 44, height: 44)
                 }
+                .buttonStyle(.plain)
                 .disabled(!canSend)
                 .accessibilityLabel("Send to Alicia")
                 .accessibilityIdentifier("conversation.send")
                 // Speaking is the walk, and only the walk. Leaving here keeps
                 // the draft exactly as it stands; the two are separate records.
-                Button {
+                // Send is this sheet's primary, so Walk is the outlined one.
+                Button("Walk") {
                     focused = false
                     dismiss()
                     store.openWalk(surface: section)
-                } label: {
-                    Text("WALK")
-                        .font(.system(size: 10, design: .monospaced).weight(.semibold)).tracking(1)
-                        .foregroundStyle(Theme.paper)
-                        .frame(minWidth: 58, minHeight: 44)
-                        .background(Theme.ink, in: RoundedRectangle(cornerRadius: 12))
                 }
+                .buttonStyle(.inkSecondaryCompact)
                 .accessibilityLabel("Walk and think aloud about " + section.title)
                 .accessibilityIdentifier("conversation.walk")
             }
@@ -179,7 +173,6 @@ struct ConversationSheet: View {
         .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 14)
         .background(Theme.paper)
         .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 0.7) }
-        .buttonStyle(.plain)
     }
 
     private func send() {

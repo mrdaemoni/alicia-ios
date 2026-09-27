@@ -1,22 +1,32 @@
 import SwiftUI
 
+/// The episode that comes after the last one he played: one card that owns
+/// its title and the one thing to do with it — play it.
 struct NextEpisodeInvitation: View {
     @Environment(AppStore.self) private var store
     var body: some View {
         if let track = store.nextEpisodeTrack {
-            HStack(alignment: .center, spacing: 18) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("NEXT EPISODE").font(.caption2.monospaced()).tracking(1.5).foregroundStyle(Theme.inkSoft)
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    InkKicker(text: "Next episode")
                     Text(track.title.strippedEmojis).font(.system(size: 19, design: .serif))
-                    if let label = track.label { Text(label).font(.caption).foregroundStyle(Theme.inkSoft) }
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let label = track.label { Text(label).font(InkType.meta).foregroundStyle(Theme.inkSoft) }
                 }
-                Spacer(minLength: 0)
-                Button("Listen") { store.playFromHome(track) }
-                    .font(.callout).frame(minWidth: 60, minHeight: 44)
-                    .accessibilityLabel("Listen to next episode: \(track.title)")
-                    .accessibilityIdentifier("episode.next.listen")
-            }.padding(.vertical, 14)
-                .overlay(alignment: .bottom) { Theme.stroke.frame(height: 0.7) }
+                Button { store.playFromHome(track) } label: {
+                    HStack(spacing: 10) {
+                        InkPlayPause(playing: false, size: 18, color: Theme.ink, seed: track.title.inkSeed)
+                            .frame(width: 18, height: 18)
+                            .accessibilityHidden(true)
+                        Text("Listen")
+                    }
+                }
+                .buttonStyle(.inkSecondaryCompact)
+                .accessibilityLabel("Listen to next episode: \(track.title)")
+                .accessibilityIdentifier("episode.next.listen")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card(padding: 16, radius: 16)
         }
     }
 }

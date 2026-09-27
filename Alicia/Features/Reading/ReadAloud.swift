@@ -120,36 +120,34 @@ struct HeldSynthesisCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("HELD SYNTHESIS")
-                        .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                        .tracking(1.6)
-                        .foregroundStyle(Theme.inkSoft)
-                    Spacer()
-                    SynthesisPin(syn: syn, size: 20)
-                }
-                Text(syn.title.strippedEmojis)
-                    .font(.system(.headline, design: .serif))
-                    .foregroundStyle(Theme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(syn.excerpt.strippedEmojis)
-                    .font(.system(.footnote, design: .serif))
-                    .foregroundStyle(Theme.ink.opacity(0.75))
-                    .lineLimit(3)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { reading = true }
             HStack {
-                Text("READ")
-                    .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                    .tracking(1.4)
-                    .underline()
-                    .foregroundStyle(Theme.accent)
-                    .onTapGesture { reading = true }
+                InkKicker(text: "Held synthesis")
                 Spacer()
-                ListenLine(item: syn.readable)
+                SynthesisPin(syn: syn, size: 20)
             }
+            // The title and excerpt open the whole synthesis — a Button, so
+            // it carries the button trait instead of being a tappable text.
+            Button { reading = true } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(syn.title.strippedEmojis)
+                        .font(.system(.headline, design: .serif))
+                        .foregroundStyle(Theme.ink)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(syn.excerpt.strippedEmojis)
+                        .font(.system(.footnote, design: .serif))
+                        .foregroundStyle(Theme.ink.opacity(0.75))
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.inkLink)
+            ListenLine(item: syn.readable)
+            InkRule(opacity: 0.6)
+            Button { reading = true } label: { InkLinkLabel(title: "Read", small: true) }
+                .buttonStyle(.inkLink)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 14, radius: 20)
@@ -192,30 +190,39 @@ struct ReadingBar: View {
         if let item = reader.current {
             VStack(spacing: 7) {
                 HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title.strippedEmojis.isEmpty
-                             ? "A reading" : item.title.strippedEmojis)
-                            .font(.system(size: 13, design: .serif).weight(.semibold))
-                            .lineLimit(1)
-                            .foregroundStyle(Theme.paper)
-                        HStack(spacing: 5) {
-                            if reader.isPreparing {
-                                // Her own mark, breathing, instead of a
-                                // system spinner.
-                                InkSpark(size: 9, color: Theme.paper.opacity(0.7),
-                                         seed: 7)
+                    // The title block opens the reader: a real Button (it was
+                    // a tap gesture on text), with READ ALONG in its label so
+                    // the UI test and VoiceOver both find it.
+                    Button { showReader = true } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title.strippedEmojis.isEmpty
+                                 ? "A reading" : item.title.strippedEmojis)
+                                .font(.system(size: 13, design: .serif).weight(.semibold))
+                                .lineLimit(1)
+                                .foregroundStyle(Theme.paper)
+                            HStack(spacing: 5) {
+                                if reader.isPreparing {
+                                    // Her own mark, breathing, instead of a
+                                    // system spinner.
+                                    InkSpark(size: 9, color: Theme.paper.opacity(0.7),
+                                             seed: 7)
+                                }
+                                Text(status)
+                                    .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                                    .tracking(1.5)
+                                    .foregroundStyle(Theme.paper.opacity(0.6))
                             }
-                            Text(status)
-                                .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                                .tracking(1.5)
-                                .foregroundStyle(Theme.paper.opacity(0.6))
+                            HStack(spacing: 4) {
+                                Text("READ ALONG")
+                                    .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                                    .tracking(1.2).foregroundStyle(Theme.paper.opacity(0.85))
+                                InkChevron(pointing: .right, size: 9, color: Theme.paper.opacity(0.7), seed: 61)
+                            }
                         }
-                        Text("READ ALONG")
-                            .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                            .tracking(1.2).underline().foregroundStyle(Theme.paper.opacity(0.85))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
-                    .onTapGesture { showReader = true }
+                    .buttonStyle(.plain)
                     .accessibilityElement(children: .combine)
                     .accessibilityAddTraits(.isButton)
                     .accessibilityIdentifier("reading.open")

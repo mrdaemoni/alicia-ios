@@ -128,13 +128,18 @@ extension View {
                         state: TabPresence.state(for: section, store: store),
                         attention: TabPresence.attention(for: section, store: store),
                         isActive: store.selectedSection == section,
-                        previewsReduceMotion: previewsCollaborationStillness
+                        previewsReduceMotion: previewsCollaborationStillness,
+                        // Her awareness: one body across every room.
+                        field: store.presenceField.enabled ? store.presenceField : nil
                     )
-                    .frame(width: geo.size.width * 1.9,
-                           height: geo.size.height * 1.9)
+                    // Her awareness is meant to be seen moving: more of the body on
+                    // the page and a firmer ink than the fixed rooms used, still
+                    // beneath the words.
+                    .frame(width: geo.size.width * (store.presenceField.enabled ? 1.45 : 1.9),
+                           height: geo.size.height * (store.presenceField.enabled ? 1.45 : 1.9))
                     .position(x: geo.size.width * 0.5,
-                              y: geo.size.height * 0.46)
-                    .opacity(0.30)   // family weight is normalised inside AliciaPresence
+                              y: geo.size.height * (store.presenceField.enabled ? 0.5 : 0.46))
+                    .opacity(store.presenceField.enabled ? 0.42 : 0.30)   // family weight is normalised inside AliciaPresence
                 }
                 PaperGrain()
             }

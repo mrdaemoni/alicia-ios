@@ -56,7 +56,8 @@ struct ConversationComposer: View {
                 walkButton
             }
             if let error = store.composerDrafts.error {
-                Text(error).font(.caption).foregroundStyle(Theme.paper.opacity(0.75))
+                // An error reads in seal red, even on the ink ground.
+                Text(error.strippedEmojis).font(.caption).foregroundStyle(Theme.rose)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -79,16 +80,16 @@ struct ConversationComposer: View {
     @ViewBuilder private var reflectionLine: some View {
         if let waiting = store.reflectionNeedingYou {
             Button { openReflection(waiting) } label: {
+                // Goes somewhere: InkLinkLabel's shape (serif line, her
+                // chevron trailing), composed in paper for the ink ground.
                 HStack(spacing: 8) {
                     Circle().fill(Theme.amber).frame(width: 6, height: 6)
                     Text(reflectionSubject(waiting) + " · " + waiting.stage.label.lowercased())
-                        .font(.system(size: 12, design: .serif))
-                        .foregroundStyle(Theme.paper.opacity(0.85))
+                        .font(.system(size: 14, design: .serif))
+                        .foregroundStyle(Theme.paper)
                         .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Text("OPEN")
-                        .font(.system(size: 8, design: .monospaced)).tracking(1)
-                        .foregroundStyle(Theme.paper.opacity(0.6))
+                    Spacer(minLength: 8)
+                    InkChevron(pointing: .right, size: 12, color: Theme.paper.opacity(0.75), seed: 53)
                 }
                 .frame(maxWidth: .infinity, minHeight: 28)
                 .contentShape(Rectangle())
@@ -132,16 +133,18 @@ struct ConversationComposer: View {
     /// point Hector actually used and it must not disappear into a tab.
     private var context: some View {
         HStack(spacing: 10) {
-            Text("ABOUT · " + section.title.uppercased())
-                .font(.system(size: 9, design: .monospaced)).tracking(0.8)
-                .foregroundStyle(Theme.paper.opacity(0.55))
+            // Plain meta, not controls: sentence-case serif, soft paper.
+            Text("About " + section.title)
+                .font(.system(size: 12, design: .serif)).italic()
+                .foregroundStyle(Theme.paper.opacity(0.6))
+                .lineLimit(1)
                 .accessibilityIdentifier("composer.context")
             Spacer(minLength: 8)
             // When something is playing, WALK is about that; the chip says so
             // rather than offering a second button that does the same thing.
             if let episode {
-                Text("WALK IS ABOUT " + episode.id)
-                    .font(.system(size: 9, design: .monospaced)).tracking(0.8)
+                Text("Walk is about " + episode.id)
+                    .font(.system(size: 12, design: .serif)).italic()
                     .foregroundStyle(Theme.paper.opacity(0.6))
                     .lineLimit(1)
                     .accessibilityIdentifier("episode.talkAnywhere")

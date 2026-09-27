@@ -10,9 +10,13 @@ struct EpisodeReadAlongButton: View {
         VStack(alignment: .leading, spacing: 8) {
             Button(preparing ? "Preparing the reading…" : error != nil ? "Retry read along" : "Read along with this episode") {
                 preparing = true; error = nil
-            }.disabled(preparing).frame(minHeight: 44)
-            if preparing { Text("The episode can keep playing while its text is prepared.").font(.caption) }
-            if let error { Text(error).font(.caption).foregroundStyle(Theme.inkSoft) }
+            }
+            // Prepares the text and opens the reader: an action, outlined —
+            // the episode's play button above stays the primary thing.
+            .buttonStyle(.inkSecondary)
+            .disabled(preparing)
+            if preparing { InkNotice(text: "The episode can keep playing while its text is prepared.") }
+            if let error { InkNotice(text: error, kind: .error) }
         }
         .sheet(isPresented: $showReader) { ImmersiveReadingView() }
         .task(id: preparing) {

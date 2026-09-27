@@ -99,6 +99,7 @@ struct PlaylistDetailView: View {
                     PlaylistItemRow(item: item, index: i, playlist: playlist)
                         .listRowBackground(Color.clear)
                         .contentShape(Rectangle())
+                        .accessibilityAddTraits(.isButton)
                         .onTapGesture {
                             // Start it playing AND open it, so he can read
                             // along with her rather than staring at a list.
@@ -120,10 +121,7 @@ struct PlaylistDetailView: View {
                     }
                 }
             } header: {
-                Text("IN ORDER")
-                    .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                    .tracking(1.8)
-                    .foregroundStyle(Theme.inkSoft)
+                InkKicker(text: "In order")
             }
         }
         .listStyle(.plain)
@@ -191,47 +189,36 @@ struct PlaylistDetailView: View {
                 Spacer()
             }
 
-            HStack(spacing: 18) {
-                Button { store.playPlaylist(playlist) } label: {
-                    HStack(spacing: 8) {
-                        InkPlayPause(playing: false, size: 30, seed: playlist.id.inkSeed,
-                                     ringed: true)
-                        VStack(spacing: 2) {
-                            Text("PLAY ALL")
-                                .font(.system(size: 11, design: .monospaced).weight(.bold))
-                                .tracking(1.6)
-                                .foregroundStyle(Theme.accent)
-                            InkUnderline(color: Theme.accent, seed: 5, lineWidth: 1.2)
-                                .frame(width: 52, height: 4)
-                        }
-                    }
+            // The one thing this page is for: play the queue whole. Filled
+            // ink, with her play glyph inside the words.
+            Button { store.playPlaylist(playlist) } label: {
+                HStack(spacing: 10) {
+                    InkPlayPause(playing: false, size: 20, color: Theme.paper, seed: playlist.id.inkSeed)
+                    Text("Play all")
                 }
-                .buttonStyle(.plain)
-                .disabled(playlist.items.isEmpty)
-                Spacer()
-                wordButton(editing ? "DONE" : "REORDER") {
+            }
+            .buttonStyle(.inkPrimary)
+            .disabled(playlist.items.isEmpty)
+            // Tending the queue: quiet words, and the one that removes in
+            // seal red so it never reads as a sibling of RENAME.
+            HStack(spacing: 18) {
+                Button(editing ? "Done" : "Reorder") {
                     withAnimation { editing.toggle() }
                 }
-                wordButton("RENAME") {
+                .buttonStyle(.inkQuiet)
+                Button("Rename") {
                     draftName = playlist.name
                     renaming = true
                 }
-                wordButton("DELETE") { confirmingDelete = true }
+                .buttonStyle(.inkQuiet)
+                Spacer()
+                Button("Delete") { confirmingDelete = true }
+                    .buttonStyle(.inkDestructiveCompact)
             }
         }
         .padding(.vertical, 6)
     }
 
-    private func wordButton(_ word: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(word)
-                .font(.system(size: 9, design: .monospaced).weight(.bold))
-                .tracking(1.4)
-                .underline()
-                .foregroundStyle(Theme.inkSoft)
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 private struct PlaylistItemRow: View {
@@ -278,6 +265,9 @@ private struct PlaylistItemRow: View {
                 }
             }
             Spacer()
+            // Tapping the row plays it and opens the read-along — it goes
+            // somewhere, so it carries her chevron.
+            InkChevron(pointing: .right, size: 12, color: Theme.inkSoft, seed: item.id.inkSeed)
         }
         .padding(.vertical, 4)
     }
@@ -296,7 +286,7 @@ struct EpisodeNotesSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 InkTitle(text: title, size: 21, weight: .semibold)
-                Theme.stroke.frame(height: 0.7)
+                InkRule()
                 if loading {
                     ProgressView("Fetching shownotes…")
                         .frame(maxWidth: .infinity)
@@ -352,10 +342,7 @@ struct AddToPlaylistSheet: View {
                         .font(.system(.headline, design: .serif))
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("ADD TO")
-                        .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                        .tracking(1.8)
-                        .foregroundStyle(Theme.inkSoft)
+                    InkKicker(text: "Add to")
 
                     if store.playlists.isEmpty {
                         Text("No playlists yet — name one below and this becomes its first piece.")
@@ -388,43 +375,28 @@ struct AddToPlaylistSheet: View {
                         .disabled(working)
                     }
 
-                    Theme.stroke.frame(height: 0.7).padding(.vertical, 4)
-
-                    Text("OR START A NEW ONE")
-                        .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                        .tracking(1.8)
-                        .foregroundStyle(Theme.inkSoft)
-                    HStack(spacing: 10) {
-                        TextField("Name it — Drive, Walk, Sunday…", text: $newName)
-                            .font(.system(size: 15, design: .serif))
-                            .textFieldStyle(.plain)
-                            .submitLabel(.done)
-                            .onSubmit { create() }
-                        Button(action: create) {
-                            InkSubmitArrow(size: 24)
+                    InkSection(kicker: "Or start a new one") {
+                        HStack(spacing: 10) {
+                            TextField("Name it — Drive, Walk, Sunday…", text: $newName)
+                                .submitLabel(.done)
+                                .onSubmit { create() }
+                                .inkField()
+                            Button(action: create) {
+                                InkSubmitArrow(size: 24).frame(minWidth: 44, minHeight: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Create playlist")
+                            .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty
+                                      || working)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty
-                                  || working)
                     }
-                    .padding(.bottom, 6)
-                    Theme.stroke.frame(height: 0.7)
                 }
                 .padding(24)
             }
-            // v40: a queue opened from Studio stays in Studio's room.
-        .presenceBackground(.studio, store: store)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    InkTitleLine(text: "Listen later", size: 16)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(Theme.accent)
-                }
-            }
+            // v40: a queue opened from Studio stays in Studio's room — the
+            // same ground as AddEpisodeSheet, so queueing looks identical.
+            .presenceBackground(.studio, store: store)
+            .inkSheetPage("Listen later")
         }
         .presentationBackground(Theme.paper)
         .presentationDetents([.medium, .large])
@@ -469,18 +441,10 @@ struct AddToPlaylistLine: View {
     private var queued: Bool { !store.playlistsHolding(synthesis.pinID).isEmpty }
 
     var body: some View {
-        Button { picking = true } label: {
-            VStack(spacing: 2) {
-                Text(queued ? "QUEUED" : "LISTEN LATER")
-                    .font(.system(size: 10, design: .monospaced).weight(.bold))
-                    .tracking(1.5)
-                    .foregroundStyle(queued ? Theme.mint : Theme.inkSoft)
-                InkUnderline(color: queued ? Theme.mint : Theme.inkSoft,
-                             seed: synthesis.title.inkSeed, lineWidth: 1.0)
-                    .frame(width: queued ? 46 : 72, height: 4)
-            }
-        }
-        .buttonStyle(.plain)
+        // Opens the picker — a quiet action, the same words and size as the
+        // episode's own "Listen later".
+        Button(queued ? "Queued" : "Listen later") { picking = true }
+            .buttonStyle(.inkQuiet)
         .sheet(isPresented: $picking) {
             AddToPlaylistSheet(synthesis: synthesis)
         }
