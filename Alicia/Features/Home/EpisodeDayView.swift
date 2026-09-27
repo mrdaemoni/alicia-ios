@@ -138,7 +138,7 @@ private struct IntelligenceModeControl: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Qwen on this Mac").font(InkType.link)
                     Text(store.intelligenceMode.isLocalFirst
-                         ? "Everyday replies stay local. Claude subscription takes heavier work. Jev and Gemini audio enrichment may use paid APIs."
+                         ? "Everyday replies stay local. Claude subscription takes heavier work. Jev, Gemini audio enrichment, and Gemini natural voice may use paid APIs."
                          : "Hybrid routing is on and may use paid model APIs.")
                         .font(InkType.meta).foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -161,7 +161,7 @@ private struct IntelligenceModeControl: View {
                 Task { await store.setLocalIntelligence(false) }
             }
         } message: {
-            Text("Alicia may use configured Anthropic, OpenAI, and general Gemini APIs again. Jev and Gemini audio enrichment are already allowed. Your Mac subscriptions remain separate.")
+            Text("Alicia may use configured Anthropic, OpenAI, and general Gemini APIs again. Jev, Gemini audio enrichment, and Gemini natural voice are already allowed. Your Mac subscriptions remain separate.")
         }
     }
 }

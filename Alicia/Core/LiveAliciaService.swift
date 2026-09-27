@@ -109,23 +109,25 @@ struct LiveAliciaService: AliciaService {
     private static let readAttempts = 3
     private static let retryDelays: [Duration] = [.milliseconds(400), .seconds(2)]
 
-    private func fetchOne<D: Decodable>(_ path: String) async -> D? {
-        for attempt in 0..<Self.readAttempts {
+    private func fetchOne<D: Decodable>(_ path: String, reportsConnection: Bool = true) async -> D? {
+        let attempts = reportsConnection ? Self.readAttempts : 1
+        for attempt in 0..<attempts {
             do {
                 let (data, resp) = try await URLSession.shared.data(for: request(path))
                 let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
                 if status == 401 || status == 403 {
                     // A rejected token is not a network problem, and trying
                     // again with the same token is just three rejections.
-                    ConnectionStatus.note(.unauthorized)
+                    if reportsConnection { ConnectionStatus.note(.unauthorized) }
                     return nil
                 }
                 guard status == 200 else {
-                    if await retry(attempt, path: path, because: "HTTP \(status)") { continue }
-                    ConnectionStatus.note(.unreachable)
+                    if await retry(attempt, attempts: attempts, path: path,
+                                   because: "HTTP \(status)", reportsConnection: reportsConnection) { continue }
+                    if reportsConnection { ConnectionStatus.note(.unreachable) }
                     return nil
                 }
-                ConnectionStatus.note(.ok)   // reachable + authorized
+                if reportsConnection { ConnectionStatus.note(.ok) }   // reachable + authorized
                 do {
                     return try JSONDecoder().decode(D.self, from: data)
                 } catch {
@@ -138,22 +140,24 @@ struct LiveAliciaService: AliciaService {
                     return nil
                 }
             } catch {
-                if await retry(attempt, path: path, because: error.localizedDescription) { continue }
-                ConnectionStatus.note(.unreachable)
+                if await retry(attempt, attempts: attempts, path: path,
+                               because: error.localizedDescription, reportsConnection: reportsConnection) { continue }
+                if reportsConnection { ConnectionStatus.note(.unreachable) }
                 return nil
             }
         }
-        ConnectionStatus.note(.unreachable)
+        if reportsConnection { ConnectionStatus.note(.unreachable) }
         return nil
     }
 
     /// True when another attempt is due; sleeps first and says we are trying.
-    private func retry(_ attempt: Int, path: String, because reason: String) async -> Bool {
-        guard attempt < Self.readAttempts - 1 else { return false }
+    private func retry(_ attempt: Int, attempts: Int, path: String, because reason: String,
+                       reportsConnection: Bool) async -> Bool {
+        guard attempt < attempts - 1 else { return false }
         #if DEBUG
         print("[LiveAliciaService] \(path) attempt \(attempt + 1) failed: \(reason)")
         #endif
-        ConnectionStatus.note(.reaching)
+        if reportsConnection { ConnectionStatus.note(.reaching) }
         try? await Task.sleep(for: Self.retryDelays[min(attempt, Self.retryDelays.count - 1)])
         return true
     }
@@ -314,7 +318,11 @@ struct LiveAliciaService: AliciaService {
     }
 
     func collaboration() async -> CollaborationState? { await fetchOne("/api/collaboration") }
-    func presence() async -> PresenceAwareness? { await fetchOne("/api/presence") }
+    // Presence is an optional visual refinement. A cancelled or slow field
+    // refresh must not turn a healthy app into a global "unreachable" state.
+    func presence() async -> PresenceAwareness? {
+        await fetchOne("/api/presence", reportsConnection: false)
+    }
     func goalClosure(id: String) async -> GoalClosureRecord? {
         guard UUID(uuidString: id) != nil else { return nil }
         return await fetchOne("/api/goal_closure?closure_id=" + id)

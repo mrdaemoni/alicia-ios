@@ -63,7 +63,7 @@ struct IntelligenceModeState: Codable, Equatable {
         version: 1, mode: "local_first", changedAt: "", source: "preview",
         primary: "qwen_local", heavyLane: "claude_subscription",
         paidModelAPIs: false,
-        notice: "Qwen is the default. Jev and Gemini audio enrichment remain allowed; other paid model APIs are off."
+        notice: "Qwen is the default. Jev, Gemini audio enrichment, and Gemini natural voice remain allowed; other paid model APIs are off."
     )
 
     enum CodingKeys: String, CodingKey {
