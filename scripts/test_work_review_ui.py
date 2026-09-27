@@ -105,13 +105,19 @@ final class WorkReviewUITests: XCTestCase {
   let discuss=app.buttons["workReview.discuss.preview-q7"];reveal(discuss,app);discuss.tap()
   // v39: discussing a passage opens the conversation layer with the passage
   // attached, instead of leaving him in a tab to find the composer.
-  let target=app.otherElements["workReview.dialogueContext"];XCTAssertTrue(target.waitForExistence(timeout:10));capture("dialogue-exact-goal-context",app)
+  let target=app.descendants(matching:.any).matching(identifier:"workReview.dialogueContext").firstMatch
+  XCTAssertTrue(target.waitForExistence(timeout:10));XCTAssertTrue(app.staticTexts["Passage · Q7. Enough to be present"].exists);capture("dialogue-exact-goal-context",app)
   let compose=app.textFields["conversation.field"];XCTAssertTrue(compose.waitForExistence(timeout:10))
   compose.tap();compose.typeText("How can we test that this week?")
   app.buttons["conversation.send"].tap()
   let response=app.staticTexts.matching(NSPredicate(format:"label BEGINSWITH %@","Preview · We are discussing")).firstMatch
   XCTAssertTrue(response.waitForExistence(timeout:15));capture("dialogue-context-response",app)
-  target.tap();XCTAssertTrue(app.navigationBars["Prepared work"].waitForExistence(timeout:10))
+  app.buttons["conversation.close"].tap()
+  // The conversation layer closes back to the originating Us surface. Reopen
+  // Together explicitly to prove the reviewed work remains reachable.
+  let together=app.buttons["collaboration.open"];XCTAssertTrue(together.waitForExistence(timeout:10));reveal(together,app);together.tap()
+  let work=app.buttons["collaboration.result.preview-goal-result"];reveal(work,app);XCTAssertTrue(work.isHittable);work.tap()
+  XCTAssertTrue(app.navigationBars["Prepared work"].waitForExistence(timeout:10))
  }
  func testSetAsideRestoresOriginalAndKeepsSignals() {
   let app=launch(["--collaboration-reduce-motion-preview"]);openWork(app)
