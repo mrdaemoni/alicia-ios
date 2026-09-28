@@ -91,6 +91,17 @@ struct ListeningStage<Controls: View>: View {
         .onChange(of: isRecording) { _, on in store.presenceField.setListening(on) }
         .onChange(of: level) { _, value in store.presenceField.voiceLevel = value }
         .onDisappear { store.presenceField.setListening(false) }
+#if DEBUG
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("--changing-voice-level-preview") else { return }
+            var loud = false
+            while !Task.isCancelled {
+                store.presenceField.voiceLevel = loud ? 0.95 : 0.05
+                loud.toggle()
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+#endif
     }
 
     /// Build 35 on the phone, 2026-09-27: "On the walks, I don't need to see

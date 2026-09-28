@@ -102,6 +102,21 @@ final class PresenceContinuityUITests: XCTestCase {
   XCTAssertTrue(app.descendants(matching:.any)["listening.presence"].waitForExistence(timeout:15))
   capture("microphone-same-field",app)
  }
+ /// Reduce Motion must remain still even while the microphone amplitude
+ /// changes. The DEBUG fixture alternates between quiet and loud levels; two
+ /// middle-field captures must therefore be pixel-identical.
+ func testReduceMotionIgnoresChangingMicrophoneLevel() {
+  let app=launch("body",["--episode-microphone-on","--reduce-motion-preview","--changing-voice-level-preview"])
+  app.buttons["composer.walk"].tap()
+  XCTAssertTrue(app.descendants(matching:.any)["listening.presence"].waitForExistence(timeout:15))
+  sleep(1)
+  let first=band(app)
+  Thread.sleep(forTimeInterval:1.5)
+  let second=band(app)
+  let changed=zip(first,second).filter { $0 != $1 }.count
+  XCTAssertEqual(changed,0,"Reduce Motion changed while microphone amplitude moved (\(changed) bytes)")
+  capture("microphone-reduce-motion-still",app)
+ }
 }
 """)
 

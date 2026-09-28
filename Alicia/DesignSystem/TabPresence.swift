@@ -171,11 +171,21 @@ struct PresenceLayer: View {
     /// is selected (Codex review of #45 — the Us → playlist route froze her).
     @State private var onScreen = false
 
+    private var previewsReduceMotion: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--reduce-motion-preview")
+#else
+        false
+#endif
+    }
+
     var body: some View {
         GeometryReader { geo in
             let here = geo.frame(in: .global)
             let screen = store.presenceField.screen == .zero ? here.size : store.presenceField.screen
-            AliciaPresence(isActive: isActive && onScreen, field: store.presenceField)
+            AliciaPresence(isActive: isActive && onScreen,
+                           previewsReduceMotion: previewsReduceMotion,
+                           field: store.presenceField)
                 .frame(width: screen.width * 1.45, height: screen.height * 1.45)
                 .position(x: screen.width * 0.5 - here.minX, y: screen.height * 0.5 - here.minY)
                 .opacity(opacity)
