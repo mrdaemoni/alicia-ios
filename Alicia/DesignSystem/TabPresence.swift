@@ -122,24 +122,23 @@ extension View {
                 // opacity keeps it beneath the words rather than level with
                 // them. The mathematics is untouched: same body, seen from
                 // much closer.
+                if store.presenceField.enabled {
+                    // Animates while this surface is on screen — a tab root or a
+                    // page pushed from any tab — and rests under the walk cover.
+                    PresenceLayer(isActive: !store.showWalk, opacity: 0.55)
+                } else {
                 GeometryReader { geo in
                     AliciaPresence(
                         voice: TabPresence.voice(for: section),
                         state: TabPresence.state(for: section, store: store),
                         attention: TabPresence.attention(for: section, store: store),
                         isActive: store.selectedSection == section,
-                        previewsReduceMotion: previewsCollaborationStillness,
-                        // Her awareness: one body across every room.
-                        field: store.presenceField.enabled ? store.presenceField : nil
+                        previewsReduceMotion: previewsCollaborationStillness
                     )
-                    // Her awareness is meant to be seen moving: more of the body on
-                    // the page and a firmer ink than the fixed rooms used, still
-                    // beneath the words.
-                    .frame(width: geo.size.width * (store.presenceField.enabled ? 1.45 : 1.9),
-                           height: geo.size.height * (store.presenceField.enabled ? 1.45 : 1.9))
-                    .position(x: geo.size.width * 0.5,
-                              y: geo.size.height * (store.presenceField.enabled ? 0.5 : 0.46))
-                    .opacity(store.presenceField.enabled ? 0.42 : 0.30)   // family weight is normalised inside AliciaPresence
+                    .frame(width: geo.size.width * 1.9, height: geo.size.height * 1.9)
+                    .position(x: geo.size.width * 0.5, y: geo.size.height * 0.46)
+                    .opacity(0.30)   // family weight is normalised inside AliciaPresence
+                }
                 }
                 PaperGrain()
             }
@@ -154,5 +153,47 @@ extension View {
 #else
         return false
 #endif
+    }
+}
+
+/// Her body, placed against the glass rather than against whatever container
+/// draws it. A tab, a pushed page, a sheet and the walk all put her centre at
+/// the centre of the screen at the same size, and all read the same frame of
+/// the one `PresenceField` — so moving between them never moves her.
+struct PresenceLayer: View {
+    @Environment(AppStore.self) private var store
+    /// Allowed to animate at all (false under the walk cover).
+    var isActive: Bool
+    var opacity: Double
+    /// Whether this surface is actually showing. Appear/disappear follow tab
+    /// switches and navigation pushes, so a page pushed onto Us that draws a
+    /// Studio background still moves: activity no longer depends on which tab
+    /// is selected (Codex review of #45 — the Us → playlist route froze her).
+    @State private var onScreen = false
+
+    private var previewsReduceMotion: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--reduce-motion-preview")
+#else
+        false
+#endif
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let here = geo.frame(in: .global)
+            let screen = store.presenceField.screen == .zero ? here.size : store.presenceField.screen
+            AliciaPresence(isActive: isActive && onScreen,
+                           previewsReduceMotion: previewsReduceMotion,
+                           field: store.presenceField)
+                .frame(width: screen.width * 1.45, height: screen.height * 1.45)
+                .position(x: screen.width * 0.5 - here.minX, y: screen.height * 0.5 - here.minY)
+                .opacity(opacity)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onAppear { onScreen = true }
+        .onDisappear { onScreen = false }
     }
 }

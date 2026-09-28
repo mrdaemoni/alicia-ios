@@ -48,12 +48,42 @@ final class PresenceContinuityUITests: XCTestCase {
  func capture(_ name:String,_ app:XCUIApplication) {
   let shot=XCTAttachment(screenshot:app.screenshot());shot.name=name;shot.lifetime = .keepAlways;add(shot)
  }
- func launch(_ tab:String) -> XCUIApplication {
+ func launch(_ tab:String,_ extra:[String]=[]) -> XCUIApplication {
   continueAfterFailure=false
   let app=XCUIApplication()
-  app.launchArguments=["--reset-drafts","--body-preview","--episode-day-preview","--tab",tab]
+  app.launchArguments=["--reset-drafts","--body-preview","--episode-day-preview","--tab",tab]+extra
   app.launch()
   XCTAssertTrue(app.buttons["US"].waitForExistence(timeout:15));return app
+ }
+ /// The middle third of the screen as raw pixels: below the title, above the
+ /// band, where only her field changes on its own.
+ func band(_ app:XCUIApplication) -> [UInt8] {
+  let image=app.screenshot().image.cgImage!
+  let crop=image.cropping(to:CGRect(x:0,y:image.height/3,width:image.width,height:image.height/3))!
+  return [UInt8]((crop.dataProvider!.data! as Data))
+ }
+ /// Codex review of #45: the briefing playlist opens inside Us but drew a
+ /// Studio background, and a surface that is not the selected tab froze her.
+ /// She must move on the pushed page (two frames differ), and BACK must
+ /// return to Us, not to Studio.
+ func testUsPlaylistKeepsHerMovingAndBackReturnsHome() {
+  let app=launch("us",["--morning-briefing-preview"])
+  let open=app.buttons["morningBriefing.playlist"]
+  XCTAssertTrue(open.waitForExistence(timeout:15))
+  XCTAssertFalse(open.label.contains("Studio"),"the label still says it opens in Studio: \(open.label)")
+  open.tap()
+  let back=app.buttons["BACK"]
+  XCTAssertTrue(back.waitForExistence(timeout:10))
+  sleep(2)
+  let first=band(app)
+  Thread.sleep(forTimeInterval:1.5)
+  let second=band(app)
+  let changed=zip(first,second).filter { $0 != $1 }.count
+  XCTAssertGreaterThan(changed,2_000,"her field did not move on the pushed playlist (\(changed) bytes changed)")
+  capture("us-playlist-moving",app)
+  back.tap()
+  XCTAssertTrue(app.buttons["morningBriefing.playlist"].waitForExistence(timeout:10),"BACK did not return to Us")
+  XCTAssertTrue(app.buttons["us.openArc"].exists)
  }
  /// "The body section should look very similar to the other section."
  func testEveryRoomCarriesHer() {
@@ -69,8 +99,23 @@ final class PresenceContinuityUITests: XCTestCase {
   let app=launch("body")
   capture("body-with-her-behind-it",app)
   app.buttons["composer.walk"].tap()
-  XCTAssertTrue(app.staticTexts["listening.transcript"].waitForExistence(timeout:15))
+  XCTAssertTrue(app.descendants(matching:.any)["listening.presence"].waitForExistence(timeout:15))
   capture("microphone-same-field",app)
+ }
+ /// Reduce Motion must remain still even while the microphone amplitude
+ /// changes. The DEBUG fixture alternates between quiet and loud levels; two
+ /// middle-field captures must therefore be pixel-identical.
+ func testReduceMotionIgnoresChangingMicrophoneLevel() {
+  let app=launch("body",["--episode-microphone-on","--reduce-motion-preview","--changing-voice-level-preview"])
+  app.buttons["composer.walk"].tap()
+  XCTAssertTrue(app.descendants(matching:.any)["listening.presence"].waitForExistence(timeout:15))
+  sleep(1)
+  let first=band(app)
+  Thread.sleep(forTimeInterval:1.5)
+  let second=band(app)
+  let changed=zip(first,second).filter { $0 != $1 }.count
+  XCTAssertEqual(changed,0,"Reduce Motion changed while microphone amplitude moved (\(changed) bytes)")
+  capture("microphone-reduce-motion-still",app)
  }
 }
 """)

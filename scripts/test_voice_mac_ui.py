@@ -70,7 +70,7 @@ final class ContextUITests: XCTestCase {
   let microphone=app.descendants(matching:.any).matching(identifier:"walk.microphoneState").firstMatch
   XCTAssertTrue(microphone.waitForExistence(timeout:10))
   XCTAssertTrue(microphone.label.contains("Microphone on"))
-  XCTAssertTrue(app.staticTexts["listening.transcript"].exists)
+  XCTAssertTrue(app.descendants(matching:.any)["listening.presence"].exists)
   XCTAssertFalse(app.textViews["Your walk reflection"].exists)
   XCTAssertTrue(app.staticTexts["Preview of microphone-on UI. No audio is recorded or sent."].exists)
   capture("capture-only-microphone-preview",app:app)

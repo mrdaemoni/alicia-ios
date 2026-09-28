@@ -52,6 +52,17 @@ final class PresenceField {
     private(set) var awareness = PresenceAwareness.resting
     private(set) var lastUpdate: Date?
 
+    /// The whole screen, measured once at the root. Every surface — a tab, a
+    /// pushed page, a sheet, the walk — places her against the glass rather
+    /// than against its own container, so moving between them never moves her.
+    /// (Build 35 on the phone: "a lack of continuity between different sections.")
+    var screen: CGSize = .zero
+    /// A walk is open and he is speaking: she turns toward him and opens.
+    private(set) var listening = false
+    /// His voice, straight from the microphone tap (0…1). Drawn every frame,
+    /// never eased, so she breathes with him rather than after him.
+    var voiceLevel: Double = 0
+
     private var section: AppSection = .us
     private var from = Target.initial
     private var to = Target.initial
@@ -78,6 +89,15 @@ final class PresenceField {
         var primary: Int, secondary: Int, mix: Double
         var phase, energy, openness, coherence: Double
         var focus: CGPoint
+        var listening = false
+        var level: Double = 0
+    }
+
+    func setListening(_ on: Bool, now: Date = .now) {
+        guard on != listening else { return }
+        listening = on
+        if !on { voiceLevel = 0 }
+        retarget(now: now)
     }
 
     func receive(_ reading: PresenceAwareness, now: Date = .now) {
@@ -104,8 +124,18 @@ final class PresenceField {
 
     private func target() -> Target {
         var weights = Array(repeating: 0.0, count: AliciaPresence.Family.allCases.count)
-        weights[Self.family(forStance: awareness.stance).index] += 0.75
-        weights[Self.family(forSection: section).index] += 0.25
+        if listening {
+            // Really listening: the knot that binds — "you and me" — carrying
+            // what she already holds, opened wide and gathered toward him.
+            weights[AliciaPresence.Family.knot.index] += 0.6
+            weights[Self.family(forStance: awareness.stance).index] += 0.4
+            return Target(weights: weights, energy: 0.62, openness: 1, coherence: 0.9,
+                          focus: CGPoint(x: 0.5, y: 0.44))
+        }
+        // The section only nudges: at a quarter it read as a different body per
+        // room; at this weight a room tints her without moving her.
+        weights[Self.family(forStance: awareness.stance).index] += 0.85
+        weights[Self.family(forSection: section).index] += 0.15
         let focus: CGPoint
         switch awareness.direction {
         case "toward_hector": focus = CGPoint(x: 0.5, y: 0.22)   // up, toward the words he reads
@@ -137,13 +167,17 @@ final class PresenceField {
         let a = ranked[0], b = ranked[1]
         let mix = a.element + b.element > 0 ? b.element / (a.element + b.element) : 0
         return Frame(primary: a.offset, secondary: b.offset, mix: mix, phase: phase(at: date),
-                     energy: now.energy, openness: now.openness, coherence: now.coherence, focus: now.focus)
+                     energy: now.energy, openness: now.openness, coherence: now.coherence, focus: now.focus,
+                     listening: listening, level: listening && voiceLevel.isFinite ? min(1, max(0, voiceLevel)) : 0)
     }
 
     /// Still frame for Reduce Motion: the settled target, at a fixed phase.
     func stillFrame() -> Frame {
         var f = frame(at: changedAt.addingTimeInterval(Self.easing))
         f.phase = 4.2
+        // Reduce Motion is still: the open listening pose stays, but his voice
+        // level must not keep resizing her (Codex review of #45, 2026-09-27).
+        f.level = 0
         return f
     }
 

@@ -121,14 +121,16 @@ final class HomeConversationUITests: XCTestCase {
   XCTAssertTrue(app.buttons["dialogue.composer"].label.contains("Continue your draft"))
  }
 
- /// "the whole microphone should take the entire screen … I can see that
- /// word's big, so I can see as I'm talking if it's actually taking it well."
- /// WALK is the only spoken path now, and it opens that room.
- func testTalkOpensAFullScreenRoomWithTheWordsInFront() {
+ /// "the whole microphone should take the entire screen" (2026-09-18), then
+ /// on build 35 (2026-09-27): "On the walks, I don't need to see the text that
+ /// I'm speaking. I just want to see Alicia listening to me." The room is
+ /// hers: the question he is answering, her listening, and no transcript.
+ func testTalkOpensAFullScreenRoomWhereSheListens() {
   let app=launch("us",["--episode-walk-preview"])
   app.buttons["composer.walk"].tap()
-  XCTAssertTrue(app.staticTexts["listening.transcript"].waitForExistence(timeout:15))
+  XCTAssertTrue(app.descendants(matching:.any)["listening.presence"].waitForExistence(timeout:15))
   XCTAssertTrue(app.buttons["episode.finishWalk"].exists)
+  XCTAssertFalse(app.staticTexts["listening.transcript"].exists,"his words are shown back again")
   // Type-agnostic: a combined accessibility element's XCUI type depends on
   // what SwiftUI folded into it, and the identifier is the stable contract.
   let state=app.descendants(matching:.any).matching(identifier:"walk.microphoneState").firstMatch
@@ -137,14 +139,6 @@ final class HomeConversationUITests: XCTestCase {
   // claim to test is that nothing underneath can be reached while it is up.
   XCTAssertFalse(app.buttons["STUDIO"].isHittable)
   XCTAssertFalse(app.buttons["dialogue.composer"].isHittable)
-  // The type itself is the claim: one line of the old 14-point strip was
-  // about 17 points tall, one line of this is about 45.
-  let words=app.staticTexts["listening.transcript"]
-  XCTAssertGreaterThan(words.frame.height,40,"the words are not set large")
-  // No width assertion: a static text reports its glyph bounds, not its
-  // layout frame, so a short placeholder measures short however wide the
-  // page is. The screenshot below is the record of the type on the page.
-  XCTAssertGreaterThan(words.frame.height,app.frame.height*0.04,"the words are not given room")
   capture("listening-room",app)
   app.buttons["listening.close"].tap()
   XCTAssertTrue(app.buttons["US"].waitForExistence(timeout:10))

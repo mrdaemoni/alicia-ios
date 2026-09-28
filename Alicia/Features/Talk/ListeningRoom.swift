@@ -29,6 +29,7 @@ struct ListeningStage<Controls: View>: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(AppStore.self) private var store
 
     /// Loud speech gathers her; silence lets her rest. Clamped because a NaN
     /// from the audio tap must never reach the drawing.
@@ -53,6 +54,11 @@ struct ListeningStage<Controls: View>: View {
             // has particles. Hector asked for that same animation here.
             Theme.backdrop.ignoresSafeArea()
             Theme.timeTint.ignoresSafeArea()
+            if store.presenceField.enabled {
+                // The same body as every room, turned toward him: opened wide
+                // and breathing with his voice while the microphone is on.
+                PresenceLayer(isActive: scenePhase == .active, opacity: 0.68)
+            } else {
             GeometryReader { geo in
                 AliciaPresence(voice: voice,
                                state: isRecording ? .listening : isStarting ? .thinking : .resting,
@@ -60,16 +66,16 @@ struct ListeningStage<Controls: View>: View {
                                isActive: scenePhase == .active)
                     .frame(width: geo.size.width * 1.9, height: geo.size.height * 1.9)
                     .position(x: geo.size.width * 0.5, y: geo.size.height * 0.46)
-                    // Denser than a section's 0.30: here she IS the subject,
-                    // and his words are the only thing above her.
                     .opacity(0.42)
             }
             .ignoresSafeArea()
             .accessibilityHidden(true)
+            }
             PaperGrain().ignoresSafeArea()
             VStack(alignment: .leading, spacing: 0) {
                 head
-                transcript
+                question
+                Spacer(minLength: 0)
                 Text(note)
                     .font(InkType.meta).foregroundStyle(noteIsError ? Theme.rose : Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -81,6 +87,41 @@ struct ListeningStage<Controls: View>: View {
         }
         .foregroundStyle(Theme.ink)
         .fontDesign(.serif)
+        .onAppear { store.presenceField.setListening(isRecording) }
+        .onChange(of: isRecording) { _, on in store.presenceField.setListening(on) }
+        .onChange(of: level) { _, value in store.presenceField.voiceLevel = value }
+        .onDisappear { store.presenceField.setListening(false) }
+#if DEBUG
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("--changing-voice-level-preview") else { return }
+            var loud = false
+            while !Task.isCancelled {
+                store.presenceField.voiceLevel = loud ? 0.95 : 0.05
+                loud.toggle()
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+#endif
+    }
+
+    /// Build 35 on the phone, 2026-09-27: "On the walks, I don't need to see
+    /// the text that I'm speaking. I just want to see Alicia listening to me."
+    /// His words are still captured and kept (the Mac transcript is the record
+    /// he reviews); the room shows only what he is answering, and her.
+    private var question: some View {
+        Text(placeholder)
+            .font(.system(size: 19, design: .serif)).italic()
+            .foregroundStyle(Theme.inkSoft)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 24).padding(.top, 14)
+            .accessibilityIdentifier("listening.prompt")
+            .overlay {
+                // She is the page now; this names it for VoiceOver.
+                Color.clear
+                    .accessibilityElement()
+                    .accessibilityLabel(isRecording ? "Alicia is listening" : "Alicia is waiting")
+                    .accessibilityIdentifier("listening.presence")
+            }
     }
 
     private var head: some View {
@@ -115,31 +156,6 @@ struct ListeningStage<Controls: View>: View {
         .padding(.horizontal, 24).padding(.top, 18)
     }
 
-    /// His own words, as large as they can be and still hold a paragraph, and
-    /// pinned to the bottom so the newest line is where his eye already is.
-    private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    Spacer(minLength: 0)
-                    Text(words.isEmpty ? placeholder : words)
-                        .font(.system(size: words.count > 420 ? 24 : words.count > 160 ? 30 : 38,
-                                      design: .serif))
-                        .foregroundStyle(words.isEmpty ? Theme.inkSoft : Theme.ink)
-                        .lineSpacing(4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .animation(.easeOut(duration: 0.18), value: words.count > 160)
-                        .id("words")
-                        .accessibilityIdentifier("listening.transcript")
-                }
-                .frame(maxWidth: .infinity, minHeight: 320, alignment: .bottomLeading)
-                .padding(.horizontal, 24).padding(.vertical, 18)
-            }
-            .onChange(of: words) { _, _ in
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("words", anchor: .bottom) }
-            }
-        }
-    }
 }
 
 extension AliciaPresence.Voice {

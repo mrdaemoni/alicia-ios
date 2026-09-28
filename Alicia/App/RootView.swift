@@ -98,6 +98,15 @@ struct RootView: View {
             EditorialTabBar()
         }
         .ignoresSafeArea(edges: .bottom)
+        // The screen she is placed against, measured once for every surface.
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { store.presenceField.screen = geo.size }
+                    .onChange(of: geo.size) { _, size in store.presenceField.screen = size }
+            }
+            .ignoresSafeArea()
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("alicia.openThoughtReturn"))) { _ in
             store.selectedSection = .mind
         }

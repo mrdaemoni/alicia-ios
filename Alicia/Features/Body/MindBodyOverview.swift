@@ -33,31 +33,25 @@ struct MindBodyOverview: View {
         }
         return "What is helping your body feel well and your mind feel clear today?"
     }
+    private var status: String {
+        let finished = store.collaboration.state?.finishedGoals.count ?? 0
+        let mind = mindGoals.isEmpty
+            ? (finished > 0 ? "Mind: ready for a next goal" : "Mind: no shared goal yet")
+            : "Mind: \(mindGoals.count) shared goal\(mindGoals.count == 1 ? "" : "s")"
+        let body = recorded.isEmpty ? "Body: nothing logged today" : "Body: " + recorded.joined(separator: ", ")
+        return mind + " · " + body
+    }
+
     var body: some View {
-        InkSection(kicker: "A clear mind · a healthy body", spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Button { store.selectedSection = .knowledge } label: {
-                    let finished = store.collaboration.state?.finishedGoals.count ?? 0
-                    InkLinkLabel(title: "Mind",
-                                 detail: (mindGoals.isEmpty && finished > 0 ? "\(finished) finished · ready for a next goal"
-                                          : "\(mindGoals.count) active shared goal(s)")
-                                    + " · " + (mindGoals.first?.title ?? "Explore your knowledge"))
-                }
-                .buttonStyle(.inkLink)
-                InkRule(opacity: 0.6)
-                Button { store.selectedSection = .body } label: {
-                    InkLinkLabel(title: "Body",
-                                 detail: "\(bodyGoals.count) active wellness goal(s) · "
-                                    + (recorded.isEmpty ? "Log your daily rituals" : recorded.joined(separator: " · ")))
-                }
-                .buttonStyle(.inkLink)
-            }
-            InkRule(opacity: 0.6)
+        InkSection(kicker: "A clear mind · a healthy body", spacing: 12) {
+            // The tab bar already goes to Mind and Body; what this section adds
+            // is where each stands today, in one line (2026-09-27, real estate).
+            Text(status).font(InkType.meta).foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
             if let observation { Text(observation).font(.subheadline).foregroundStyle(Theme.inkSoft) }
             if let error = store.bodyStore.error { InkNotice(text: error, kind: .error) }
             Text(question).font(InkType.subhead)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("A connection to explore · your experience tells us whether it fits.").font(.caption).foregroundStyle(Theme.inkSoft)
             InkDisclosureToggle(title: "Connect this to my day", open: expanded) { expanded.toggle(); saved = false }
                 .accessibilityIdentifier("body.connectDay")
             if expanded {

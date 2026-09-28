@@ -263,7 +263,17 @@ extension AliciaService {
     func contextElevation() async -> ContextElevation? { nil }
     func contextTranslate(title: String) async -> ContextTranslation? { nil }
     func contextArrangement() async -> ContextArrangement? { nil }
-    func morningBriefing() async -> MorningBriefing? { nil }
+    func morningBriefing() async -> MorningBriefing? {
+#if DEBUG
+        // Invented fixture (this repo is public): a ready briefing with a playlist.
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-preview") {
+            return MorningBriefing(id: "preview-briefing", day: Date.now.formatted(.iso8601.year().month().day()),
+                                   title: "Preview · Three quiet signals", text: "Preview text of a short briefing.",
+                                   status: "ready", playlist_id: "preview-briefing-playlist")
+        }
+#endif
+        return nil
+    }
     func collaboration() async -> CollaborationState? {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--collaboration-preview") { return await CollaborationPreview.shared.read() }
@@ -598,7 +608,17 @@ struct MockAliciaService: AliciaService {
 
     /// Playlists live server-side; mock mode shows the empty shelf rather
     /// than inventing queues Hector never made.
-    func playlists() async -> [Playlist] { [] }
+    func playlists() async -> [Playlist] {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-preview") {
+            return [Playlist(id: "preview-briefing-playlist", name: "Preview · This morning", items: [
+                .init(id: "preview-item", kind: "synthesis", title: "Preview · A note on rhythm",
+                      body: "Preview body.", source: "preview", duration: 60, speechChunks: [])],
+                duration: 60, ready: 0)]
+        }
+#endif
+        return []
+    }
     func playlistAction(_ action: String, body: [String: Any]) async -> [Playlist]? { nil }
 
     func homeContext() async -> HomeContext? {
