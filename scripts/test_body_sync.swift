@@ -7,10 +7,12 @@ protocol AliciaService {
     func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult?
     func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage?
     func askBody(_ text: String) async -> BodyAnswer?
+    func askBody(_ text: String, requestID: String) async -> BodyAnswer?
 }
 extension AliciaService {
     func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage? { nil }
     func askBody(_ text: String) async -> BodyAnswer? { nil }
+    func askBody(_ text: String, requestID: String) async -> BodyAnswer? { await askBody(text) }
 }
 struct MockAliciaService: AliciaService {
     func bodyOverview() async -> BodyOverview? { nil }

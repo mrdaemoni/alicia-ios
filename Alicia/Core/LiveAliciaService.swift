@@ -29,7 +29,10 @@ struct LiveAliciaService: AliciaService {
     }
 
     func askBody(_ text: String) async -> BodyAnswer? {
-        let data = try? JSONSerialization.data(withJSONObject: ["text": text])
+        await askBody(text, requestID: UUID().uuidString)
+    }
+    func askBody(_ text: String, requestID: String) async -> BodyAnswer? {
+        let data = try? JSONSerialization.data(withJSONObject: ["text": text, "request_id": requestID])
         return await privateBodyRequest(method: "POST", data: data, path: "/api/body/ask")
     }
     func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage? {
@@ -379,15 +382,20 @@ struct LiveAliciaService: AliciaService {
     }
 
     func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext, requestID: UUID().uuidString)
+    }
+
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?, requestID: String) -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in
             let task = Task {
                 do {
-                    var payload: [String: Any] = ["text": prompt, "voice": voice, "recording_id": recordingID]
+                    var payload: [String: Any] = ["text": prompt, "voice": voice, "recording_id": recordingID, "request_id": requestID]
                     if let workContext { payload["work_context"] = workContext.wire }
                     if let surfaceContext { payload["surface_context"] = surfaceContext.wire }
                     let body = try JSONSerialization.data(withJSONObject: payload)
-                    let (bytes, resp) = try await URLSession.shared.bytes(
-                        for: request("/api/chat", method: "POST", body: body))
+                    var chatRequest = request("/api/chat", method: "POST", body: body)
+                    chatRequest.timeoutInterval = 210
+                    let (bytes, resp) = try await URLSession.shared.bytes(for: chatRequest)
                     guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
                         continuation.yield(.token(workContext != nil && (resp as? HTTPURLResponse)?.statusCode == 400
                             ? "This passage could not be confirmed. Your message was not sent to a model. Open the current work in Together, then try again."
@@ -411,7 +419,7 @@ struct LiveAliciaService: AliciaService {
                             continuation.yield(.token("\n(connection hiccup: \(err))"))
                         }
                         if event.done == true {
-                            continuation.yield(.done(messageID: event.message_id))
+                            continuation.yield(.done(messageID: event.message_id, healthTerminal: event.health != nil))
                             finished = true
                             break
                         }
@@ -434,7 +442,10 @@ struct LiveAliciaService: AliciaService {
         var message_id: Int?
         var reply_id: String?
         var error: String?
+        var health: HealthTerminal?
     }
+
+    private struct HealthTerminal: Decodable { var status: String?; var provider: String? }
 
     // MARK: reactions + proactive feed
 

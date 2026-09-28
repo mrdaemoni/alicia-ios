@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import WidgetKit
+import CryptoKit
 
 struct BodyOverview: Decodable {
     struct Metric: Decodable, Identifiable {
@@ -77,6 +78,10 @@ struct BodySourcePage: Decodable {
     var error: String?
     var refreshing = false
     private var refreshRequested = false
+    private var pendingAskIDs: [String: String] =
+        UserDefaults.standard.dictionary(forKey: "alicia.pendingBodyAskReceipts") as? [String: String] ?? [:] {
+        didSet { UserDefaults.standard.set(pendingAskIDs, forKey: "alicia.pendingBodyAskReceipts") }
+    }
     var lastRefresh: Date?
     init(service: AliciaService, captureDirectory: URL? = nil,
          refreshWidgets: @escaping () -> Void = { WidgetCenter.shared.reloadTimelines(ofKind: "AliciaRituals") }) {
@@ -157,6 +162,15 @@ struct BodySourcePage: Decodable {
         do { try BodyCapture.discardRejected(event.id, directory: captureDirectory); conflictedIDs.remove(event.id); reread() }
         catch { self.error = "Could not discard this rejected edit. Its original has been kept." }
     }
-    func ask(_ text: String) async -> BodyAnswer? { await service.askBody(text) }
+    func ask(_ text: String) async -> BodyAnswer? {
+        let key = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let receiptKey = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
+        let stored = pendingAskIDs[receiptKey]?.split(separator: "|", maxSplits: 1).map(String.init)
+        let requestID = (stored?.count == 2 && Date().timeIntervalSince1970 - (Double(stored![1]) ?? 0) < 600) ? stored![0] : UUID().uuidString
+        pendingAskIDs[receiptKey] = "\(requestID)|\(Date().timeIntervalSince1970)"
+        let answer = await service.askBody(key, requestID: requestID)
+        if answer != nil { pendingAskIDs.removeValue(forKey: receiptKey) }
+        return answer
+    }
     func source(_ id: String, offset: Int, expectedHash: String) async -> BodySourcePage? { await service.bodySource(id: id, offset: offset, expectedHash: expectedHash) }
 }

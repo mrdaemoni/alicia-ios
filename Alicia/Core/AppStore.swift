@@ -3,6 +3,7 @@ import Observation
 import AVFoundation
 import MediaPlayer
 import WidgetKit
+import CryptoKit
 
 @MainActor
 @Observable
@@ -33,6 +34,12 @@ final class AppStore {
 
     private let service: AliciaService
     private var ticker: Task<Void, Never>?
+    /// Stable per-send receipts let a lost typed health response be retried
+    /// without duplicating the private journal event.
+    private var pendingSendRequestIDs: [String: String] =
+        UserDefaults.standard.dictionary(forKey: "alicia.pendingHealthSendReceipts") as? [String: String] ?? [:] {
+        didSet { UserDefaults.standard.set(pendingSendRequestIDs, forKey: "alicia.pendingHealthSendReceipts") }
+    }
     /// True when the app fell back to `MockAliciaService` (no Secrets.plist
     /// / no override — see `AliciaConfig.makeService`). Sample data is a
     /// mock-mode-only affordance: it must never masquerade as her live
@@ -1401,6 +1408,10 @@ final class AppStore {
             return
         }
         let workContext = collaboration.dialogueContext
+        let key = SHA256.hash(data: Data(clean.utf8)).map { String(format: "%02x", $0) }.joined()
+        let stored = pendingSendRequestIDs[key]?.split(separator: "|", maxSplits: 1).map(String.init)
+        let requestID = (stored?.count == 2 && Date().timeIntervalSince1970 - (Double(stored![1]) ?? 0) < 600) ? stored![0] : UUID().uuidString
+        pendingSendRequestIDs[key] = "\(requestID)|\(Date().timeIntervalSince1970)"
         messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID, workContext: workContext))
         let idx = messages.count
         messages.append(Message(sender: .alicia, text: "", workContext: workContext))
@@ -1410,15 +1421,18 @@ final class AppStore {
                 // `defer` rather than a trailing assignment: a thrown or cancelled
                 // stream must not leave her looking permanently mid-thought.
                 defer { isStreaming = false }
-                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext) {
+                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext, requestID: requestID) {
                     guard messages.indices.contains(idx) else { break }
                     switch event {
                     case .token(let t):   messages[idx].text += t
                     case .details(let id):
                         messages[idx].replyID = id
+                        pendingSendRequestIDs.removeValue(forKey: key)
                         if let workContext { collaboration.rememberDialogueContext(workContext, replyID: id) }
                     case .voice(let url): messages[idx].voiceURL = url
-                    case .done(let mid):  messages[idx].messageID = mid
+                    case .done(let mid, let healthTerminal):
+                        messages[idx].messageID = mid
+                        if mid != nil || healthTerminal { pendingSendRequestIDs.removeValue(forKey: key) }
                     }
                 }
                 // During a walk the backend accumulates instead of chatting —
