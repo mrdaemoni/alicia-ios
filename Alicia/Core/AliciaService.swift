@@ -106,6 +106,7 @@ protocol AliciaService {
     func intelligenceMode() async -> IntelligenceModeState?
     func setIntelligenceMode(_ mode: String) async -> IntelligenceModeState?
     func askBody(_ text: String) async -> BodyAnswer?
+    func askBody(_ text: String, requestID: String) async -> BodyAnswer?
     func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage?
     func bodyOverview() async -> BodyOverview?
     func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult?
@@ -131,6 +132,7 @@ protocol AliciaService {
     func stream(_ prompt: String, voice: Bool, recordingID: String) -> AsyncStream<ChatEvent>
     func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?) -> AsyncStream<ChatEvent>
     func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?) -> AsyncStream<ChatEvent>
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?, requestID: String) -> AsyncStream<ChatEvent>
     func contextEnrichment(replyID: String) async -> ContextEnrichment?
     func changeContext(_ change: ContextChange) async -> ContextChangeResult?
     func contextSource(replyID: String, itemID: String) async -> ContextSource?
@@ -654,6 +656,10 @@ extension AliciaService {
 // Older/mock services show an honest unavailable Body surface.
 extension AliciaService {
     func askBody(_ text: String) async -> BodyAnswer? { nil }
+    func askBody(_ text: String, requestID: String) async -> BodyAnswer? { await askBody(text) }
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?, requestID: String) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext)
+    }
     func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage? { nil }
     func bodyOverview() async -> BodyOverview? { nil }
     func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult? { nil }

@@ -29,7 +29,10 @@ struct LiveAliciaService: AliciaService {
     }
 
     func askBody(_ text: String) async -> BodyAnswer? {
-        let data = try? JSONSerialization.data(withJSONObject: ["text": text])
+        await askBody(text, requestID: UUID().uuidString)
+    }
+    func askBody(_ text: String, requestID: String) async -> BodyAnswer? {
+        let data = try? JSONSerialization.data(withJSONObject: ["text": text, "request_id": requestID])
         return await privateBodyRequest(method: "POST", data: data, path: "/api/body/ask")
     }
     func bodySource(id: String, offset: Int, expectedHash: String) async -> BodySourcePage? {
@@ -379,10 +382,14 @@ struct LiveAliciaService: AliciaService {
     }
 
     func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?) -> AsyncStream<ChatEvent> {
+        stream(prompt, voice: voice, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext, requestID: UUID().uuidString)
+    }
+
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?, requestID: String) -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in
             let task = Task {
                 do {
-                    var payload: [String: Any] = ["text": prompt, "voice": voice, "recording_id": recordingID]
+                    var payload: [String: Any] = ["text": prompt, "voice": voice, "recording_id": recordingID, "request_id": requestID]
                     if let workContext { payload["work_context"] = workContext.wire }
                     if let surfaceContext { payload["surface_context"] = surfaceContext.wire }
                     let body = try JSONSerialization.data(withJSONObject: payload)

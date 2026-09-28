@@ -33,6 +33,9 @@ final class AppStore {
 
     private let service: AliciaService
     private var ticker: Task<Void, Never>?
+    /// Stable per-send receipts let a lost typed health response be retried
+    /// without duplicating the private journal event.
+    private var pendingSendRequestIDs: [String: String] = [:]
     /// True when the app fell back to `MockAliciaService` (no Secrets.plist
     /// / no override — see `AliciaConfig.makeService`). Sample data is a
     /// mock-mode-only affordance: it must never masquerade as her live
@@ -1401,6 +1404,8 @@ final class AppStore {
             return
         }
         let workContext = collaboration.dialogueContext
+        let requestID = pendingSendRequestIDs[clean] ?? UUID().uuidString
+        pendingSendRequestIDs[clean] = requestID
         messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID, workContext: workContext))
         let idx = messages.count
         messages.append(Message(sender: .alicia, text: "", workContext: workContext))
@@ -1410,7 +1415,7 @@ final class AppStore {
                 // `defer` rather than a trailing assignment: a thrown or cancelled
                 // stream must not leave her looking permanently mid-thought.
                 defer { isStreaming = false }
-                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext) {
+                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext, requestID: requestID) {
                     guard messages.indices.contains(idx) else { break }
                     switch event {
                     case .token(let t):   messages[idx].text += t
@@ -1419,6 +1424,7 @@ final class AppStore {
                         if let workContext { collaboration.rememberDialogueContext(workContext, replyID: id) }
                     case .voice(let url): messages[idx].voiceURL = url
                     case .done(let mid):  messages[idx].messageID = mid
+                        pendingSendRequestIDs.removeValue(forKey: clean)
                     }
                 }
                 // During a walk the backend accumulates instead of chatting —

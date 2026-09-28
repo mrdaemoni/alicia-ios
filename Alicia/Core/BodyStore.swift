@@ -77,6 +77,7 @@ struct BodySourcePage: Decodable {
     var error: String?
     var refreshing = false
     private var refreshRequested = false
+    private var pendingAskIDs: [String: String] = [:]
     var lastRefresh: Date?
     init(service: AliciaService, captureDirectory: URL? = nil,
          refreshWidgets: @escaping () -> Void = { WidgetCenter.shared.reloadTimelines(ofKind: "AliciaRituals") }) {
@@ -157,6 +158,13 @@ struct BodySourcePage: Decodable {
         do { try BodyCapture.discardRejected(event.id, directory: captureDirectory); conflictedIDs.remove(event.id); reread() }
         catch { self.error = "Could not discard this rejected edit. Its original has been kept." }
     }
-    func ask(_ text: String) async -> BodyAnswer? { await service.askBody(text) }
+    func ask(_ text: String) async -> BodyAnswer? {
+        let key = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requestID = pendingAskIDs[key] ?? UUID().uuidString
+        pendingAskIDs[key] = requestID
+        let answer = await service.askBody(key, requestID: requestID)
+        if answer != nil { pendingAskIDs.removeValue(forKey: key) }
+        return answer
+    }
     func source(_ id: String, offset: Int, expectedHash: String) async -> BodySourcePage? { await service.bodySource(id: id, offset: offset, expectedHash: expectedHash) }
 }

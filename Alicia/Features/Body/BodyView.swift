@@ -403,7 +403,7 @@ private struct BodyQuestionView: View {
                         if let model = answer.model { Text("Local model · " + model).font(.caption) }
                         if let asOf = answer.as_of { Text("Oura through " + asOf).font(.caption) }
                     }
-                    Text("This exchange is not saved or used for training. Keep what matters as a private reflection in Us. Private audio is not available yet.").font(.caption).foregroundStyle(Theme.inkSoft)
+                    Text("This exchange is saved locally in your private health journal and is not used for training. Private audio is not available yet.").font(.caption).foregroundStyle(Theme.inkSoft)
                 }.padding(22)
             }.background(Theme.paper)
                 .inkSheetPage("With Alicia", close: { if !working { dismiss() } })
