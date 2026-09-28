@@ -165,8 +165,9 @@ struct BodySourcePage: Decodable {
     func ask(_ text: String) async -> BodyAnswer? {
         let key = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let receiptKey = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
-        let requestID = pendingAskIDs[receiptKey] ?? UUID().uuidString
-        pendingAskIDs[receiptKey] = requestID
+        let stored = pendingAskIDs[receiptKey]?.split(separator: "|", maxSplits: 1).map(String.init)
+        let requestID = (stored?.count == 2 && Date().timeIntervalSince1970 - (Double(stored![1]) ?? 0) < 600) ? stored![0] : UUID().uuidString
+        pendingAskIDs[receiptKey] = "\(requestID)|\(Date().timeIntervalSince1970)"
         let answer = await service.askBody(key, requestID: requestID)
         if answer != nil { pendingAskIDs.removeValue(forKey: receiptKey) }
         return answer

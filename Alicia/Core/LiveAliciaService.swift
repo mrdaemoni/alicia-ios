@@ -393,8 +393,9 @@ struct LiveAliciaService: AliciaService {
                     if let workContext { payload["work_context"] = workContext.wire }
                     if let surfaceContext { payload["surface_context"] = surfaceContext.wire }
                     let body = try JSONSerialization.data(withJSONObject: payload)
-                    let (bytes, resp) = try await URLSession.shared.bytes(
-                        for: request("/api/chat", method: "POST", body: body))
+                    var chatRequest = request("/api/chat", method: "POST", body: body)
+                    chatRequest.timeoutInterval = 210
+                    let (bytes, resp) = try await URLSession.shared.bytes(for: chatRequest)
                     guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
                         continuation.yield(.token(workContext != nil && (resp as? HTTPURLResponse)?.statusCode == 400
                             ? "This passage could not be confirmed. Your message was not sent to a model. Open the current work in Together, then try again."
