@@ -3,6 +3,7 @@ import Observation
 import AVFoundation
 import MediaPlayer
 import WidgetKit
+import CryptoKit
 
 @MainActor
 @Observable
@@ -35,7 +36,10 @@ final class AppStore {
     private var ticker: Task<Void, Never>?
     /// Stable per-send receipts let a lost typed health response be retried
     /// without duplicating the private journal event.
-    private var pendingSendRequestIDs: [String: String] = [:]
+    private var pendingSendRequestIDs: [String: String] =
+        UserDefaults.standard.dictionary(forKey: "alicia.pendingHealthSendReceipts") as? [String: String] ?? [:] {
+        didSet { UserDefaults.standard.set(pendingSendRequestIDs, forKey: "alicia.pendingHealthSendReceipts") }
+    }
     /// True when the app fell back to `MockAliciaService` (no Secrets.plist
     /// / no override — see `AliciaConfig.makeService`). Sample data is a
     /// mock-mode-only affordance: it must never masquerade as her live
@@ -1404,8 +1408,9 @@ final class AppStore {
             return
         }
         let workContext = collaboration.dialogueContext
-        let requestID = pendingSendRequestIDs[clean] ?? UUID().uuidString
-        pendingSendRequestIDs[clean] = requestID
+        let key = SHA256.hash(data: Data(clean.utf8)).map { String(format: "%02x", $0) }.joined()
+        let requestID = pendingSendRequestIDs[key] ?? UUID().uuidString
+        pendingSendRequestIDs[key] = requestID
         messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID, workContext: workContext))
         let idx = messages.count
         messages.append(Message(sender: .alicia, text: "", workContext: workContext))
@@ -1424,7 +1429,7 @@ final class AppStore {
                         if let workContext { collaboration.rememberDialogueContext(workContext, replyID: id) }
                     case .voice(let url): messages[idx].voiceURL = url
                     case .done(let mid):  messages[idx].messageID = mid
-                        pendingSendRequestIDs.removeValue(forKey: clean)
+                        pendingSendRequestIDs.removeValue(forKey: key)
                     }
                 }
                 // During a walk the backend accumulates instead of chatting —

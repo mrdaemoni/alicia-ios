@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import WidgetKit
+import CryptoKit
 
 struct BodyOverview: Decodable {
     struct Metric: Decodable, Identifiable {
@@ -77,7 +78,10 @@ struct BodySourcePage: Decodable {
     var error: String?
     var refreshing = false
     private var refreshRequested = false
-    private var pendingAskIDs: [String: String] = [:]
+    private var pendingAskIDs: [String: String] =
+        UserDefaults.standard.dictionary(forKey: "alicia.pendingBodyAskReceipts") as? [String: String] ?? [:] {
+        didSet { UserDefaults.standard.set(pendingAskIDs, forKey: "alicia.pendingBodyAskReceipts") }
+    }
     var lastRefresh: Date?
     init(service: AliciaService, captureDirectory: URL? = nil,
          refreshWidgets: @escaping () -> Void = { WidgetCenter.shared.reloadTimelines(ofKind: "AliciaRituals") }) {
@@ -160,10 +164,11 @@ struct BodySourcePage: Decodable {
     }
     func ask(_ text: String) async -> BodyAnswer? {
         let key = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let requestID = pendingAskIDs[key] ?? UUID().uuidString
-        pendingAskIDs[key] = requestID
+        let receiptKey = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
+        let requestID = pendingAskIDs[receiptKey] ?? UUID().uuidString
+        pendingAskIDs[receiptKey] = requestID
         let answer = await service.askBody(key, requestID: requestID)
-        if answer != nil { pendingAskIDs.removeValue(forKey: key) }
+        if answer != nil { pendingAskIDs.removeValue(forKey: receiptKey) }
         return answer
     }
     func source(_ id: String, offset: Int, expectedHash: String) async -> BodySourcePage? { await service.bodySource(id: id, offset: offset, expectedHash: expectedHash) }
