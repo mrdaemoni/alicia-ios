@@ -1430,9 +1430,9 @@ final class AppStore {
                         pendingSendRequestIDs.removeValue(forKey: key)
                         if let workContext { collaboration.rememberDialogueContext(workContext, replyID: id) }
                     case .voice(let url): messages[idx].voiceURL = url
-                    case .done(let mid):
+                    case .done(let mid, let healthTerminal):
                         messages[idx].messageID = mid
-                        if mid != nil { pendingSendRequestIDs.removeValue(forKey: key) }
+                        if mid != nil || healthTerminal { pendingSendRequestIDs.removeValue(forKey: key) }
                     }
                 }
                 // During a walk the backend accumulates instead of chatting —

@@ -34,7 +34,7 @@ enum ChatEvent {
     case token(String)
     case details(String)
     case voice(URL)
-    case done(messageID: Int?)
+    case done(messageID: Int?, healthTerminal: Bool = false)
 }
 
 /// A proactive message Alicia sent on her own initiative (from the

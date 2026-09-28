@@ -419,7 +419,7 @@ struct LiveAliciaService: AliciaService {
                             continuation.yield(.token("\n(connection hiccup: \(err))"))
                         }
                         if event.done == true {
-                            continuation.yield(.done(messageID: event.message_id))
+                            continuation.yield(.done(messageID: event.message_id, healthTerminal: event.health != nil))
                             finished = true
                             break
                         }
@@ -442,7 +442,10 @@ struct LiveAliciaService: AliciaService {
         var message_id: Int?
         var reply_id: String?
         var error: String?
+        var health: HealthTerminal?
     }
+
+    private struct HealthTerminal: Decodable { var status: String?; var provider: String? }
 
     // MARK: reactions + proactive feed
 
