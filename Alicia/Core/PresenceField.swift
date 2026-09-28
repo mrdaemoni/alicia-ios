@@ -175,6 +175,9 @@ final class PresenceField {
     func stillFrame() -> Frame {
         var f = frame(at: changedAt.addingTimeInterval(Self.easing))
         f.phase = 4.2
+        // Reduce Motion is still: the open listening pose stays, but his voice
+        // level must not keep resizing her (Codex review of #45, 2026-09-27).
+        f.level = 0
         return f
     }
 

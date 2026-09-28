@@ -89,7 +89,7 @@ struct MorningBriefingView: View {
                 InkLinkLabel(title: "Its playlist", small: true)
             }
             .buttonStyle(.inkLink)
-            .accessibilityLabel("Open this briefing's playlist in Studio")
+            .accessibilityLabel("Open this briefing's playlist")
             .accessibilityIdentifier("morningBriefing.playlist")
         }
     }

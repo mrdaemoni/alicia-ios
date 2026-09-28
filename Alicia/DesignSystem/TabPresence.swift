@@ -123,7 +123,9 @@ extension View {
                 // them. The mathematics is untouched: same body, seen from
                 // much closer.
                 if store.presenceField.enabled {
-                    PresenceLayer(isActive: store.selectedSection == section, opacity: 0.55)
+                    // Animates while this surface is on screen — a tab root or a
+                    // page pushed from any tab — and rests under the walk cover.
+                    PresenceLayer(isActive: !store.showWalk, opacity: 0.55)
                 } else {
                 GeometryReader { geo in
                     AliciaPresence(
@@ -160,14 +162,20 @@ extension View {
 /// the one `PresenceField` — so moving between them never moves her.
 struct PresenceLayer: View {
     @Environment(AppStore.self) private var store
+    /// Allowed to animate at all (false under the walk cover).
     var isActive: Bool
     var opacity: Double
+    /// Whether this surface is actually showing. Appear/disappear follow tab
+    /// switches and navigation pushes, so a page pushed onto Us that draws a
+    /// Studio background still moves: activity no longer depends on which tab
+    /// is selected (Codex review of #45 — the Us → playlist route froze her).
+    @State private var onScreen = false
 
     var body: some View {
         GeometryReader { geo in
             let here = geo.frame(in: .global)
             let screen = store.presenceField.screen == .zero ? here.size : store.presenceField.screen
-            AliciaPresence(isActive: isActive, field: store.presenceField)
+            AliciaPresence(isActive: isActive && onScreen, field: store.presenceField)
                 .frame(width: screen.width * 1.45, height: screen.height * 1.45)
                 .position(x: screen.width * 0.5 - here.minX, y: screen.height * 0.5 - here.minY)
                 .opacity(opacity)
@@ -175,5 +183,7 @@ struct PresenceLayer: View {
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .onAppear { onScreen = true }
+        .onDisappear { onScreen = false }
     }
 }
