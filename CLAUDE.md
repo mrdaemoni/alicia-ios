@@ -192,7 +192,7 @@ Evidence: `scripts/test_home_conversation_ui.py`.
 
 ## A2-043 — mind and body integration candidate
 
-Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action. Body is private Mac/phone evidence and explicit wellness goals. Daily rituals widget saves offline and syncs when Alicia opens. Drawing is removed from Studio navigation; files remain. No release is claimed; shared A2-043 evidence owns status.
+Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action through the persistent bottom band. The band names the active section, keeps separate durable drafts and freezes that section into every send. Voice opens the full-screen shared particle field and states whether the microphone is opening, listening or paused. Body is private Mac/phone evidence and explicit wellness goals. The Daily rituals widget saves offline, shows the latest tap's local/synced state and keeps tinted white labels on a dark contrast plate. Drawing is removed from Studio navigation; files remain. Release status belongs to the current shared task record.
 
 ## A2-037 — natural immersive reading and voice interpretation review
 

@@ -140,10 +140,15 @@ struct ListeningStage<Controls: View>: View {
                     Text(elapsed)
                         .font(.system(size: 15, design: .monospaced)).monospacedDigit()
                         .foregroundStyle(Theme.inkSoft)
+                    Text(isRecording ? "LISTENING" : isStarting ? "OPENING…" : "PAUSED")
+                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
+                        .tracking(1)
+                        .foregroundStyle(isRecording ? Theme.ink : Theme.inkSoft)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(isRecording
-                    ? "Microphone on, \(Int(seconds)) seconds recorded"
+                    ? "Alicia is listening, microphone on, \(Int(seconds)) seconds recorded"
+                    : isStarting ? "Opening microphone"
                     : "Microphone paused, \(Int(seconds)) seconds recorded")
                 .accessibilityIdentifier("walk.microphoneState")
             }
