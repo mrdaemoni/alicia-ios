@@ -78,7 +78,9 @@ final class HomeConversationUITests: XCTestCase {
   let app=launch()
   for name in ["US","MIND","BODY","ALICIA","STUDIO"] {
    app.buttons[name].tap()
-   XCTAssertTrue(app.buttons["dialogue.composer"].exists,"the band vanished on \(name)")
+   let composer=app.buttons["dialogue.composer"]
+   XCTAssertTrue(composer.exists,"the band vanished on \(name)")
+   XCTAssertTrue(composer.label.contains("about"),"the band does not name its contextual send on \(name): \(composer.label)")
    XCTAssertTrue(app.buttons["composer.walk"].exists,"WALK vanished on \(name)")
    XCTAssertTrue(app.buttons["US"].exists,"the navigation vanished on \(name)")
   }

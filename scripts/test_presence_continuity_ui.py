@@ -96,10 +96,12 @@ final class PresenceContinuityUITests: XCTestCase {
  }
  /// "That same animation should appear when I open the microphone."
  func testTheMicrophoneIsTheSameRoom() {
-  let app=launch("body")
+  let app=launch("body",["--episode-microphone-on"])
   capture("body-with-her-behind-it",app)
   app.buttons["composer.walk"].tap()
   XCTAssertTrue(app.descendants(matching:.any)["listening.presence"].waitForExistence(timeout:15))
+  let state=app.descendants(matching:.any).matching(identifier:"walk.microphoneState").firstMatch
+  XCTAssertTrue(state.label.contains("Alicia is listening"),"microphone state is not explicit beside her field: \(state.label)")
   capture("microphone-same-field",app)
  }
  /// Reduce Motion must remain still even while the microphone amplitude
