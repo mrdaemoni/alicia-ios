@@ -32,15 +32,13 @@ struct RitualEntry: TimelineEntry {
     var pendingIDs: Set<String> = []
 }
 
-/// In accented mode WidgetKit turns ordinary SwiftUI text white. Keep a
-/// full-colour ink plate behind the complete content tree so a pale Home Screen
-/// tint can never become the text's background.
+/// WidgetKit can make every label white while preserving a light user tint.
+/// Keep the complete widget on an unconditional full-colour ink plate: the
+/// actual Home Screen compositor may report its mode too late for a conditional
+/// plate, while white on Hector's green tint is unreadable.
 struct RitualWidgetContent: View {
     let entry: RitualEntry
-    var forceAccented = false
-    @Environment(\.widgetRenderingMode) private var renderingMode
-    private var accented: Bool { forceAccented || renderingMode == .accented }
-    private var ink: Color { accented ? .white : InkPalette.ink }
+    private var ink: Color { .white }
     private var lastWidgetTap: BodyEvent? {
         entry.events.last {
             $0.source == "widget" && $0.kind == "ritual" &&
@@ -49,10 +47,10 @@ struct RitualWidgetContent: View {
     }
     var body: some View {
         ZStack {
-            if accented { contrastPlate }
-            content.padding(accented ? 12 : 0)
+            contrastPlate
+            content.padding(12)
         }
-        .containerBackground(InkPalette.paper, for: .widget)
+        .containerBackground(Color.black, for: .widget)
     }
 
     private var content: some View {

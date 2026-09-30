@@ -162,12 +162,13 @@ and inside `SurfaceContext`, so a reflection recorded in Seattle is filed as one
 
 Hector's build-18 field report, built on Codex's preserved A2-045 composer.
 
-**The conversation is a layer, not a place.** `ConversationComposer` is a
-permanent band directly above `EditorialTabBar`, on the same ink ground; it
-never takes the keyboard and nothing collapses for it any more. Tapping it
-raises `ConversationSheet` over the current section, carrying that section's
-name and its own per-section draft; closing it returns him to the page he was
-on. `TalkView` (Dialogue) still exists and keeps shared history.
+**The conversation starts in every room.** `ConversationComposer` is a
+permanent band directly above `EditorialTabBar`, on the same ink ground. Its
+field accepts and sends text in place; the keyboard lifts the shared furniture
+without covering it. Sending raises `ConversationSheet` over the current
+section for Alicia's reply, carrying the frozen section that accepted the text
+and its own per-section draft; closing it returns him to the page he was on.
+`TalkView` (Dialogue) still exists and keeps shared history.
 
 **The microphone is the page.** `ListeningRoom` and the shared `ListeningStage`
 put `AliciaPresence` full-bleed behind his own words in large serif, in the

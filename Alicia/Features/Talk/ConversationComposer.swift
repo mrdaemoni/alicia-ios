@@ -12,12 +12,13 @@ import SwiftUI
 /// be with black background matching the same style as the navigation."*
 ///
 /// So this band is furniture. It is always on screen, it is drawn on the same
-/// ink ground as `EditorialTabBar`, and it never takes the keyboard itself —
-/// tapping it raises `ConversationSheet` over the page he is on, and TALK
-/// raises the full-screen `ListeningRoom`. Both carry this band's section with
-/// them, which is what makes "about BODY" true rather than decorative.
+/// ink ground as `EditorialTabBar`, and its field is real: Hector can type and
+/// send without first leaving the room. The reply layer opens after the send,
+/// carrying the section that accepted those words. TALK raises the full-screen
+/// particle `ListeningRoom` with the same frozen section.
 struct ConversationComposer: View {
     @Environment(AppStore.self) private var store
+    @FocusState private var focused: Bool
 
     private var section: SurfaceContext { store.surfaceContext() }
     private var privateBody: Bool { section.section == "body" }
@@ -25,14 +26,22 @@ struct ConversationComposer: View {
 
     /// What he last typed here, per section. Shown as the field's own text so
     /// an unsent draft is visible from the outside, not hidden in the sheet.
-    private var draft: String { store.composerDrafts.text(for: section.section) }
-
-    private var latestReply: Message? {
-        (privateBody ? store.privateBodyMessages : store.messages)
-            .last(where: { $0.sender == .alicia && !$0.text.isEmpty })
+    private var draft: Binding<String> {
+        Binding(get: { store.composerDrafts.text(for: section.section) },
+                set: { store.composerDrafts.set($0, for: section.section) })
     }
 
-    private var episode: EpisodeDay.Episode? { store.episodeDay?.episode }
+    private var canSend: Bool {
+        !busy && !store.episodeChoiceSyncing
+            && !draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// An episode is part of the visible room only on Us and Studio. A chosen
+    /// episode must never silently turn a Body or Mind conversation into an
+    /// episode conversation.
+    private var episode: EpisodeDay.Episode? {
+        section.episode_id.isEmpty ? nil : store.episodeDay?.episode
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -67,6 +76,7 @@ struct ConversationComposer: View {
         .background(Theme.ink)
         .overlay(alignment: .top) { Rectangle().fill(Theme.paper.opacity(0.12)).frame(height: 0.7) }
         .buttonStyle(.plain)
+        .onChange(of: focused) { _, now in store.composerFocused = now }
     }
 
     /// Where his last spoken reflection is, in one tappable line.
@@ -140,10 +150,10 @@ struct ConversationComposer: View {
                 .lineLimit(1)
                 .accessibilityIdentifier("composer.context")
             Spacer(minLength: 8)
-            // When something is playing, WALK is about that; the chip says so
+            // When something is playing, TALK is about that; the chip says so
             // rather than offering a second button that does the same thing.
             if let episode {
-                Text("Walk is about " + episode.id)
+                Text("Talk is about " + episode.id)
                     .font(.system(size: 12, design: .serif)).italic()
                     .foregroundStyle(Theme.paper.opacity(0.6))
                     .lineLimit(1)
@@ -152,37 +162,37 @@ struct ConversationComposer: View {
         }
     }
 
-    /// Not a `TextField`. Raising the sheet is the whole job, and a real field
-    /// here would pull the keyboard up against the tab bar — the layout fight
-    /// that made the old composer collapse everything around it.
+    /// One real field in every room. Draft storage remains per section, so a
+    /// half-written Body question never follows Hector into Mind.
     private var field: some View {
-        Button { store.openConversation() } label: {
-            HStack(spacing: 8) {
-                Text(draft.isEmpty ? "Write to Alicia about " + section.title + "…" : draft)
-                    .font(.system(size: 16, design: .serif))
-                    .foregroundStyle(draft.isEmpty ? Theme.paper.opacity(0.5) : Theme.paper)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                if !draft.isEmpty {
-                    Text("DRAFT")
-                        .font(.system(size: 8, design: .monospaced)).tracking(0.8)
-                        .foregroundStyle(Theme.paper.opacity(0.55))
-                } else {
-                    Text("OPEN")
-                        .font(.system(size: 8, design: .monospaced)).tracking(0.8)
-                        .foregroundStyle(Theme.paper.opacity(0.55))
-                }
+        HStack(spacing: 8) {
+            TextField("", text: draft,
+                      prompt: Text("Talk or type to Alicia about " + section.title + "…")
+                        .foregroundColor(Theme.paper.opacity(0.52)),
+                      axis: .vertical)
+                .lineLimit(1...3)
+                .font(.system(size: 16, design: .serif))
+                .foregroundStyle(Theme.paper)
+                .tint(Theme.paper)
+                .focused($focused)
+                .submitLabel(.send)
+                .onSubmit(send)
+                .accessibilityIdentifier("conversation.fieldInline")
+            Button(action: send) {
+                InkSubmitArrow(size: 24,
+                               color: canSend ? Theme.paper : Theme.paper.opacity(0.32),
+                               seed: 29)
+                    .frame(width: 36, height: 36)
             }
-            .padding(.horizontal, 13).padding(.vertical, 11)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(Theme.paper.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
-            .contentShape(Rectangle())
+            .disabled(!canSend)
+            .accessibilityLabel("Send to Alicia about " + section.title)
+            .accessibilityIdentifier("conversation.sendInline")
         }
-        .accessibilityLabel(draft.isEmpty
-            ? "Write to Alicia about " + section.title
-            : "Continue your draft about " + section.title)
-        .accessibilityHint("Opens the conversation over this section. Your message carries its context.")
-        .accessibilityIdentifier("dialogue.composer")
+        .padding(.leading, 13).padding(.trailing, 5).padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        .background(Theme.paper.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.paper.opacity(focused ? 0.42 : 0.16), lineWidth: 0.7))
+        .accessibilityHint("Your message carries the context of this section.")
     }
 
     /// There is one spoken path now, and it is the walk.
@@ -196,16 +206,35 @@ struct ConversationComposer: View {
     /// audio kept, Mac transcript, his review before anything is sent — and it
     /// carries the section he started it from as its subject.
     private var walkButton: some View {
-        Button { store.openWalk(surface: section) } label: {
-            Text("WALK")
+        Button {
+            focused = false
+            store.openWalk(surface: section)
+        } label: {
+            Text("TALK")
                 .font(.system(size: 10, design: .monospaced).weight(.semibold)).tracking(1)
                 .foregroundStyle(Theme.ink)
                 .frame(minWidth: 58, minHeight: 44)
                 .background(Theme.paper, in: RoundedRectangle(cornerRadius: 12))
         }
         .accessibilityLabel(episode == nil
-            ? "Walk and think aloud about " + section.title
-            : "Walk and think aloud about " + (episode?.id ?? ""))
+            ? "Talk to Alicia about " + section.title
+            : "Talk to Alicia about " + (episode?.id ?? ""))
         .accessibilityIdentifier("composer.walk")
+    }
+
+    private func send() {
+        let text = draft.wrappedValue
+        guard canSend else { return }
+        // Freeze before either the keyboard or the reply layer changes the
+        // view hierarchy. This exact value travels in `/api/chat`.
+        let sendingContext = section
+        if privateBody {
+            store.sendPrivateBody(text)
+        } else {
+            store.send(text, surfaceContext: sendingContext)
+        }
+        draft.wrappedValue = ""
+        focused = false
+        store.openConversation(context: sendingContext)
     }
 }
