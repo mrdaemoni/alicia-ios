@@ -75,13 +75,13 @@ final class HomeConversationUITests: XCTestCase {
 
  /// "It should always be present right above the bottom bar of navigation."
  func testTheBandAndTheNavigationAreBothPermanent() {
-  let app=launch()
-  for name in ["US","MIND","BODY","ALICIA","STUDIO"] {
+ let app=launch()
+ for name in ["US","MIND","BODY","ALICIA","STUDIO"] {
    app.buttons[name].tap()
-   let composer=app.buttons["dialogue.composer"]
-   XCTAssertTrue(composer.exists,"the band vanished on \(name)")
-   XCTAssertTrue(composer.label.contains("about"),"the band does not name its contextual send on \(name): \(composer.label)")
-   XCTAssertTrue(app.buttons["composer.walk"].exists,"WALK vanished on \(name)")
+   let field=app.textFields["conversation.fieldInline"]
+   XCTAssertTrue(field.exists,"the direct field vanished on \(name)")
+   XCTAssertTrue(app.staticTexts["composer.context"].label.contains("About"),"the band does not name its contextual send on \(name)")
+   XCTAssertTrue(app.buttons["composer.walk"].exists,"TALK vanished on \(name)")
    XCTAssertTrue(app.buttons["US"].exists,"the navigation vanished on \(name)")
   }
   capture("band-and-navigation-on-studio",app)
@@ -90,37 +90,42 @@ final class HomeConversationUITests: XCTestCase {
  /// Opening the field must not take the navigation away with it — the old
  /// composer collapsed both the tab bar and itself on focus.
  func testTypingDoesNotRemoveTheNavigation() {
-  let app=launch("mind")
-  app.buttons["dialogue.composer"].tap()
-  let field=app.textFields["conversation.field"]
+ let app=launch("mind")
+  let field=app.textFields["conversation.fieldInline"]
   XCTAssertTrue(field.waitForExistence(timeout:10))
   field.tap();field.typeText("What is this actually asking of me?")
-  capture("conversation-sheet-over-mind",app)
-  XCTAssertTrue(app.buttons["conversation.send"].exists)
-  app.buttons["conversation.close"].tap()
-  XCTAssertTrue(app.buttons["MIND"].waitForExistence(timeout:10))
-  XCTAssertTrue(app.buttons["dialogue.composer"].exists)
+  capture("direct-field-over-mind",app)
+  XCTAssertTrue(app.buttons["conversation.sendInline"].exists)
+  XCTAssertTrue(app.buttons["MIND"].exists)
  }
 
  /// "a contextual layer that I'm talking to her on top of any of the sections"
  func testTheSectionTravelsIntoTheLayerAndTheDraftStaysWithIt() {
   let app=launch("body")
-  app.buttons["dialogue.composer"].tap()
-  XCTAssertTrue(app.staticTexts["conversation.context"].waitForExistence(timeout:10))
-  XCTAssertTrue(app.staticTexts["conversation.context"].label.contains("Body"))
-  let field=app.textFields["conversation.field"]
+  let field=app.textFields["conversation.fieldInline"]
+  XCTAssertTrue(field.waitForExistence(timeout:10))
   field.tap();field.typeText("Why do I sleep worse after a late sauna?")
-  capture("conversation-over-body",app)
-  app.buttons["conversation.close"].tap()
-  // The draft is a Body draft and stays one: it is visible on the band, and
-  // it must not follow him to Mind.
-  XCTAssertTrue(app.buttons["dialogue.composer"].label.contains("Continue your draft"))
+  app.swipeDown()
+  XCTAssertTrue((field.value as? String ?? "").contains("late sauna"))
   app.buttons["MIND"].tap()
-  let onMind=app.buttons["dialogue.composer"].label
-  let context=app.staticTexts["composer.context"].label
-  XCTAssertFalse(onMind.contains("Continue your draft"),"band on Mind: \(onMind) | context: \(context)")
+  let mind=app.textFields["conversation.fieldInline"]
+  XCTAssertFalse((mind.value as? String ?? "").contains("late sauna"),"Body draft followed Hector into Mind")
   app.buttons["BODY"].tap()
-  XCTAssertTrue(app.buttons["dialogue.composer"].label.contains("Continue your draft"))
+  XCTAssertTrue((app.textFields["conversation.fieldInline"].value as? String ?? "").contains("late sauna"))
+  capture("body-draft-stays-in-body",app)
+ }
+
+ /// Sending from the permanent field opens her reply in the same context.
+ func testDirectSendFreezesTheVisibleSection() {
+  let app=launch("body")
+  let field=app.textFields["conversation.fieldInline"]
+  XCTAssertTrue(field.waitForExistence(timeout:10))
+  field.tap();field.typeText("How should today's recovery change my plan?")
+  app.buttons["conversation.sendInline"].tap()
+  let context=app.staticTexts["conversation.context"]
+  XCTAssertTrue(context.waitForExistence(timeout:10))
+  XCTAssertTrue(context.label.contains("Body"),"direct send lost its room: \(context.label)")
+  XCTAssertTrue(app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","today's recovery")).firstMatch.exists)
  }
 
  /// "the whole microphone should take the entire screen" (2026-09-18), then
@@ -140,11 +145,22 @@ final class HomeConversationUITests: XCTestCase {
   // Full screen: a cover leaves the tab bar in the accessibility tree, so the
   // claim to test is that nothing underneath can be reached while it is up.
   XCTAssertFalse(app.buttons["STUDIO"].isHittable)
-  XCTAssertFalse(app.buttons["dialogue.composer"].isHittable)
+  XCTAssertFalse(app.textFields["conversation.fieldInline"].isHittable)
   capture("listening-room",app)
   app.buttons["listening.close"].tap()
   XCTAssertTrue(app.buttons["US"].waitForExistence(timeout:10))
   XCTAssertFalse(app.buttons["composer.microphone"].exists,"the retired short-remark mic is back")
+ }
+
+ /// A chosen Studio episode must not steal a spoken Body turn.
+ func testTalkFromBodyKeepsBodyAsItsSubject() {
+  let app=launch("body")
+  XCTAssertFalse(app.staticTexts["episode.talkAnywhere"].exists)
+  app.buttons["composer.walk"].tap()
+  XCTAssertTrue(app.descendants(matching:.any)["listening.presence"].waitForExistence(timeout:15))
+  let subject=app.descendants(matching:.any)["listening.subject"]
+  XCTAssertTrue(subject.label.contains("BODY"),"spoken turn lost Body context: \(subject.label)")
+  capture("body-talk-keeps-body-context",app)
  }
 
  /// "the aura evidence is stale" — the sentence he reads must say how old it
