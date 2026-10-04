@@ -27,6 +27,13 @@ enum Section {case us,studio}
 '''+methods+'''}
 @main struct Checks {
  @MainActor static func main() async {
+  let rejected = Data(#"{"ok":false,"error":"The saved script changed."}"#.utf8)
+  precondition(BriefingFeedbackResult.decode(data: rejected, status: 409)?.ok == false)
+  for statusCode in [401, 403, 500, 0] { precondition(BriefingFeedbackResult.decode(data: rejected, status: statusCode) == nil) }
+  precondition(BriefingFeedbackResult.decode(data: Data(#"{"ok":true}"#.utf8), status: 409) == nil)
+  precondition(BriefingFeedbackResult.decode(data: Data(#"{"ok":false}"#.utf8), status: 409) == nil)
+  precondition(BriefingFeedbackResult.decode(data: Data("malformed".utf8), status: 409) == nil)
+  precondition(BriefingFeedbackResult.decode(data: Data(#"{"ok":true}"#.utf8), status: 200)?.ok == true)
   let old = try! JSONDecoder().decode(MorningBriefing.self, from: Data(#"{"id":"old","status":"ready","audio_url":"https://fixture.invalid/audio","duration":12,"text":"Old full text"}"#.utf8))
   precondition(old.speech == nil && old.speechChunks.isEmpty && old.hasPlayableAudio)
   let empty = try! JSONDecoder().decode(MorningBriefing.self, from: Data(#"{"id":"old","status":"ready","audio_url":"https://fixture.invalid/audio","duration":12,"speech":{}}"#.utf8))

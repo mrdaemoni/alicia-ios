@@ -6,7 +6,18 @@ struct BriefingFeedbackMutation: Codable, Equatable {
         ["id": id, "event_id": event_id, "verdict": verdict, "text": text, "script_sha256": script_sha256]
     }
 }
-struct BriefingFeedbackResult: Decodable { var ok: Bool; var error: String? }
+struct BriefingFeedbackResult: Decodable {
+    var ok: Bool
+    var error: String?
+    static func decode(data: Data, status: Int) -> Self? {
+        guard status == 200 || status == 409,
+              let result = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+        if status == 409 {
+            guard !result.ok, let error = result.error, !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        }
+        return result
+    }
+}
 
 #if DEBUG
 @MainActor enum MorningBriefingPreview {

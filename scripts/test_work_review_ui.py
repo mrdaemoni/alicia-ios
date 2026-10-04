@@ -47,7 +47,7 @@ final class WorkReviewUITests: XCTestCase {
  func reveal(_ element:XCUIElement,_ app:XCUIApplication,up:Bool=true) {
   for _ in 0..<16 {
    let bottom = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame.minY - 10 : app.frame.maxY - 90
-   if element.exists && element.isHittable && element.frame.midY > 100 && element.frame.maxY < bottom { return }
+   if element.exists && element.isHittable && element.frame.minY > 155 && element.frame.maxY < bottom { return }
    let towardBottom = element.exists ? element.frame.midY > app.frame.midY : up
    if towardBottom { app.swipeUp() } else { app.swipeDown() }
   }

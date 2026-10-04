@@ -829,7 +829,12 @@ struct LiveAliciaService: AliciaService {
     // MARK: playlists
 
     func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult? {
-        await post("/api/morning_briefing/feedback", body: mutation.body)
+        do {
+            let bytes = try JSONEncoder().encode(mutation)
+            let (data, response) = try await URLSession.shared.data(
+                for: request("/api/morning_briefing/feedback", method: "POST", body: bytes))
+            return BriefingFeedbackResult.decode(data: data, status: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        } catch { return nil }
     }
 
     func morningBriefing() async -> MorningBriefing? {
