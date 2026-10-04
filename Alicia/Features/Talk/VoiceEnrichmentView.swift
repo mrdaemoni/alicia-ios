@@ -48,6 +48,9 @@ struct VoiceEnrichmentView: View {
                     ForEach(Array((enrichment.pass_receipts ?? []).enumerated()), id: \.offset) { _, receipt in
                         VStack(alignment: .leading, spacing: 4) {
                             Text((receipt.pass ?? "Pass").capitalized).font(.callout)
+                            if receipt.provider_response_reused == true {
+                                Text("Reused the original transcription; no new model call.").font(.caption)
+                            }
                             Text([receipt.provider, receipt.model, receipt.status].compactMap { $0 }.joined(separator: " · ")).font(.caption)
                             if let id = receipt.response_id { Text(id).font(.caption2).textSelection(.enabled) }
                         }.padding(.vertical, 4)

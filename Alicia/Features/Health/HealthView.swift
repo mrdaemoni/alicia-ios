@@ -44,7 +44,7 @@ struct HealthView: View {
     }
 
     private var verdict: String {
-        let values = store.health.map(\.value)
+        let values = store.health.filter(\.assessable).map(\.value)
         guard !values.isEmpty else { return "Listening for her pulse…" }
         let mean = values.reduce(0, +) / Double(values.count)
         switch mean {

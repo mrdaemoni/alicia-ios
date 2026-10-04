@@ -17,6 +17,7 @@ struct SpeechChunk: Hashable { var url:URL; var duration:TimeInterval }
 @MainActor final class FakeService {
  var value:MorningBriefing?
  func morningBriefing() async -> MorningBriefing? { value }
+ func briefingFeedback(_ mutation:BriefingFeedbackMutation) async -> BriefingFeedbackResult? { nil }
 }
 @MainActor final class Reader { var current:Readable?; var isSpeaking=false }
 enum Section {case us,studio}

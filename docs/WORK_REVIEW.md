@@ -21,3 +21,7 @@ Run `scripts/test_collaboration.py` for actual Swift codecs, immutable pending s
 Build on iPhone 17 simulator; inspect screenshots and keyboard states. Simulator results do not establish physical-device typography, dictation accuracy or headset behavior. No new motion, SF Symbols, emoji or dependencies are introduced.
 
 Backend A2-032 must be deployed before the A2-033 branch TestFlight build. The app branches from released source207279e/TestFlight15, preserving the morning and Mac voice fixes while canonical app main is older. No generated build numbers or secrets are committed.
+
+## October 4 review controls
+
+An uncertain work-review save locks only that result/section, retaining its immutable request. Reviews of other passages may queue behind it. Pending requests survive restarts and retry in order. General goal/agreement edits retain their existing conservative outbox guard. Answer/edit/comment drafts reopen only through an explicit Continue action, so an old draft does not automatically disable the passage's controls. Discuss this in Dialogue remains reachable while an unrelated save is pending.

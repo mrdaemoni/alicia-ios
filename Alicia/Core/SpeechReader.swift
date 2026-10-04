@@ -249,6 +249,10 @@ final class SpeechReader: NSObject {
             duration = item.speechDuration
             start(chunks: item.speechChunks)
         } else {
+            if item.stableID?.hasPrefix("story:") == true {
+                failure = "The original story recording is unavailable. Refresh Studio and retry."
+                return
+            }
             // Nothing cached — hold the play button in a visible "preparing"
             // state while the lead chunk renders, rather than falling to a
             // voice Hector doesn't want to hear.
@@ -266,6 +270,7 @@ final class SpeechReader: NSObject {
         guard isActive else { return }
         if mediaFailed { retryMedia(); return }
         if failure != nil, let item = current {
+            if item.stableID?.hasPrefix("story:") == true { return }
             failure = nil; isPreparing = true; isStreaming = true
             requestHerVoice(for: item); return
         }
@@ -650,6 +655,7 @@ final class SpeechReader: NSObject {
         guard hasNext, let service else { return }
         let upcoming = queueItems[queuePosition + 1]
         guard upcoming.speechChunks.isEmpty else { return }   // already have it
+        guard upcoming.stableID?.hasPrefix("story:") != true else { return }
         prefetchTask?.cancel()
         prefetchTask = Task { [weak self] in
             _ = await service.requestSpeech(text: upcoming.spokenText,

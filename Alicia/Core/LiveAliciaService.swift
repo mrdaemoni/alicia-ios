@@ -828,6 +828,10 @@ struct LiveAliciaService: AliciaService {
 
     // MARK: playlists
 
+    func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult? {
+        await post("/api/morning_briefing/feedback", body: mutation.body)
+    }
+
     func morningBriefing() async -> MorningBriefing? {
         guard var briefing: MorningBriefing = await fetchOne("/api/morning_briefing") else { return nil }
         if !briefing.audio_url.isEmpty { briefing.audio_url = mediaURL(briefing.audio_url)?.absoluteString ?? "" }

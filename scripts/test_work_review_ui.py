@@ -79,6 +79,17 @@ final class WorkReviewUITests: XCTestCase {
   let disagree=app.buttons["workReview.disagree.preview-q7"];disagree.tap();XCTAssertTrue(disagree.isSelected);XCTAssertFalse(agree.isSelected);XCTAssertTrue(important.isSelected)
   capture("independent-review-dimensions",app)
  }
+ func testBriefingFeedbackSavesExactWords() {
+  continueAfterFailure=false
+  let app=XCUIApplication();app.launchArguments=["--collaboration-preview","--morning-briefing-preview","--tab","us"];app.launch()
+  let open=app.buttons["How was this briefing?"];XCTAssertTrue(open.waitForExistence(timeout:20));reveal(open,app);open.tap()
+  let field=app.textFields["morningBriefing.feedbackWords"];reveal(field,app);field.tap();field.typeText("Carry the counterexample into tomorrow.")
+  let done=app.buttons["Done writing"];XCTAssertTrue(done.waitForExistence(timeout:5));done.tap()
+  let missed=app.buttons["Missed what mattered"];reveal(missed,app);XCTAssertTrue(missed.isEnabled);missed.tap()
+  XCTAssertTrue(app.staticTexts["Saved for the next morning’s preparation."].waitForExistence(timeout:10))
+  XCTAssertTrue(missed.isSelected);XCTAssertEqual(field.value as? String,"Carry the counterexample into tomorrow.")
+  capture("briefing-feedback-saved",app)
+ }
  func testAnswerStaysInlineAndDraftSurvivesNavigation() {
   let app=launch(["--work-review-save-delay"]);openWork(app)
   let answer=app.buttons["workReview.answer.preview-q7"];reveal(answer,app);answer.tap()
@@ -88,6 +99,7 @@ final class WorkReviewUITests: XCTestCase {
   if app.buttons["Done writing"].exists {app.buttons["Done writing"].tap()}
   let keep=app.buttons["Keep draft"];reveal(keep,app);keep.tap()
   app.navigationBars.buttons.element(boundBy:0).tap();openWork(app)
+  let resume=app.buttons["workReview.answer.preview-q7"];reveal(resume,app);XCTAssertTrue(resume.isEnabled);resume.tap()
   let restored=app.textFields["workReview.editor.preview-q7"];reveal(restored,app);XCTAssertEqual(restored.value as? String,words)
   let save=app.buttons["workReview.save.preview-q7"];reveal(save,app);save.tap()
   XCTAssertTrue(app.navigationBars["Prepared work"].exists);XCTAssertFalse(restored.isEnabled)

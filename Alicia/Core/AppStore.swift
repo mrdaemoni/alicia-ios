@@ -779,6 +779,11 @@ final class AppStore {
     // MARK: playlists — the listening queues (Studio)
 
     var morningBriefing: MorningBriefing?
+    func saveBriefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult? {
+        let result = await service.briefingFeedback(mutation)
+        if result?.ok == true { await refreshMorningBriefing() }
+        return result
+    }
     var morningBriefingRefreshing = false
     var morningPlaylistID: String?
 

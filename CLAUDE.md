@@ -518,3 +518,5 @@ reads; views do not issue HTTP. --collaboration-preview is mock-only.
 Morning exercise briefing: `GET /api/morning_briefing` (read-only dated snapshot)
 and `GET /api/morning_briefing/audio/<id>.m4a` (authenticated Range audio).
 See docs/MORNING_BRIEFING.md. It never selects a podcast episode or manufactures listening evidence.
+
+October 4 health repairs: `POST /api/morning_briefing/feedback` stores explicit script-scoped Useful/Missed feedback and exact optional words with idempotent receipts. `GET /api/stories/<allowlisted-id>.m4a` serves completed Scaleofus original scored audio with Range support; the normal Studio playlist/player carries Book One v17 and Count Love v15. `/api/health` exposes actual briefing/voice/goal availability and sparse-feedback uncertainty. Goal work reviews queue independently by result/section and saved drafts resume explicitly. No on-device speech fallback or inferred listening/learning is introduced.
