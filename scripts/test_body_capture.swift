@@ -2,8 +2,13 @@ import Foundation
 
 @main struct BodyCaptureTests {
     static var checks = 0
-    static func check(_ value: Bool) { assert(value); checks += 1 }
+    static func check(_ value: Bool) { precondition(value); checks += 1 }
     static func main() throws {
+        // A child process standing in for the widget or the app: one tap, then exit.
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "tap" {
+            let event = try BodyCapture.toggle("exercise", source: "widget", directory: URL(fileURLWithPath: CommandLine.arguments[2]))
+            print(event.completed); return
+        }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -42,6 +47,7 @@ import Foundation
         check(afterDiscard.isEmpty)
         check(FileManager.default.fileExists(atPath: directory.appendingPathComponent(undo.id + ".json").path))
         try toggles()
+        try overlappingTaps()
         try Data("broken".utf8).write(to: directory.appendingPathComponent("bad.json"))
         do { _ = try BodyCapture.events(directory: directory); fatalError("Corrupt record silently ignored") } catch { checks += 1 }
         print("\(checks) body capture checks passed; only a temporary directory was used")
@@ -71,5 +77,50 @@ import Foundation
         check(try state("sauna"))
         // Every tap is its own immutable receipt awaiting sync.
         check(try BodyCapture.pending(directory: directory).count == 5)
+    }
+    /// Two taps that overlap — two threads, or the app and widget processes —
+    /// must alternate: one records, one undoes, and the day ends undone.
+    static func overlappingTaps() throws {
+        func trial(_ tap: @escaping (URL) throws -> Bool) throws -> (Bool, Bool) {
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let gate = DispatchSemaphore(value: 0), done = DispatchGroup(), lock = NSLock()
+            var results: [Bool] = []
+            for _ in 0..<2 {
+                done.enter()
+                DispatchQueue.global(qos: .userInitiated).async {
+                    gate.wait()
+                    if let value = try? tap(dir) { lock.lock(); results.append(value); lock.unlock() }
+                    done.leave()
+                }
+            }
+            gate.signal(); gate.signal(); done.wait()
+            let events = try BodyCapture.events(directory: dir)
+            let alternated = results.count == 2 && results.filter { $0 }.count == 1 && events.count == 2
+            return (alternated, !BodyCapture.completed("exercise", events: events))
+        }
+        var threadFailures = 0
+        for _ in 0..<500 {
+            let (alternated, undone) = try trial { try BodyCapture.toggle("exercise", source: "widget", directory: $0).completed }
+            if !(alternated && undone) { threadFailures += 1 }
+        }
+        print("threads: \(threadFailures) of 500 overlapping tap pairs failed to alternate")
+        check(threadFailures == 0)
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0])
+        var processFailures = 0
+        for _ in 0..<40 {
+            let (alternated, undone) = try trial { dir in
+                let child = Process(), pipe = Pipe()
+                child.executableURL = executable; child.arguments = ["tap", dir.path]; child.standardOutput = pipe
+                try child.run(); child.waitUntilExit()
+                let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                guard child.terminationStatus == 0 else { throw CocoaError(.fileWriteUnknown) }
+                return output.hasPrefix("true")
+            }
+            if !(alternated && undone) { processFailures += 1 }
+        }
+        print("processes: \(processFailures) of 40 overlapping tap pairs failed to alternate")
+        check(processFailures == 0)
     }
 }
