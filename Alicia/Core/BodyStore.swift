@@ -157,6 +157,17 @@ struct BodySourcePage: Decodable {
             return true // Durable on this device; network acknowledgement has its own status.
         } catch { self.error = "Not saved. Keep this page open and try again."; return false }
     }
+    /// The Body screen's ritual button: the same locked read-and-append as the
+    /// widget, so a tap here and a tap there alternate instead of both recording.
+    @discardableResult func toggleRitual(_ ritual: String) async -> Bool {
+        guard !(service is MockAliciaService) else { error = "Preview only — no personal record was saved."; return false }
+        do {
+            try BodyCapture.toggle(ritual, source: "ios", directory: captureDirectory); reread()
+            refreshWidgets()
+            Task { await refresh() }
+            return true
+        } catch { self.error = "Not saved. Keep this page open and try again."; return false }
+    }
     func discardRejected(_ event: BodyEvent) {
         guard conflictedIDs.contains(event.id) else { return }
         do { try BodyCapture.discardRejected(event.id, directory: captureDirectory); conflictedIDs.remove(event.id); reread() }
