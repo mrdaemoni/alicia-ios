@@ -11,15 +11,13 @@ enum RitualKind: String, AppEnum {
 }
 struct LogRitualIntent: AppIntent {
     static var title: LocalizedStringResource = "Log a ritual"
-    static var description = IntentDescription("Save a completed ritual on this phone. Syncs to Alicia when the app opens.")
+    static var description = IntentDescription("Record a ritual on this phone, or undo today's record. Syncs to Alicia when the app opens.")
     @Parameter(title: "Ritual") var ritual: RitualKind
     init() {}
     init(_ ritual: RitualKind) { self.ritual = ritual }
     func perform() async throws -> some IntentResult {
-        // Capture time belongs to this tap, not the potentially old timeline.
-        var event = BodyEvent(kind: "ritual")
-        event.source = "widget"; event.ritual = ritual.rawValue; event.completed = true
-        try BodyCapture.save(event)
+        // Capture time and today's state belong to this tap, not the potentially old timeline.
+        try BodyCapture.toggle(ritual.rawValue, source: "widget")
         WidgetCenter.shared.reloadTimelines(ofKind: "AliciaRituals")
         return .result()
     }
@@ -72,7 +70,7 @@ struct RitualWidgetContent: View {
                                 .inkUnderlined(seed: kind.rawValue, color: ink, gap: 4)
                         }.frame(maxWidth: .infinity, minHeight: 52)
                     }.buttonStyle(.plain)
-                    .accessibilityLabel("Log completed " + kind.rawValue.replacingOccurrences(of: "_", with: " "))
+                    .accessibilityLabel((done ? "Undo " : "Log completed ") + kind.rawValue.replacingOccurrences(of: "_", with: " "))
                     .accessibilityValue(done ? "Recorded today" : "Not recorded")
                 }
             }
@@ -86,11 +84,12 @@ struct RitualWidgetContent: View {
         if entry.failed { return "Open Alicia to check your local record." }
         if let tap = lastWidgetTap {
             let time = BodyCapture.instant(tap.captured_at).formatted(date: .omitted, time: .shortened)
+            let saved = tap.completed ? "Tap saved at \(time)" : "Undo saved at \(time)"
             return entry.pendingIDs.contains(tap.id)
-                ? "Tap saved at \(time) · open Alicia to sync"
-                : "Tap saved at \(time) · synced with Alicia"
+                ? saved + " · open Alicia to sync"
+                : saved + " · synced with Alicia"
         }
-        return entry.pending > 0 ? "Saved here · open Alicia to sync" : "Tap after each ritual · correct it in Body"
+        return entry.pending > 0 ? "Saved here · open Alicia to sync" : "Tap after each ritual · tap again to undo"
     }
 
     @ViewBuilder private var contrastPlate: some View {

@@ -41,8 +41,35 @@ import Foundation
         let afterDiscard = try BodyCapture.pending(directory: directory)
         check(afterDiscard.isEmpty)
         check(FileManager.default.fileExists(atPath: directory.appendingPathComponent(undo.id + ".json").path))
+        try toggles()
         try Data("broken".utf8).write(to: directory.appendingPathComponent("bad.json"))
         do { _ = try BodyCapture.events(directory: directory); fatalError("Corrupt record silently ignored") } catch { checks += 1 }
         print("\(checks) body capture checks passed; only a temporary directory was used")
+    }
+    /// The widget is a toggle: each tap flips today's state with a new receipt.
+    static func toggles() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: .now)!
+        func state(_ ritual: String) throws -> Bool {
+            BodyCapture.completed(ritual, at: noon, events: try BodyCapture.events(directory: directory))
+        }
+        let first = try BodyCapture.toggle("exercise", source: "widget", now: noon, directory: directory)
+        check(first.completed && first.source == "widget" && first.ritual == "exercise")
+        check(try state("exercise"))
+        let undo = try BodyCapture.toggle("exercise", source: "widget", now: noon.addingTimeInterval(1), directory: directory)
+        check(!undo.completed && undo.id != first.id)
+        check(!(try state("exercise")))
+        try BodyCapture.toggle("exercise", source: "widget", now: noon.addingTimeInterval(2), directory: directory)
+        check(try state("exercise"))
+        check(!(try state("sauna")))
+        // Yesterday's record never turns today's first tap into an undo.
+        try BodyCapture.toggle("sauna", source: "widget", now: noon.addingTimeInterval(-86400), directory: directory)
+        let today = try BodyCapture.toggle("sauna", source: "widget", now: noon, directory: directory)
+        check(today.completed)
+        check(try state("sauna"))
+        // Every tap is its own immutable receipt awaiting sync.
+        check(try BodyCapture.pending(directory: directory).count == 5)
     }
 }

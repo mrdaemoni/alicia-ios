@@ -103,4 +103,16 @@ enum BodyCapture {
     static func completed(_ ritual: String, at date: Date = .now, events: [BodyEvent]) -> Bool {
         events.last { $0.kind == "ritual" && $0.ritual == ritual && $0.local_day == day(date) }?.completed ?? false
     }
+    /// A ritual tap flips today's state, like the Body screen. Reads the record on
+    /// disk at tap time, never a possibly stale widget timeline; the receipt is a
+    /// new immutable event, so an undo syncs exactly like a record.
+    @discardableResult
+    static func toggle(_ ritual: String, source: String, now: Date = .now, directory: URL? = nil) throws -> BodyEvent {
+        let dir = try directory ?? root()
+        var event = BodyEvent(kind: "ritual", now: now)
+        event.source = source; event.ritual = ritual
+        event.completed = !completed(ritual, at: now, events: try events(directory: dir))
+        try save(event, directory: dir)
+        return event
+    }
 }
