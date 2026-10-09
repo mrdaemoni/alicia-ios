@@ -279,7 +279,7 @@ private struct WorkReviewCard: View {
         // v39: asking to discuss a passage opens the conversation layer with
         // that passage attached, rather than dropping him in the Dialogue tab
         // to find the composer himself.
-        store.openConversation()
+        store.openConversation(workContext: shared.dialogueContext)
     }
 }
 

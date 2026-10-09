@@ -1348,7 +1348,11 @@ final class AppStore {
     /// the arc is something he looks at and closes, not somewhere he goes.
     var showArc = false
 
-    func openConversation() {
+    func openConversation(workContext: WorkDialogueContext? = nil) {
+        // A room's composer starts about that room. Only Discuss this
+        // explicitly attaches a prepared passage; old persisted targets must
+        // not block unrelated messages from Studio or another section.
+        collaboration.dialogueContext = workContext
         conversationContext = surfaceContext()
         showConversation = true
     }
@@ -1388,9 +1392,10 @@ final class AppStore {
         answeringAskExcerpt = ""
     }
 
-    func send(_ text: String, recordingID: String = "", surfaceContext: SurfaceContext? = nil) {
+    func send(_ text: String, recordingID: String = "", surfaceContext: SurfaceContext? = nil,
+              completion: @escaping (Bool) -> Void = { _ in }) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, !isStreaming, !episodeChoiceSyncing else { return }
+        guard !clean.isEmpty, !isStreaming, !episodeChoiceSyncing else { completion(false); return }
         noteContextActivity()
         if !recordingID.isEmpty {
             voiceArchive.addTranscript(clean, kind: "submitted", to: recordingID)
@@ -1398,16 +1403,20 @@ final class AppStore {
         }
         if let askID = answeringAskID {
             let episodeID = voiceArchive.recording(recordingID)?.context.episode_id ?? ""
-            cancelAnswering()
             messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID))
+            isStreaming = true
             Task {
+                defer { isStreaming = false }
                 let reply = await service.reply(proactiveID: askID, text: clean, recordingID: recordingID, episodeID: episodeID)
                 if let reply, !reply.isEmpty {
+                    if answeringAskID == askID { cancelAnswering() }
                     messages.append(Message(sender: .alicia, text: reply))
+                    completion(true)
                 } else {
                     messages.append(Message(
                         sender: .alicia,
-                        text: "(couldn't reach her — your answer didn't land; try again)"))
+                        text: "", deliveryFailure: .interrupted))
+                    completion(false)
                 }
             }
             return
@@ -1422,6 +1431,9 @@ final class AppStore {
         messages.append(Message(sender: .alicia, text: "", workContext: workContext))
         isStreaming = true
         Task {
+            var confirmed = false
+            var finished = false
+            var failure: ChatDeliveryFailure?
             do {
                 // `defer` rather than a trailing assignment: a thrown or cancelled
                 // stream must not leave her looking permanently mid-thought.
@@ -1431,15 +1443,25 @@ final class AppStore {
                     switch event {
                     case .token(let t):   messages[idx].text += t
                     case .details(let id):
+                        guard !id.isEmpty else { continue }
+                        confirmed = true
                         messages[idx].replyID = id
                         pendingSendRequestIDs.removeValue(forKey: key)
                         if let workContext { collaboration.rememberDialogueContext(workContext, replyID: id) }
                     case .voice(let url): messages[idx].voiceURL = url
-                    case .done(let mid, let healthTerminal):
+                    case .failure(let problem):
+                        failure = problem
+                        if problem.definitelyRejected { pendingSendRequestIDs.removeValue(forKey: key) }
+                    case .done(let mid, _):
+                        finished = true
                         messages[idx].messageID = mid
-                        if mid != nil || healthTerminal { pendingSendRequestIDs.removeValue(forKey: key) }
+                        pendingSendRequestIDs.removeValue(forKey: key)
                     }
                 }
+                if let problem = failure ?? (!finished && !confirmed ? .interrupted : nil), messages.indices.contains(idx) {
+                    messages[idx].deliveryFailure = confirmed ? .replyInterrupted : problem
+                }
+                completion(confirmed || (finished && failure == nil))
                 // During a walk the backend accumulates instead of chatting —
                 // keep the word counter fresh.
                 if isWalking { (thinkingMode, walkWords) = await service.modeState() }

@@ -27,6 +27,7 @@ struct Message: Identifiable, Hashable {
     /// full bubble and an "answer her" affordance (v23).
     var isAsk: Bool = false
     var workContext: WorkDialogueContext? = nil
+    var deliveryFailure: ChatDeliveryFailure? = nil
 }
 
 /// One event in a streamed chat reply.
@@ -34,6 +35,7 @@ enum ChatEvent {
     case token(String)
     case details(String)
     case voice(URL)
+    case failure(ChatDeliveryFailure)
     case done(messageID: Int?, healthTerminal: Bool = false)
 }
 

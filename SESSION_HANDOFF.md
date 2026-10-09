@@ -1,3 +1,19 @@
+## October 9 — passage attachment and send recovery candidate
+
+The phone screenshot showed Studio carrying an old PURPOSE passage. A server
+validation rejection then appeared as Alicia's response while the sheet said
+Sent and cleared Hector's words. The ordinary room composer now clears the
+active passage; only Discuss this attaches one explicitly. Typed delivery
+notices retain rejected/uncertain drafts and no longer appear as authored
+responses. Sent waits for acknowledgment. Reply links keep their original
+passage. See `docs/WORK_REVIEW.md` and `scripts/test_chat_delivery.py`.
+
+This continues PR #49 from TestFlight build 43. Release/phone acceptance belongs
+to the task receipt in
+`/Users/alicia/Documents/Alicia-development/tasks/health-performance-20261004/`.
+No backend validation bypass, model change, training or synthetic production
+conversation is part of the patch.
+
 ## September 19 — blind Jev impulse study in Aves
 
 This paired backend/app release adds an auditable private study surface under
