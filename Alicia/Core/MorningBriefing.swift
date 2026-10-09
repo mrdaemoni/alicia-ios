@@ -1,5 +1,43 @@
 import Foundation
 
+struct BriefingFeedbackMutation: Codable, Equatable {
+    var id, event_id, verdict, text, script_sha256: String
+    var body: [String: String] {
+        ["id": id, "event_id": event_id, "verdict": verdict, "text": text, "script_sha256": script_sha256]
+    }
+}
+struct BriefingFeedbackResult: Decodable {
+    var ok: Bool
+    var error: String?
+    static func decode(data: Data, status: Int) -> Self? {
+        guard status == 200 || status == 409,
+              let result = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+        if status == 409 {
+            guard !result.ok, let error = result.error, !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        }
+        return result
+    }
+}
+
+#if DEBUG
+@MainActor enum MorningBriefingPreview {
+    static var value: MorningBriefing = {
+        var item = MorningBriefing(id: "preview-briefing", day: Date.now.formatted(.iso8601.year().month().day()),
+            title: "Preview · Three quiet signals", text: "Preview text of a short briefing.",
+            status: "ready", playlist_id: "preview-briefing-playlist")
+        item.script_sha256 = "fixture-script-hash"
+        return item
+    }()
+    static func save(_ request: BriefingFeedbackMutation) -> BriefingFeedbackResult {
+        guard request.id == value.id, request.script_sha256 == value.script_sha256 else {
+            return .init(ok: false, error: "Preview script changed.")
+        }
+        value.feedback = .init(verdict: request.verdict, text: request.text)
+        return .init(ok: true, error: nil)
+    }
+}
+#endif
+
 /// A prepared reading, separate from a chosen episode or evidence of listening.
 /// GET /api/morning_briefing is read-only; opening this value does not generate audio.
 struct MorningBriefing: Codable, Equatable, Identifiable {
@@ -36,9 +74,12 @@ struct MorningBriefing: Codable, Equatable, Identifiable {
     var playlist_id: String = ""
     var error: String = ""
     var sources: [Source] = []
+    var script_sha256: String = ""
+    struct Feedback: Codable, Equatable { var verdict: String; var text: String }
+    var feedback: Feedback?
 
     enum CodingKeys: String, CodingKey {
-        case id, day, title, text, status, audio_url, duration, playlist_id, error, sources, speech
+        case id, day, title, text, status, audio_url, duration, playlist_id, error, sources, speech, script_sha256, feedback
     }
 
     init(id: String = "", day: String = "", title: String = "", text: String = "",
@@ -69,6 +110,8 @@ struct MorningBriefing: Codable, Equatable, Identifiable {
         playlist_id = try values.decodeIfPresent(String.self, forKey: .playlist_id) ?? ""
         error = try values.decodeIfPresent(String.self, forKey: .error) ?? ""
         sources = try values.decodeIfPresent([Source].self, forKey: .sources) ?? []
+        script_sha256 = try values.decodeIfPresent(String.self, forKey: .script_sha256) ?? ""
+        feedback = try values.decodeIfPresent(Feedback.self, forKey: .feedback)
     }
 
     var displayTitle: String {

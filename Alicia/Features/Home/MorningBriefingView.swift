@@ -45,6 +45,9 @@ struct MorningBriefingView: View {
                         inspectButton(briefing)
                         playlistButton(briefing)
                     }
+                    if briefing.hasText && !briefing.script_sha256.isEmpty {
+                        MorningBriefingFeedbackView(briefing: briefing).id(briefing.id)
+                    }
                     if !briefing.hasPlayableAudio || briefing.dayRelation(to: clock.date) != .today {
                         refreshButton
                     }

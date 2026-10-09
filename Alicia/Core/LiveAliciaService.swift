@@ -397,10 +397,13 @@ struct LiveAliciaService: AliciaService {
                     chatRequest.timeoutInterval = 210
                     let (bytes, resp) = try await URLSession.shared.bytes(for: chatRequest)
                     guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-                        continuation.yield(.token(workContext != nil && (resp as? HTTPURLResponse)?.statusCode == 400
-                            ? "This passage could not be confirmed. Your message was not sent to a model. Open the current work in Together, then try again."
-                            : "(Alicia is unreachable right now — check the backend and your connection.)"))
-                        continuation.yield(.done(messageID: nil))
+                        var errorBody = Data()
+                        for try await byte in bytes {
+                            if errorBody.count >= 8192 { break }
+                            errorBody.append(byte)
+                        }
+                        continuation.yield(.failure(ChatDeliveryFailure.http(
+                            (resp as? HTTPURLResponse)?.statusCode ?? 0, body: errorBody)))
                         continuation.finish()
                         return
                     }
@@ -416,7 +419,9 @@ struct LiveAliciaService: AliciaService {
                             continuation.yield(.voice(url))
                         }
                         if let err = event.error, !err.isEmpty {
-                            continuation.yield(.token("\n(connection hiccup: \(err))"))
+                            continuation.yield(.failure(.interrupted))
+                            finished = true
+                            break
                         }
                         if event.done == true {
                             continuation.yield(.done(messageID: event.message_id, healthTerminal: event.health != nil))
@@ -424,10 +429,9 @@ struct LiveAliciaService: AliciaService {
                             break
                         }
                     }
-                    if !finished { continuation.yield(.done(messageID: nil)) }
+                    if !finished { continuation.yield(.failure(.interrupted)) }
                 } catch {
-                    continuation.yield(.token("(Alicia is unreachable right now — check the backend and your connection.)"))
-                    continuation.yield(.done(messageID: nil))
+                    continuation.yield(.failure(.interrupted))
                 }
                 continuation.finish()
             }
@@ -827,6 +831,15 @@ struct LiveAliciaService: AliciaService {
     }
 
     // MARK: playlists
+
+    func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult? {
+        do {
+            let bytes = try JSONEncoder().encode(mutation)
+            let (data, response) = try await URLSession.shared.data(
+                for: request("/api/morning_briefing/feedback", method: "POST", body: bytes))
+            return BriefingFeedbackResult.decode(data: data, status: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        } catch { return nil }
+    }
 
     func morningBriefing() async -> MorningBriefing? {
         guard var briefing: MorningBriefing = await fetchOne("/api/morning_briefing") else { return nil }

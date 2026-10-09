@@ -4,6 +4,7 @@ from pathlib import Path
 import os, subprocess, tempfile, sys
 root=Path(__file__).resolve().parents[1]
 models=(root/'Alicia/Core/Collaboration.swift').read_text()
+models += '\n' + (root/'Alicia/Core/GoalClosure.swift').read_text().split('/// "12 Sep 2026"')[0]
 notifier=(root/'Alicia/Core/CollaborationNotifier.swift').read_text().replace('import UserNotifications','')
 policy=(root/'Alicia/Core/ThoughtReturnNotifier.swift').read_text().split('enum ThoughtReturnPolicy')[1]
 program=r'''
@@ -13,6 +14,7 @@ protocol AliciaService {
  func collaboration() async -> CollaborationState?
  func collaborationAction(_ request:CollaborationMutation) async -> CollaborationResponse?
  func collaborationSource(connectionID:String,resultID:String,evidenceID:String) async -> ContextSource?
+ func goalClosure(id:String) async -> GoalClosureRecord?
 }
 @MainActor enum ThoughtReturnNotifier {static func cancel(){}}
 struct UNNotificationSettings {enum AuthorizationStatus{case authorized,provisional,denied};var authorizationStatus:AuthorizationStatus}
@@ -33,6 +35,7 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
  var suspend=false;var waiter:CheckedContinuation<CollaborationResponse?,Never>?
  func collaboration() async -> CollaborationState? {value}
  func collaborationSource(connectionID:String,resultID:String,evidenceID:String) async -> ContextSource?{nil}
+ func goalClosure(id:String) async -> GoalClosureRecord?{nil}
  func collaborationAction(_ request:CollaborationMutation) async -> CollaborationResponse? {
   requests.append(request);if suspend{suspend=false;return await withCheckedContinuation{waiter=$0}};return result
  }
@@ -110,6 +113,14 @@ struct UNNotificationRequest {var identifier:String;var content:UNMutableNotific
   _ = await restored.submit(answer,draftName:"work.result.q7.answer")
   let restart = CollaborationStore(service:fake,defaults:defaults,notifications:false)
   precondition(restart.pending == [answer] && restart.draft("work.result.q7.answer")?["text"] == "My entire answer")
+  precondition(!restart.canReview(resultID:"result",sectionID:"q7"))
+  precondition(restart.canReview(resultID:"result",sectionID:"q8"))
+  let other = WorkReviewSection(id:"q8",title:"Q8",kind:"question",text:"Another question?",content_hash:"other",review:.empty)
+    .mutation(resultID:"result",verdict:"comment",text:"Exact words for the other passage")
+  _ = await restart.submit(other)
+  precondition(restart.pending == [answer,other])
+  _ = await restart.submit(answer)
+  precondition(restart.pending == [answer,other], "An uncertain passage cannot replace its immutable receipt")
   fake.result = .init(ok:true,state:state(11)); await restart.retry()
   precondition(restart.draft("work.result.q7.answer") == nil && restart.draft("work.result.q7.edit")?["text"] == "A distinct edit")
   await restored.retry()

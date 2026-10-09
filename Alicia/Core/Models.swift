@@ -27,6 +27,7 @@ struct Message: Identifiable, Hashable {
     /// full bubble and an "answer her" affordance (v23).
     var isAsk: Bool = false
     var workContext: WorkDialogueContext? = nil
+    var deliveryFailure: ChatDeliveryFailure? = nil
 }
 
 /// One event in a streamed chat reply.
@@ -34,6 +35,7 @@ enum ChatEvent {
     case token(String)
     case details(String)
     case voice(URL)
+    case failure(ChatDeliveryFailure)
     case done(messageID: Int?, healthTerminal: Bool = false)
 }
 
@@ -118,7 +120,7 @@ struct Playlist: Identifiable, Hashable {
             Readable(title: title, body: body, kind: kind,
                      speechChunks: speechChunks, speechDuration: duration,
                      episodeID: kind == "episode" ? source : nil,
-                     stableID: source == "alicia_morning_briefing" ? "morning:" + id : nil)
+                     stableID: source == "alicia_morning_briefing" ? "morning:" + id : source == "scaleofus_original" ? "story:" + id : nil)
         }
     }
 
