@@ -112,6 +112,7 @@ protocol AliciaService {
     func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult?
     func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus
     func morningBriefing() async -> MorningBriefing?
+    func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult?
     func collaboration() async -> CollaborationState?
     func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse?
     func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource?
@@ -267,9 +268,15 @@ extension AliciaService {
 #if DEBUG
         // Invented fixture (this repo is public): a ready briefing with a playlist.
         if ProcessInfo.processInfo.arguments.contains("--morning-briefing-preview") {
-            return MorningBriefing(id: "preview-briefing", day: Date.now.formatted(.iso8601.year().month().day()),
-                                   title: "Preview · Three quiet signals", text: "Preview text of a short briefing.",
-                                   status: "ready", playlist_id: "preview-briefing-playlist")
+            return await MorningBriefingPreview.value
+        }
+#endif
+        return nil
+    }
+    func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-preview") {
+            return await MorningBriefingPreview.save(mutation)
         }
 #endif
         return nil

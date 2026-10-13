@@ -52,3 +52,35 @@ Deploy the reviewed backend first, then the reviewed app. Keep current release
 metadata separate until an actual upload and device validation. The task handoff
 contains exact commits, PR links and check evidence. Roll back the app before the
 backend; retain journals and feedback. No noisy Telegram routines are restored.
+
+## October 12 — recover the send without repeating the action
+
+Typed shared conversation now binds `request_id` to its exact original packet
+before effects. The existing review journal adds typed `chat_received`,
+`chat_completed` and `chat_failed` events. Its file lock determines the one
+execution owner, including competing processes. A repeated POST returns the
+original public reply, an in-flight state, or an explicit unresolved outcome;
+it never replays a model/tool call. A restarted process treats incomplete
+receipts as uncertain. Changed words/context under the same identity are
+rejected. Completed original passage replies remain recoverable after the
+prepared work changes.
+
+`GET /api/chat_receipt?request_id=<UUID>` is authenticated, read-only and exposes
+only that send's public outcome. Body/private-health questions and reviewed
+voice sends retain their existing isolated receipt paths. The app keeps an
+immutable protected, backup-excluded outbox, checks matching completed receipts
+after a transport failure, replaces partial output with the saved public reply,
+and reuses its local message row on an explicit retry. Pending/unknown outcomes
+keep the draft and never trigger automatic POST replay or training.
+
+Startup diagnostics no longer gate the library/home/mode updates. The October
+12 phone watchdog report resolved to BodyStore.events sorting and the
+MindBodyOverview ritual status: timestamp parsers are now bounded/reused,
+sorts parse once per event, and one render reads one ritual event list. Original
+timestamps, timezone/day rules, capture bytes and clinical records are unchanged.
+
+Verification uses isolated HTTP and storage, including cross-process claims,
+socket loss after a completed action, current-passage mutation, private health
+exclusion, exact outbox restoration and delayed startup diagnostics. The
+sort benchmark compares the exact build-45 implementation with the candidate.
+No synthetic conversation, feedback or health capture is sent to production.

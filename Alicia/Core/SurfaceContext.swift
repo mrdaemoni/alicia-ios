@@ -34,6 +34,13 @@ struct SurfaceContext: Codable, Equatable {
     private var file: URL { directory.appendingPathComponent("drafts.json") }
     func text(for section: String) -> String { values[section] ?? "" }
 
+    /// Clear only the exact draft acknowledged by its original section's send.
+    /// A callback from a dismissed sheet cannot erase another room's words.
+    func acknowledge(_ text: String, for section: String) {
+        guard values[section] == text else { return }
+        set("", for: section)
+    }
+
     /// Drafts are durable on purpose, which means a UI test inherits whatever
     /// the last one typed. `--reset-drafts` gives a run a clean slate without
     /// reinstalling the app; it exists only in DEBUG and is never a product

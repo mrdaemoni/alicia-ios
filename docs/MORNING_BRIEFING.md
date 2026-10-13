@@ -147,3 +147,11 @@ must capture the integrated Us screen before any episode is selected, both ready
 and preparing. Audio routing, measured file length, background/lock playback,
 VoiceOver gestures and final typography need physical-device evidence. Simulator
 callback tests do not prove those behaviors or a real morning's content quality.
+
+## October 4 briefing feedback and stories
+
+The dated script exposes optional `script_sha256` and latest `feedback` (`verdict`, exact `text`). Useful and Missed what mattered post through AliciaService to `POST /api/morning_briefing/feedback`, with a UUID receipt, script hash and optional words. Drafts and uncertain requests persist in the existing local draft store; Retry uses identical words and identity. Definite rejection unlocks the draft, confirmation clears it, and the next morning's preparation receives the explicit assessment. Playback and Useful are not training consent or global agreement.
+
+The backend prepares 800–850 useful spoken words when grounded evidence supports it and reports measured duration. Current legacy voice audio waits for verified restoration; historical originals retain unknown provider provenance. The health payload distinguishes ready briefings, verified voice, blocked goals and explicit feedback from scheduler liveness.
+
+Studio's Scaleofus · The Boy playlist contains the completed original scored Book One v17 and Count Love v15 recordings, served by authenticated Range requests at `GET /api/stories/<allowlisted-id>.m4a`. It uses the shared continuous player, a stable story identity and no guessed word timings. If an original recording is absent, the reader reports unavailable and never synthesizes its metadata as a replacement. Book Three remains excluded until completed.

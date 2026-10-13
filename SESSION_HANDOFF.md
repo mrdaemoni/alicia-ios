@@ -1,3 +1,40 @@
+## October 12 — watchdog freeze, startup and receipt recovery candidate
+
+The actual build-45 phone crash is a 10-second scene-update watchdog. Matching
+symbols resolve to BodyStore.events sorting through BodyCapture.before/instant,
+then MindBodyOverview.recorded/status. ISO parsers now reuse a bounded cache;
+sorts parse once per event and ritual status uses one event list. Startup's slow
+diagnostic read publishes separately from the conversation and library.
+
+A typed send now retains its original immutable packet on this phone. After a
+connection drop, it checks the authenticated saved receipt and replaces partial
+output with a matching completed reply. An explicit retry reuses its local row
+and its original identity, never a changed context or a second user bubble.
+Public receipts exclude private Body requests. The paired backend
+`codex/messaging-latency-20261012` must release first. No model/cost policy change,
+training or synthetic production conversation is part of this patch. Existing
+capture bytes and chronological/local-day behavior stay intact.
+
+Tests: `scripts/test_chat_delivery.py`, `scripts/test_body_sort_performance.py`
+and `scripts/test_startup_latency.py`. Current deployment, Apple processing and
+physical-phone evidence belong to the shared task's RELEASE.md.
+
+## October 9 — passage attachment and send recovery candidate
+
+The phone screenshot showed Studio carrying an old PURPOSE passage. A server
+validation rejection then appeared as Alicia's response while the sheet said
+Sent and cleared Hector's words. The ordinary room composer now clears the
+active passage; only Discuss this attaches one explicitly. Typed delivery
+notices retain rejected/uncertain drafts and no longer appear as authored
+responses. Sent waits for acknowledgment. Reply links keep their original
+passage. See `docs/WORK_REVIEW.md` and `scripts/test_chat_delivery.py`.
+
+This continues PR #49 from TestFlight build 43. Release/phone acceptance belongs
+to the task receipt in
+`/Users/alicia/Documents/Alicia-development/tasks/health-performance-20261004/`.
+No backend validation bypass, model change, training or synthetic production
+conversation is part of the patch.
+
 ## September 19 — blind Jev impulse study in Aves
 
 This paired backend/app release adds an auditable private study surface under

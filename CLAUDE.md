@@ -338,6 +338,7 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | Endpoint | For |
 |---|---|
 | `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds tap-to-play media. Reviewed Mac voice adds `client_request_id`, `recording_id`, machine source IDs and captured `episode_id`. |
+| `GET /api/chat_receipt?request_id=<UUID>` | Read-only typed-send outcome. Recovery never resubmits the original model/tool action; the protected phone outbox retains its frozen words/context until acknowledgment. Private Body/health and reviewed voice retain their separate receipts. |
 | `GET /api/body` · `POST /api/body` | Private overview and explicit wellness/ritual receipts |
 | `GET /api/body/source` · `POST /api/body/ask` | Exact private report passages and optional local health answer |
 | `GET /api/thoughts` · `/api/tracks` · `/api/gallery` · `/api/health` | tab data |
@@ -518,3 +519,5 @@ reads; views do not issue HTTP. --collaboration-preview is mock-only.
 Morning exercise briefing: `GET /api/morning_briefing` (read-only dated snapshot)
 and `GET /api/morning_briefing/audio/<id>.m4a` (authenticated Range audio).
 See docs/MORNING_BRIEFING.md. It never selects a podcast episode or manufactures listening evidence.
+
+October 4 health repairs: `POST /api/morning_briefing/feedback` stores explicit script-scoped Useful/Missed feedback and exact optional words with idempotent receipts. `GET /api/stories/<allowlisted-id>.m4a` serves completed Scaleofus original scored audio with Range support; the normal Studio playlist/player carries Book One v17 and Count Love v15. `/api/health` exposes actual briefing/voice/goal availability and sparse-feedback uncertainty. Goal work reviews queue independently by result/section and saved drafts resume explicitly. No on-device speech fallback or inferred listening/learning is introduced.
