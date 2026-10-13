@@ -91,14 +91,14 @@ struct BodySourcePage: Decodable {
     var events: [BodyEvent] {
         var byID: [String: BodyEvent] = [:]
         for event in (overview?.events ?? []) + local { byID[event.id] = event }
-        return byID.values.sorted(by: BodyCapture.before)
+        return BodyCapture.sorted(Array(byID.values))
     }
     var goals: [BodyEvent] {
         var byID: [String: BodyEvent] = [:]
         for event in overview?.goals ?? [] { byID[event.goal_id] = event }
         // Pending edits remain visible and explicitly labelled until saved.
         for event in local where event.kind == "goal" && pendingIDs.contains(event.id) { byID[event.goal_id] = event }
-        return byID.values.sorted(by: BodyCapture.before)
+        return BodyCapture.sorted(Array(byID.values))
     }
     func reread() {
         do { let directory = try captureDirectory ?? BodyCapture.root(); local = try BodyCapture.events(directory: directory).filter { !BodyCapture.isDiscarded($0.id, directory: directory) }; pendingIDs = Set(try BodyCapture.pending(directory: captureDirectory).map(\.id)) }

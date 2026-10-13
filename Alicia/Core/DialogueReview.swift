@@ -78,8 +78,15 @@ extension Message {
     /// Old reports also open compactly. Their exact original remains in the sheet.
     var conversationalPreview: String {
         guard sender == .alicia else { return text }
-        let words = text.split(whereSeparator: \.isWhitespace)
-        guard words.count > 70 || text.count > 600 else { return text }
+        // One historical tool template leaked its instruction into chat. Keep
+        // the stored original for inspection, but show only its confirmation.
+        let publicText: String
+        if text.hasPrefix("Note saved to Obsidian Inbox:"),
+           let instruction = text.range(of: ". Your reply should be ONE LINE confirming") {
+            publicText = String(text[..<instruction.lowerBound]) + "."
+        } else { publicText = text }
+        let words = publicText.split(whereSeparator: \.isWhitespace)
+        guard words.count > 70 || publicText.count > 600 else { return publicText }
         let prefix = words.prefix(70).joined(separator: " ")
         return String(prefix.prefix(600)) + "…"
     }

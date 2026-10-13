@@ -7,6 +7,7 @@ import os
 import subprocess
 import tempfile
 import threading
+from urllib.parse import urlparse, parse_qs
 
 root = Path(__file__).resolve().parents[1]
 store = (root / 'Alicia/Core/AppStore.swift').read_text()
@@ -25,12 +26,14 @@ models = (root / 'Alicia/Core/Models.swift').read_text().split('/// A proactive 
 context = between(collaboration, 'struct WorkDialogueContext:', 'enum CollaborationReturnPreferences')
 
 class Handler(BaseHTTPRequestHandler):
+    modes = {}
     def log_message(self, *args):
         pass
 
     def do_POST(self):
-        self.rfile.read(int(self.headers.get('Content-Length', '0')))
-        status = {'/reject': 400, '/auth': 401, '/timeout': 408, '/server': 502}.get(self.path, 200)
+        body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0'))))
+        self.modes[body['request_id']] = self.path
+        status = {'/reject': 400, '/auth': 401, '/timeout': 408, '/server': 502, '/recover': 202}.get(self.path, 200)
         self.send_response(status)
         self.send_header('Content-Type', 'application/json' if status != 200 else 'text/event-stream')
         self.end_headers()
@@ -43,6 +46,15 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b'data: {"error":"inert generation failure","done":true}\n\n')
         elif self.path == '/malformed':
             self.wfile.write(b'data: not-json\n\n')
+
+    def do_GET(self):
+        query = parse_qs(urlparse(self.path).query)
+        rid = query.get('request_id', [''])[0]
+        receipt = {'request_id': rid, 'state': 'missing'}
+        if self.modes.get(rid) == '/recover':
+            receipt.update(state='completed', reply='The saved reply.', reply_id=rid, message_id=99, inspectable=True)
+        self.send_response(200); self.end_headers()
+        self.wfile.write(json.dumps(receipt).encode())
 
 server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
 threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -85,6 +97,7 @@ struct Archive {
  var isStreaming = false, episodeChoiceSyncing = false, voiceReplies = false, isWalking = false
  var showConversation = false
  var composerDrafts = ComposerDrafts(directory:URL(fileURLWithPath:CommandLine.arguments[2]))
+ let chatOutbox = ChatSendOutbox(directory:URL(fileURLWithPath:CommandLine.arguments[2]+"/outbox"))
  var conversationContext = SurfaceContext(section:"studio",captured_at:"2026-10-09T17:17:00Z")
  var answeringAskID:String?
  var messages:[Message] = []
@@ -124,8 +137,8 @@ struct Archive {
 }
 struct LiveHarness {
  var base:URL
- func request(_ path:String,method:String,body:Data) -> URLRequest {
-  var request = URLRequest(url:base)
+ func request(_ path:String,method:String="GET",body:Data?=nil) -> URLRequest {
+  var request = URLRequest(url:method == "GET" ? URL(string:path,relativeTo:base)! : base)
   request.httpMethod = method; request.httpBody = body
   return request
  }
@@ -236,18 +249,46 @@ struct LiveHarness {
   precondition(layer.sent && drafts.text(for:"studio").isEmpty)
   precondition(drafts.text(for:"body") == "Private newer words")
 
-  for path in ["reject","auth","timeout","server","sse-error","malformed","success"] {
+  // Durable request identity freezes the first originating context after
+  // relaunch, and is never silently moved to another room.
+  let outboxURL = draftsURL.appendingPathComponent("durable-outbox")
+  let outbox = ChatSendOutbox(directory:outboxURL)
+  let originalContext = SurfaceContext(section:"studio",captured_at:"2026-10-12T22:00:00Z",episode_id:"S4E10")
+  let request = try outbox.reserve(text:original,recordingID:"",voice:false,workContext:nil,surfaceContext:originalContext)
+  let restored = ChatSendOutbox(directory:outboxURL)
+  var later = originalContext; later.captured_at = "2026-10-12T22:10:00Z"
+  let retry = try restored.reserve(text:original,recordingID:"",voice:true,workContext:nil,surfaceContext:later)
+  precondition(retry.requestID == request.requestID && retry.surfaceContext == originalContext && !retry.voice)
+  let anotherRoom = try restored.reserve(text:original,recordingID:"",voice:false,workContext:nil,surfaceContext:.init(section:"mind",captured_at:later.captured_at))
+  precondition(anotherRoom.requestID != request.requestID)
+  do { _ = try restored.reserve(text:original,recordingID:"",voice:false,workContext:nil,surfaceContext:.init(section:"body",captured_at:later.captured_at)); preconditionFailure("private Body entered shared outbox") } catch {}
+
+  // A saved reply replaces partial text and a repeated send reuses its
+  // local row, rather than showing the user's quote twice.
+  let recovery = Harness()
+  recovery.service.events = [.failure(.interrupted)]
+  recovery.send(original) {confirmed = $0}; await settle(recovery)
+  let recoveryID = recovery.service.requests.last!
+  precondition(recovery.messages.count == 2 && confirmed == false)
+  recovery.service.events = [.token("partial"), .recovered(.init(request_id:recoveryID,state:"completed",reply:"Recorded once",reply_id:recoveryID,message_id:77,inspectable:true))]
+  recovery.send(original) {confirmed = $0}; await settle(recovery)
+  precondition(confirmed == true && recovery.messages.count == 2 && recovery.messages.last?.text == "Recorded once")
+
+  for path in ["reject","auth","timeout","server","sse-error","malformed","success","recover"] {
    let service = LiveHarness(base:URL(string:CommandLine.arguments[1]+"/"+path)!)
-   var failures:[ChatDeliveryFailure] = [], tokens:[String] = [], completed = false
-   for await event in service.stream(original,voice:false,recordingID:"",workContext:target,surfaceContext:h.conversationContext,requestID:"inert") {
+   var failures:[ChatDeliveryFailure] = [], tokens:[String] = [], completed = false, recovered = false
+   let rid = UUID().uuidString
+   for await event in service.stream(original,voice:false,recordingID:"",workContext:target,surfaceContext:originalContext,requestID:rid) {
     switch event {
     case .failure(let failure): failures.append(failure)
     case .token(let token): tokens.append(token)
     case .done: completed = true
+    case .recovered(let receipt): recovered = receipt.confirms(rid)
     case .details, .voice: break
     }
    }
    if path == "success" {precondition(failures.isEmpty && completed && tokens == ["An inert answer."])}
+   else if path == "recover" {precondition(recovered && failures.isEmpty)}
    else {
     precondition(failures.count == 1 && !completed && tokens.isEmpty)
     precondition(failures[0].definitelyRejected == ["reject","auth"].contains(path))

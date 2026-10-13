@@ -52,6 +52,7 @@ final class AppStore {
     let bodyStore: BodyStore
     let collaboration: CollaborationStore
     let voiceArchive: VoiceArchive
+    let chatOutbox: ChatSendOutbox
     var walkRecordingID = UserDefaults.standard.string(forKey: "alicia.walkRecordingID") ?? "" {
         didSet { UserDefaults.standard.set(walkRecordingID, forKey: "alicia.walkRecordingID") }
     }
@@ -65,6 +66,8 @@ final class AppStore {
             notifications: !(service is MockAliciaService))
         self.voiceArchive = VoiceArchive(root: service is MockAliciaService
             ? FileManager.default.temporaryDirectory.appendingPathComponent("voice-preview-" + UUID().uuidString) : nil)
+        self.chatOutbox = ChatSendOutbox(directory: service is MockAliciaService
+            ? FileManager.default.temporaryDirectory.appendingPathComponent("chat-preview-" + UUID().uuidString) : nil)
         if !isMock { BackgroundVoiceSync.store = self }
         if isMock { messages = SampleData.messages }
 #if DEBUG
@@ -577,7 +580,7 @@ final class AppStore {
             recordingID: row.recording_id?.isEmpty == false ? row.recording_id : nil,
             voiceURL: savedVoice?.voice_path.flatMap(service.voiceReplyURL) ?? existingURL,
             canReadVoiceReply: savedVoice != nil,
-            workContext: collaboration.dialogueContext(for: replyID))
+            workContext: collaboration.dialogueContext(for: replyID), chatRequestID: row.request_id.flatMap { UUID(uuidString: $0)?.uuidString })
     }
     func voiceEnrichmentFeedback(_ feedback: VoiceEnrichmentFeedback) async -> VoiceEvidenceResult? {
         await service.voiceAction(feedback.body)
@@ -906,7 +909,9 @@ final class AppStore {
         async let t = service.thoughts()
         async let tr = service.tracks()
         async let g = service.gallery()
-        async let h = service.health()
+        // Diagnostic projection is slower than the conversation/library reads.
+        // It must never gate those rooms' first useful update.
+        Task { if let fresh = await service.health() { health = fresh } }
         // v29: 6 starved the Dialogue — the backend sends ~9/day and the
         // feed is capped at 100 server-side; 30 gives real history.
         async let p = service.proactive(limit: 30)
@@ -927,7 +932,6 @@ final class AppStore {
         if let fresh = await t { thoughts = fresh }
         if let fresh = await tr { tracks = fresh }
         if let fresh = await g { gallery = fresh }
-        if let fresh = await h { health = fresh }
         let freshHome = await hc
         if let freshHome { homeContext = freshHome }
         // Keep-last-known, same rule: a failed orbit fetch must not empty
@@ -953,9 +957,7 @@ final class AppStore {
     }
 
     private static func historyDate(_ text: String) -> Date {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: text) ?? ISO8601DateFormatter().date(from: text) ?? .distantPast
+        BodyCapture.instant(text)
     }
 
     // MARK: home-screen widget
@@ -1421,14 +1423,31 @@ final class AppStore {
             }
             return
         }
-        let workContext = collaboration.dialogueContext
+        let pending: PendingChatSend
+        do {
+            pending = try chatOutbox.reserve(text: clean, recordingID: recordingID, voice: voiceReplies,
+                workContext: collaboration.dialogueContext, surfaceContext: surfaceContext)
+        } catch {
+            messages.append(Message(sender: .alicia, text: "", deliveryFailure: .init(
+                message: "The pending send could not be saved on this phone. Your draft is kept; no message was sent.", definitelyRejected: true)))
+            completion(false)
+            return
+        }
+        let workContext = pending.workContext
         let key = SHA256.hash(data: Data(clean.utf8)).map { String(format: "%02x", $0) }.joined()
-        let stored = pendingSendRequestIDs[key]?.split(separator: "|", maxSplits: 1).map(String.init)
-        let requestID = (stored?.count == 2 && Date().timeIntervalSince1970 - (Double(stored![1]) ?? 0) < 600) ? stored![0] : UUID().uuidString
+        let requestID = pending.requestID
         pendingSendRequestIDs[key] = "\(requestID)|\(Date().timeIntervalSince1970)"
-        messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID, workContext: workContext))
-        let idx = messages.count
-        messages.append(Message(sender: .alicia, text: "", workContext: workContext))
+        let idx: Int
+        if let previous = messages.lastIndex(where: { $0.sender == .alicia && $0.chatRequestID == requestID }) {
+            idx = previous
+            messages[idx].deliveryFailure = nil
+            messages[idx].text = ""
+        } else {
+            messages.append(Message(sender: .me, text: pending.text, recordingID: recordingID.isEmpty ? nil : recordingID,
+                workContext: workContext, chatRequestID: requestID))
+            idx = messages.count
+            messages.append(Message(sender: .alicia, text: "", workContext: workContext, chatRequestID: requestID))
+        }
         isStreaming = true
         Task {
             var confirmed = false
@@ -1438,7 +1457,7 @@ final class AppStore {
                 // `defer` rather than a trailing assignment: a thrown or cancelled
                 // stream must not leave her looking permanently mid-thought.
                 defer { isStreaming = false }
-                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext, requestID: requestID) {
+                for await event in service.stream(pending.text, voice: pending.voice, recordingID: pending.recordingID, workContext: workContext, surfaceContext: pending.surfaceContext, requestID: requestID) {
                     guard messages.indices.contains(idx) else { break }
                     switch event {
                     case .token(let t):   messages[idx].text += t
@@ -1446,15 +1465,32 @@ final class AppStore {
                         guard !id.isEmpty else { continue }
                         confirmed = true
                         messages[idx].replyID = id
+                        chatOutbox.acknowledge(requestID)
                         pendingSendRequestIDs.removeValue(forKey: key)
                         if let workContext { collaboration.rememberDialogueContext(workContext, replyID: id) }
                     case .voice(let url): messages[idx].voiceURL = url
+                    case .recovered(let receipt):
+                        guard receipt.confirms(requestID) else { continue }
+                        confirmed = true; finished = true; failure = nil
+                        messages[idx].text = receipt.reply ?? ""
+                        messages[idx].replyID = receipt.inspectable == true ? receipt.reply_id : nil
+                        messages[idx].messageID = receipt.message_id
+                        messages[idx].deliveryFailure = nil
+                        pendingSendRequestIDs.removeValue(forKey: key)
+                        chatOutbox.acknowledge(requestID)
+                        if receipt.inspectable == true, let workContext, let id = receipt.reply_id {
+                            collaboration.rememberDialogueContext(workContext, replyID: id)
+                        }
                     case .failure(let problem):
                         failure = problem
-                        if problem.definitelyRejected { pendingSendRequestIDs.removeValue(forKey: key) }
+                        if problem.definitelyRejected {
+                            pendingSendRequestIDs.removeValue(forKey: key)
+                            chatOutbox.acknowledge(requestID)
+                        }
                     case .done(let mid, _):
                         finished = true
                         messages[idx].messageID = mid
+                        chatOutbox.acknowledge(requestID)
                         pendingSendRequestIDs.removeValue(forKey: key)
                     }
                 }

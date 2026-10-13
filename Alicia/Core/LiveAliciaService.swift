@@ -397,6 +397,11 @@ struct LiveAliciaService: AliciaService {
                     chatRequest.timeoutInterval = 210
                     let (bytes, resp) = try await URLSession.shared.bytes(for: chatRequest)
                     guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+                        if (resp as? HTTPURLResponse)?.statusCode == 202 {
+                            continuation.yield(await recoverChat(requestID))
+                            continuation.finish()
+                            return
+                        }
                         var errorBody = Data()
                         for try await byte in bytes {
                             if errorBody.count >= 8192 { break }
@@ -419,7 +424,7 @@ struct LiveAliciaService: AliciaService {
                             continuation.yield(.voice(url))
                         }
                         if let err = event.error, !err.isEmpty {
-                            continuation.yield(.failure(.interrupted))
+                            continuation.yield(await recoverChat(requestID))
                             finished = true
                             break
                         }
@@ -429,14 +434,36 @@ struct LiveAliciaService: AliciaService {
                             break
                         }
                     }
-                    if !finished { continuation.yield(.failure(.interrupted)) }
+                    if !finished { continuation.yield(await recoverChat(requestID)) }
                 } catch {
-                    continuation.yield(.failure(.interrupted))
+                    continuation.yield(await recoverChat(requestID))
                 }
                 continuation.finish()
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    private func recoverChat(_ requestID: String) async -> ChatEvent {
+        guard UUID(uuidString: requestID) != nil else { return .failure(.interrupted) }
+        var pending = false
+        for attempt in 0..<10 {
+            if Task.isCancelled { break }
+            var check = request("/api/chat_receipt?request_id=" + requestID)
+            check.timeoutInterval = 8
+            guard let (data, response) = try? await URLSession.shared.data(for: check),
+                  (response as? HTTPURLResponse)?.statusCode == 200,
+                  let receipt = try? JSONDecoder().decode(ChatSendReceipt.self, from: data),
+                  UUID(uuidString: receipt.request_id) == UUID(uuidString: requestID) else { break }
+            if receipt.confirms(requestID) { return .recovered(receipt) }
+            if receipt.state == "rejected" {
+                return .failure(.init(message: "The reply did not finish. Your words remain in the composer.", definitelyRejected: true))
+            }
+            pending = receipt.state == "pending"
+            guard pending else { break }
+            if attempt < 9 { try? await Task.sleep(for: .seconds(1)) }
+        }
+        return .failure(pending ? .pending : .interrupted)
     }
 
     private struct WireEvent: Decodable {

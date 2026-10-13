@@ -28,6 +28,7 @@ struct Message: Identifiable, Hashable {
     var isAsk: Bool = false
     var workContext: WorkDialogueContext? = nil
     var deliveryFailure: ChatDeliveryFailure? = nil
+    var chatRequestID: String? = nil
 }
 
 /// One event in a streamed chat reply.
@@ -36,6 +37,7 @@ enum ChatEvent {
     case details(String)
     case voice(URL)
     case failure(ChatDeliveryFailure)
+    case recovered(ChatSendReceipt)
     case done(messageID: Int?, healthTerminal: Bool = false)
 }
 
