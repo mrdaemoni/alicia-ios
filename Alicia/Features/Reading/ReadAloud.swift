@@ -282,6 +282,9 @@ struct ReadingBar: View {
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(Theme.paper.opacity(0.55))
                 }
+                // The steerable briefing: Higher · Lower · Again, its one-line
+                // interpretation and, at the end, Landed / Didn't land.
+                BriefingSteeringPanel(onInk: true)
             }
             .padding(.horizontal, 18)
             .padding(.top, 12)

@@ -155,3 +155,14 @@ The dated script exposes optional `script_sha256` and latest `feedback` (`verdic
 The backend prepares 800–850 useful spoken words when grounded evidence supports it and reports measured duration. Current legacy voice audio waits for verified restoration; historical originals retain unknown provider provenance. The health payload distinguishes ready briefings, verified voice, blocked goals and explicit feedback from scheduler liveness.
 
 Studio's Scaleofus · The Boy playlist contains the completed original scored Book One v17 and Count Love v15 recordings, served by authenticated Range requests at `GET /api/stories/<allowlisted-id>.m4a`. It uses the shared continuous player, a stable story identity and no guessed word timings. If an original recording is absent, the reader reports unavailable and never synthesizes its metadata as a replacement. Book Three remains excluded until completed.
+
+## October 16 — steerable altitude
+
+When `GET /api/morning_briefing` carries `segments[]` and an enabled `steering`
+block, the briefing plays segment-aware and can be steered while it plays
+(Higher · Lower · Again), or only at its end in an after week. The legacy
+fields (`audio_url`, `speech`) still describe L0 and play exactly as before
+when segments are absent. The card adds a *Steering this briefing* disclosure
+with the arm and the headphone setting. Useful / Missed what mattered is
+unchanged and still feeds the next morning; Landed / Didn't land is the study's
+end check and never does. Contract and playback: `docs/STEERABLE_BRIEFING.md`.

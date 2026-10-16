@@ -49,6 +49,8 @@ final class AppStore {
     /// Reads any page in her prepared natural voice. Shares the audio session with the podcast
     /// player, so the two hand off rather than talk over each other.
     let reader = SpeechReader()
+    /// CL-20261015-steerable-briefing: Higher · Lower · Again on the morning briefing.
+    let briefingSteering = BriefingSteeringController()
     let bodyStore: BodyStore
     let collaboration: CollaborationStore
     let voiceArchive: VoiceArchive
@@ -113,6 +115,20 @@ final class AppStore {
         }
 #endif
         reader.service = service
+        briefingSteering.configure(service: service, reader: reader)
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") {
+            let args = ProcessInfo.processInfo.arguments
+            let briefing = BriefingSteeringPreview.briefing()
+            morningBriefing = briefing
+            let pieces = BriefingPlanner.path(briefing.segments, dial: 0, fromSegment: 0, resolve: { URL(string: $0) })
+            reader.prepareSteeringPreview(Readable(title: briefing.title, body: briefing.text, kind: "note",
+                speechChunks: pieces, stableID: "morning:" + briefing.id), pieces: pieces,
+                finished: args.contains("--steer-ended-preview"))
+            briefingSteering.preparePreview(briefing, ended: args.contains("--steer-ended-preview"),
+                line: args.contains("--steer-line-preview") ? briefing.steering?.line("higher") : nil)
+        }
+#endif
         // Presence telemetry rides the same service (and is a no-op on the
         // mock, so previews and a missing Secrets.plist send nothing).
         PresenceTracker.shared.configure(service: service)
@@ -806,6 +822,13 @@ final class AppStore {
 
     func toggleMorningBriefing(_ briefing: MorningBriefing) {
         guard briefing.hasPlayableAudio, let url = URL(string: briefing.audio_url) else { return }
+        if briefing.isSteerable {
+            // Segment-aware playback; the legacy single track stays for older payloads.
+            configureRemoteCommandsOnce()
+            if briefingSteering.isCurrent(reader), briefingSteering.briefing?.id == briefing.id { reader.toggle(); return }
+            briefingSteering.play(briefing)
+            return
+        }
         readAloud(Readable(title: briefing.title, body: briefing.text, kind: "note",
             speechChunks: briefing.speechChunks.isEmpty ? [SpeechChunk(url: url, duration: briefing.duration)] : briefing.speechChunks,
             speechDuration: briefing.duration, stableID: "morning:" + briefing.id))
@@ -901,6 +924,7 @@ final class AppStore {
     func load() async {
         Task { await refreshPresence() }
         Task { await refreshMorningBriefing() }
+        briefingSteering.flush()
         Task { await collaboration.load() }
         Task { await refreshVoiceArchive() }
         let messagesAtStart = messages.map(\.id)
@@ -1760,6 +1784,8 @@ final class AppStore {
         center.nextTrackCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                // v1.1, behind its setting: in the briefing, next track is Higher.
+                if self.briefingSteering.handlesRemoteCommands { self.briefingSteering.steer(.higher, input: "remote_command"); return }
                 guard self.reader.isActive else { self.next(); return }
                 // In a playlist these are real track buttons — the steering
                 // wheel controls have to move between pieces. Reading one
@@ -1771,6 +1797,8 @@ final class AppStore {
         center.previousTrackCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                // v1.1: previous track is Lower.
+                if self.briefingSteering.handlesRemoteCommands { self.briefingSteering.steer(.lower, input: "remote_command"); return }
                 guard self.reader.isActive else { self.previous(); return }
                 self.reader.queueItems.count > 1
                     ? self.reader.previous() : self.reader.skip(-15)

@@ -1,3 +1,22 @@
+## October 16 — steerable morning briefing candidate (CL-20261015-steerable-briefing)
+
+The morning briefing can be steered while it plays: Higher · Lower · Again in
+the reading bar and immersive reader (ink small caps), one interpretation
+line, a prerendered spoken cue, Landed / Didn't land at the end, the after-arm
+replay, and a headphone next/previous setting (off by default). Playback is
+segment-aware: only what follows the sounding piece changes, at a sentence
+boundary, with a short fade. See `docs/STEERABLE_BRIEFING.md`.
+
+This branch is stacked on PR #49 (`codex/health-performance-20261004`,
+TestFlight 46). The paired backend PR mrdaemoni/alicia#98 must deploy first.
+Older backends and unsegmented days play the single track exactly as before.
+
+Checks: `scripts/test_briefing_steering.py` (46),
+`scripts/test_morning_integration.py`, `scripts/test_startup_latency.py`, and
+a generic simulator build. `scripts/test_briefing_steering_ui.py` needs an
+installed simulator runtime. No TestFlight, AppVersion bump or phone result is
+claimed. The shared task folder owns release evidence.
+
 ## October 12 — watchdog freeze, startup and receipt recovery candidate
 
 The actual build-45 phone crash is a 10-second scene-update watchdog. Matching

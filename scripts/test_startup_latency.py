@@ -31,6 +31,8 @@ struct History {var messages:[String] = []}
 }
 @MainActor final class Harness {
  let service = Service(), collaboration = Shared()
+ final class Steering { func flush() {} }
+ let briefingSteering = Steering()
  var messages:[Message] = [], isStreaming = false
  var episodeDay:String?, thinkerNetwork:String?, homeContext:String?
  var thoughts:[String] = [], tracks:[String] = [], gallery:[String] = [], health:[String] = [], syntheses:[String] = [], playlists:[String] = [], proactiveFeed:[String] = []

@@ -1,0 +1,106 @@
+# Steering the morning briefing while it plays (iOS)
+
+*CL-20261015-steerable-briefing. Backend contract:
+`/Users/alicia/alicia/docs/STEERABLE_BRIEFING.md` (`GET /api/morning_briefing`
+`segments[]` + `steering`, `POST /api/morning_briefing/steer`, `POST
+/api/morning_briefing/receipt`, Landed / Didn't land on `.../feedback`). The
+pre-registration, altitude definitions and event model are in the board task.*
+
+## What he sees and hears
+
+The briefing card and reading bar look as before. When the day's briefing is
+steerable, the reading bar and the immersive reader gain one quiet row:
+
+**HIGHER · LOWER · AGAIN**, with the arm on the right ("STEER WHILE IT PLAYS ·
+WEEK 1"). The commands are ink-drawn small caps with her underline: no SF
+Symbols, no emoji.
+
+- **Higher:** the rest from higher up, from the next sentence.
+- **Lower:** the rest closer in, from the next sentence.
+- **Again:** replay the sentence now, or the previous one if he pressed within
+  1.5 s of a sentence's start.
+- One **interpretation line** says what Alicia took the press to mean ("From
+  higher up, starting with the next sentence"), then fades after six seconds.
+- A short prerendered **spoken cue** in her voice ("Higher.", "Lower.",
+  "Again.", "Staying here.") confirms it at the seam, so he doesn't have to look.
+- At the end: **DID IT LAND? Landed · Didn't land**, identical in both arms.
+- **After weeks:** nothing to press while it plays. When it ends, the same three
+  commands appear: Higher or Lower replays the whole briefing at that level,
+  and Again replays the last sentence.
+- **During weeks:** the commands disappear when it ends.
+
+The card has a *Steering this briefing* disclosure: what the controls do this
+week, the arm, and the v1.1 **headphone setting** (off by default). When it's
+on, headphone or lock-screen next/previous track means Higher/Lower, in the
+briefing only and only while the commands are showing. Everywhere else those
+buttons keep their usual meaning.
+
+A pause is a pause. Nothing records pausing, scrubbing, skipping, stopping or
+silence as a signal.
+
+## How playback works
+
+| Piece | Role |
+|---|---|
+| `Core/BriefingSteering.swift` | Payload models; `BriefingPlanner`: the interpretation table and entry-sentence rule (mirrors `skills/briefing_steering.py`), path building, switch points, Again targets, narration text, and `consequence(...)`: what a reading does to the path, as data. Pure Foundation. |
+| `Core/SpeechReader.swift` | Plays a path of **pieces**. A piece is a chunk file that may start (`clipStart`) and end (`clipEnd`, via `forwardPlaybackEndTime`) inside the file. Pieces that need their own seek start a new queue run at a seam. A seam fades the last 120 ms out and the next run in. `replaceFuture(after:current:tail:immediate:)` changes only what follows the sounding piece; the sounding piece may only end sooner, at a boundary still ahead of the playhead. |
+| `Core/BriefingSteeringController.swift` | The session. It decides what a press means (server answer, or the identical local rule if the Mac doesn't answer within 1.5 s), applies the consequence, records stretches of what actually played, and keeps the receipt outbox. |
+| `Features/Reading/BriefingSteerControls.swift` | `BriefingSteeringPanel`, `BriefingEndCheck`, `BriefingSteeringSettings`. |
+
+**A steer.**
+
+1. The press is placed at the sentence being heard. If less than 0.35 s of it
+   is left, the change waits one more sentence.
+2. The heard piece is cut in the gap after that sentence, the cue follows, then
+   the new variant resumes at its first sentence that carries a ledger item
+   not yet heard, so nothing unheard is skipped.
+3. Later segments follow the new dial, falling back to L0 where a level failed
+   validation.
+4. An untimed sentence can only be entered at its chunk's start (a little may
+   repeat), and a cut without timing waits for the chunk's end.
+
+**The text above the playhead never changes.** The reader's narration is
+rebuilt from the path, one paragraph per segment. The heard pieces keep their
+exact text and measured cues, so word following and tap-to-seek keep working.
+
+**Records.**
+
+| Record | When it's posted |
+|---|---|
+| `session_started` | When a steerable briefing starts playing (the opportunity) |
+| `consequence` | Each time a new stretch actually starts. It names its event when a steer caused it; natural progression is `initial`, a scrub or skip is `seek`. |
+| `session_ended` | Once per session, with measured seconds heard and the heard path: on stop or replace, after Landed / Didn't land, or when the next session starts |
+| Landed / Didn't land | After every queued consequence has been delivered, so the server can confirm the path |
+
+Everything goes through a durable outbox (Application Support,
+`completeUntilFirstUserAuthentication`, so it still writes in a locked
+pocket). Every body carries its UUID, so retries are no-ops on the server.
+
+**Audio.** When a session starts, every variant chunk is downloaded once to
+Caches. A copy is used only if its SHA-256 matches the validated variant.
+Steers then switch from local files, and a run's dropouts don't stop the
+briefing.
+
+Older payloads, an unsegmented day, or arm `off` keep the legacy single track
+exactly as before.
+
+## Fixtures and checks
+
+`--morning-briefing-steer-preview` builds an invented briefing (the plan's
+talk-prep / book-edits example) with synthetic 0.3 s/word cues. URLs are never
+loaded, and the mock service answers with the same local rules. Add
+`--reading-bar-preview` or `--immersive-reading-preview` for those surfaces,
+`--steer-after-arm` for an after week, `--steer-ended-preview` for the end
+state, `--steer-line-preview` to show a line, and `--tab us` for the card.
+
+- `scripts/test_briefing_steering.py` compiles the real planner and
+  NarrationDocument against `scripts/fixtures/steerable_briefing_payload.json`,
+  which the backend test flow generated from invented text. It checks
+  interpretation parity with the backend, path building, cuts and entries,
+  every consequence branch, and narration alignment (46 checks).
+- `scripts/test_briefing_steering_ui.py` covers both arms, the end check, the
+  immersive reader, the card setting, and large type, with screenshots. It
+  needs an installed iOS Simulator runtime (iPhone 17).
+
+Simulator results are not phone evidence. On Pandaiux, still to check: seam
+timing, fades, lock-screen and headphone mapping, and the after-arm replay.
