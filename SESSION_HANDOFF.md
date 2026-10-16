@@ -12,10 +12,11 @@ TestFlight 46). The paired backend PR mrdaemoni/alicia#98 must deploy first.
 Older backends and unsegmented days play the single track exactly as before.
 
 Checks: `scripts/test_briefing_steering.py` (46),
-`scripts/test_morning_integration.py`, `scripts/test_startup_latency.py`, and
-a generic simulator build. `scripts/test_briefing_steering_ui.py` needs an
-installed simulator runtime. No TestFlight, AppVersion bump or phone result is
-claimed. The shared task folder owns release evidence.
+`scripts/test_morning_integration.py`, `scripts/test_startup_latency.py`, an
+iPhone 17 simulator build, and `scripts/test_briefing_steering_ui.py`. That last
+one has 10 tests, including two that observe real seams with
+`--steer-live-audio`. No TestFlight, AppVersion bump or phone result is
+claimed. The shared task folder owns release evidence and screenshots.
 
 ## October 12 — watchdog freeze, startup and receipt recovery candidate
 

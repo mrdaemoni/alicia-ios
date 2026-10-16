@@ -117,7 +117,11 @@ final class AppStore {
         reader.service = service
         briefingSteering.configure(service: service, reader: reader)
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") {
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview"),
+           ProcessInfo.processInfo.arguments.contains("--steer-live-audio") {
+            // Real local playback from the card; the mock answers steers and receipts.
+            morningBriefing = BriefingSteeringPreview.briefing()
+        } else if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") {
             let args = ProcessInfo.processInfo.arguments
             let briefing = BriefingSteeringPreview.briefing()
             morningBriefing = briefing

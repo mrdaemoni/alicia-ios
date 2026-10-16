@@ -1,4 +1,5 @@
 #if DEBUG
+import AVFoundation
 import Foundation
 
 /// Invented, public-safe fixture for `--morning-briefing-steer-preview`
@@ -62,7 +63,8 @@ import Foundation
         }
         let names = [1: "higher", 0: "base", -1: "lower"]
         let file = String(format: "s%02d-%@-c00.m4a", segment + 1, names[level]!)
-        let chunk = BriefingVariantChunk(url: "https://fixture.invalid/" + file, duration: t + 0.4, text: spoken,
+        let url = liveAudio ? tone(file, duration: t + 0.4, beeps: cues.map(\.start))?.absoluteString : nil
+        let chunk = BriefingVariantChunk(url: url ?? ("https://fixture.invalid/" + file), duration: t + 0.4, text: spoken,
                                          sha256: String(repeating: String(segment + 1), count: 64), timing_status: "ready",
                                          cues: cues, speech_backend: "fixture")
         return BriefingVariant(level: level, sha256: String(format: "%064d", (segment + 1) * 10 + level + 1), text: body,
@@ -72,6 +74,33 @@ import Foundation
 
     static var arm: String {
         ProcessInfo.processInfo.arguments.contains("--steer-after-arm") ? "after" : "during"
+    }
+
+    /// `--steer-live-audio`: real local playback, so the reader's seams can be
+    /// observed in the simulator. Each variant is a tone file whose beeps sit at
+    /// the fixture's word times; still invented, still nothing sent.
+    static var liveAudio: Bool { ProcessInfo.processInfo.arguments.contains("--steer-live-audio") }
+
+    private static func tone(_ name: String, duration: Double, beeps: [Double], pitch: Double = 660) -> URL? {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("steer-preview-" + name + ".caf")
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        let rate = 22_050.0
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(duration * rate)),
+              let samples = buffer.floatChannelData?[0] else { return nil }
+        buffer.frameLength = buffer.frameCapacity
+        let frames = Int(buffer.frameLength)
+        for i in 0..<frames { samples[i] = 0 }
+        for beep in beeps {
+            let start = Int(beep * rate), end = min(frames, start + Int(0.2 * rate))
+            guard start < end else { continue }
+            for i in start..<end { samples[i] = Float(0.15 * sin(2 * Double.pi * pitch * Double(i) / rate)) }
+        }
+        do {
+            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            try file.write(from: buffer)
+        } catch { return nil }
+        return url
     }
 
     static func briefing() -> MorningBriefing {
@@ -85,6 +114,13 @@ import Foundation
         steering.study.study_active = true
         steering.study.study_week = arm == "after" ? 2 : 1
         steering.commands = ["higher", "lower", "again"]
+        if liveAudio {
+            for (cue, pitch) in [("higher", 880.0), ("lower", 440.0), ("again", 550.0), ("limit", 330.0)] {
+                if let url = tone("cue-" + cue, duration: 0.5, beeps: [0.05], pitch: pitch) {
+                    steering.cues[cue] = .init(url: url.absoluteString, duration: 0.5)
+                }
+            }
+        }
         var item = MorningBriefing(id: id, day: Date.now.formatted(.iso8601.year().month().day()), title: title,
                                    text: segments.compactMap { $0.variant(0)?.text }.joined(separator: "\n\n"),
                                    status: "ready", audio_url: "https://fixture.invalid/briefing.m4a",

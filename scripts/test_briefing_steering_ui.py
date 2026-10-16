@@ -110,6 +110,41 @@ final class BriefingSteeringUITests: XCTestCase {
   capture("steer-card-settings",app)
   toggle.tap();XCTAssertEqual(toggle.value as? String,"On");toggle.tap()
  }
+ // Live local playback (--steer-live-audio): the real SpeechReader plays tone
+ // files placed at the fixture's word times, so seams are observed, not reasoned.
+ func pathContains(_ path:XCUIElement,_ text:String,_ timeout:TimeInterval) -> Bool {
+  let end=Date().addingTimeInterval(timeout)
+  while Date()<end { if path.exists && path.label.contains(text) { return true }; usleep(200_000) }
+  return false
+ }
+ func startLive() -> (XCUIApplication, XCUIElement) {
+  let app=launch(["--steer-live-audio","--tab","us"])
+  let play=app.buttons["morningBriefing.play"];XCTAssertTrue(play.waitForExistence(timeout:20));play.tap()
+  let path=app.staticTexts["steer.debug.path"];XCTAssertTrue(path.waitForExistence(timeout:10))
+  XCTAssertTrue(pathContains(path,"s01·0·0",10),"Playback begins with s01 at L0")
+  return (app,path)
+ }
+ func testLiveHigherChangesOnlyTheRemainder() {
+  let (app,path)=startLive()
+  sleep(3)   // inside s01's first sentence (fixture 1.8–6.25 s)
+  app.buttons["steer.higher"].tap()
+  XCTAssertTrue(app.staticTexts["steer.line"].waitForExistence(timeout:5))
+  XCTAssertTrue(pathContains(path,"s01·0·0 > s01·1·1",15),"After the sentence, L+1 resumes at its unheard caveat: \(path.label)")
+  capture("steer-live-after-higher",app)
+  XCTAssertTrue(pathContains(path,"s02·1·0",25),"Later segments follow the new level: \(path.label)")
+  XCTAssertFalse(app.staticTexts["reading.failure"].exists)
+  // The L0 piece was cut after its first sentence (~6.4 s of a ~10.3 s chunk), not played whole.
+  let heard=app.staticTexts["steer.debug.seconds"].label.split(separator:" ").compactMap{Double($0)}
+  XCTAssertTrue(heard.count>=2 && heard[0]>3.5 && heard[0]<8.0,"First stretch was cut at the boundary: \(heard)")
+ }
+ func testLiveAgainReplaysTheSentence() {
+  let (app,path)=startLive()
+  sleep(4)   // well into s01's first sentence
+  app.buttons["steer.again"].tap()
+  XCTAssertTrue(pathContains(path,"s01·0·0 > s01·0·0",10),"Again starts the same sentence once more: \(path.label)")
+  XCTAssertTrue(pathContains(path,"s02·0·0",30),"Then the briefing continues at L0: \(path.label)")
+  XCTAssertFalse(app.staticTexts["reading.failure"].exists)
+ }
  func testLargeTypeKeepsTheControls() {
   let app=XCUIApplication();app.launchArguments=["--morning-briefing-steer-preview","--reading-bar-preview",
    "-UIPreferredContentSizeCategoryName","UICTContentSizeCategoryAccessibilityXXXL"];app.launch()

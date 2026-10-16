@@ -45,6 +45,17 @@ struct BriefingSteeringPanel: View {
                         .transition(.opacity)
                 }
                 if steering.endCheckVisible(reader) { BriefingEndCheck(onInk: onInk) }
+#if DEBUG
+                if BriefingSteeringPreview.liveAudio {
+                    // What the phone believes actually played, for the live-audio UI test.
+                    Text(steering.heardPath.map { "\($0.segment_id)·\($0.level)·\($0.from_sentence_index)" }.joined(separator: " > "))
+                        .font(.system(size: 8, design: .monospaced)).foregroundStyle(soft)
+                        .accessibilityIdentifier("steer.debug.path")
+                    Text(steering.heardPath.map { String(format: "%.1f", $0.seconds) }.joined(separator: " "))
+                        .font(.system(size: 8, design: .monospaced)).foregroundStyle(soft)
+                        .accessibilityIdentifier("steer.debug.seconds")
+                }
+#endif
             }
             .animation(.easeOut(duration: 0.2), value: steering.line)
         }

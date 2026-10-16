@@ -92,15 +92,22 @@ loaded, and the mock service answers with the same local rules. Add
 `--reading-bar-preview` or `--immersive-reading-preview` for those surfaces,
 `--steer-after-arm` for an after week, `--steer-ended-preview` for the end
 state, `--steer-line-preview` to show a line, and `--tab us` for the card.
+`--steer-live-audio` instead plays for real: each variant is a local tone file
+whose beeps sit at the fixture's word times. The real reader then plays and
+steers, and a DEBUG label shows the heard path and seconds.
 
 - `scripts/test_briefing_steering.py` compiles the real planner and
   NarrationDocument against `scripts/fixtures/steerable_briefing_payload.json`,
   which the backend test flow generated from invented text. It checks
   interpretation parity with the backend, path building, cuts and entries,
   every consequence branch, and narration alignment (46 checks).
-- `scripts/test_briefing_steering_ui.py` covers both arms, the end check, the
-  immersive reader, the card setting, and large type, with screenshots. It
-  needs an installed iOS Simulator runtime (iPhone 17).
+- `scripts/test_briefing_steering_ui.py` has 10 tests: both arms, the end
+  check, the immersive reader, the card setting, large type, and two
+  live-audio tests. Those two observe the real seam: after Higher, the L0
+  piece stops at the sentence boundary, the cue plays, and L+1 resumes at the
+  unheard caveat. Again replays the sentence. Screenshots export to
+  `steer-screenshots/`. Requires the iOS Simulator runtime (iPhone 17).
 
-Simulator results are not phone evidence. On Pandaiux, still to check: seam
-timing, fades, lock-screen and headphone mapping, and the after-arm replay.
+Simulator results are not phone evidence. Still to check on Pandaiux: how
+the seams and fades sound, the lock screen and headphone mapping, Bluetooth
+latency, and the after-arm replay.
