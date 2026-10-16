@@ -116,7 +116,17 @@ final class BriefingSteeringController {
     @ObservationIgnored private var pendingSeek: (index: Int, time: TimeInterval)?
     @ObservationIgnored private var sessionEnded = false
     @ObservationIgnored private var lineTask: Task<Void, Never>?
-    @ObservationIgnored private var flushTask: Task<Void, Never>?
+    /// Bumped whenever a briefing session is replaced: an answer that arrives
+    /// for an older generation is delivered but never touches playback or UI.
+    @ObservationIgnored private var generation = 0
+    /// Delivery passes run one at a time, so a result is never inferred from
+    /// another pass having emptied the outbox.
+    @ObservationIgnored private var drainChain: Task<Void, Never>?
+    @ObservationIgnored private var flushQueued = false
+    @ObservationIgnored private var awaited: Set<String> = []
+    @ObservationIgnored private var outcomes: [String: Delivery] = [:]
+    /// A verdict queued while the Mac was away; its later outcome updates the UI.
+    @ObservationIgnored private var queuedVerdict: (id: String, generation: Int)?
     @ObservationIgnored var previewMode = false
     @ObservationIgnored var serverTimeout: Duration = .seconds(1.5)
 
@@ -173,8 +183,10 @@ final class BriefingSteeringController {
         endSession(reason: "replaced")
         // Stop the old path while it still belongs to the old session.
         reader.stop()
+        generation += 1
+        queuedVerdict = nil
         self.briefing = briefing
-        dial = 0; ended = false; heardPath = []; savedVerdict = nil; verdictNotice = ""; line = nil
+        dial = 0; ended = false; busy = false; heardPath = []; savedVerdict = nil; verdictNotice = ""; line = nil
         lastPiece = nil; pendingSeek = nil; stretchKey = nil
         shaForURL = [:]
         for segment in briefing.segments { for variant in segment.variants { for chunk in variant.chunks { shaForURL[chunk.url] = chunk.sha256 } } }
@@ -237,16 +249,26 @@ final class BriefingSteeringController {
     private func pathEnded(_ finished: Bool) {
         if finished {
             ended = true
+            // Durable now, whether or not a verdict follows: completion and
+            // seconds heard must survive the app being closed at the end.
+            postSessionEnd(reason: "completed")
         } else {
             endSession(reason: "stopped")
         }
     }
 
-    /// One session_ended per session: on stop or replace, after a verdict, or
-    /// when the next session starts. Seconds heard is measured playing time.
+    /// The session's last session_ended: on stop or replace, after a verdict,
+    /// or when the next session starts. Seconds heard is measured playing time.
+    /// A natural end already checkpointed once; seconds are cumulative, so
+    /// readers take the last row and an after-end replay never erases the end.
     private func endSession(reason: String) {
+        guard !sessionEnded else { return }
+        postSessionEnd(reason: reason)
+        if sessionID != nil { sessionEnded = true }
+    }
+
+    private func postSessionEnd(reason: String) {
         guard let briefing, let sessionID, !sessionEnded else { return }
-        sessionEnded = true
         post(.receipt, ["briefing_id": briefing.id, "receipt_id": UUID().uuidString, "session_id": sessionID,
                         "kind": "session_ended", "script_sha256": briefing.script_sha256,
                         "reason": reason, "seconds_heard": heardPath.reduce(0) { $0 + $1.seconds },
@@ -288,9 +310,15 @@ final class BriefingSteeringController {
         let local = BriefingPlanner.interpret(segments: briefing.segments, steering: steering, command: command,
                                               segmentID: seg.id, sentence: sentence, levelBefore: piece.level, phase: phase)
         busy = true
+        let issued = generation
         Task {
             let answer = await self.ask(body, eventID: eventID)
+            // The event is already recorded or queued for delivery. Its effect
+            // belongs only to the session that pressed: after a stop, replay or
+            // replacement it changes nothing and says nothing.
+            guard self.generation == issued else { return }
             self.busy = false
+            guard self.sessionID == sessionID, !self.sessionEnded, self.isCurrent(reader) else { return }
             var meaning: SteerInterpretation
             switch answer {
             case .server(let reading) where self.servable(reading): meaning = reading
@@ -392,13 +420,38 @@ final class BriefingSteeringController {
                                    "script_sha256": briefing.script_sha256, "session_id": sessionID,
                                    "heard_path": heardPath.map(Self.stepBody), "client_ts": Self.now()]
         busy = true
+        let issued = generation, id = body["event_id"] as! String
         Task {
             await self.drain()   // every consequence first, so the path can be confirmed
-            let saved = await self.send(.feedback, body, id: body["event_id"] as! String)
+            let delivery = await self.send(.feedback, body, id: id)
+            // A replaced session already ended; its verdict is delivered or
+            // queued, but it never speaks for the session now playing.
+            guard self.generation == issued, self.sessionID == sessionID else { return }
             self.busy = false
-            self.savedVerdict = landed ? "landed" : "didnt_land"
-            self.verdictNotice = saved ? "Saved." : "Saved here; it will reach Alicia when she's back."
-            self.endSession(reason: "finished")
+            self.settle(delivery, verdict: landed ? "landed" : "didnt_land", id: id)
+            if self.savedVerdict != nil { self.endSession(reason: "finished") }
+        }
+    }
+
+    /// Saved only when the Mac accepted it (or it is safely queued); a refusal
+    /// says so and re-enables the buttons rather than claiming success.
+    private func settle(_ delivery: Delivery, verdict: String, id: String) {
+        switch delivery {
+        case .accepted(let response):
+            struct Reply: Decodable { var path_status: String? }
+            let status = (try? JSONDecoder().decode(Reply.self, from: response))?.path_status
+            savedVerdict = verdict
+            verdictNotice = status == nil || status == "confirmed" ? "Saved."
+                : "Saved, but it couldn't be matched to what played."
+            queuedVerdict = nil
+        case .queued:
+            savedVerdict = verdict
+            verdictNotice = "Saved here; it will reach Alicia when she's back."
+            queuedVerdict = (id, generation)
+        case .rejected:
+            savedVerdict = nil
+            verdictNotice = "Not saved: Alicia couldn't accept it. Refresh the briefing and try again."
+            queuedVerdict = nil
         }
     }
 
@@ -411,31 +464,56 @@ final class BriefingSteeringController {
         flush()
     }
 
-    private func send(_ endpoint: BriefingEndpoint, _ body: [String: Any], id: String) async -> Bool {
-        if previewMode { return true }
-        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return false }
+    enum Delivery { case accepted(Data), rejected(Data), queued }
+
+    /// This record's own outcome, as the Mac answered it.
+    private func send(_ endpoint: BriefingEndpoint, _ body: [String: Any], id: String) async -> Delivery {
+        if previewMode { return .accepted(Data()) }
+        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return .rejected(Data()) }
+        awaited.insert(id)
+        defer { awaited.remove(id) }
         outbox.add(endpoint, data, id: id)
         await drain()
-        return !outbox.entries.contains { $0.id == id }
+        return outcomes.removeValue(forKey: id) ?? .queued
     }
 
     /// Deliver queued records in order. A definite refusal is dropped (it can
     /// never succeed); an unreachable Mac keeps everything for the next try.
     func flush() {
-        guard flushTask == nil else { return }
-        flushTask = Task { [weak self] in
-            await self?.drain()
-            self?.flushTask = nil
-        }
+        guard !flushQueued else { return }
+        flushQueued = true
+        Task { [weak self] in await self?.drain() }
     }
 
+    /// One delivery pass at a time, each after the previous one finishes.
     private func drain() async {
+        let previous = drainChain
+        let pass = Task { [weak self] in
+            await previous?.value
+            self?.flushQueued = false
+            await self?.drainOnce()
+        }
+        drainChain = pass
+        await pass.value
+    }
+
+    private func drainOnce() async {
         guard let service, !previewMode else { return }
         for entry in outbox.entries {
             guard let endpoint = BriefingEndpoint(rawValue: entry.endpoint) else { outbox.remove(entry.id); continue }
-            switch await service.morningBriefingPost(endpoint, body: entry.body) {
-            case .accepted, .rejected: outbox.remove(entry.id)
+            let result = await service.morningBriefingPost(endpoint, body: entry.body)
+            let delivery: Delivery
+            switch result {
+            case .accepted(let data): delivery = .accepted(data)
+            case .rejected(let data): delivery = .rejected(data)
             case .unreachable: return
+            }
+            outbox.remove(entry.id)
+            if awaited.contains(entry.id) { outcomes[entry.id] = delivery }
+            // A verdict that was queued earlier reports its real outcome now.
+            if let queued = queuedVerdict, queued.id == entry.id, queued.generation == generation,
+               let verdict = savedVerdict {
+                settle(delivery, verdict: verdict, id: entry.id)
             }
         }
     }

@@ -177,3 +177,151 @@ with tempfile.TemporaryDirectory() as d:
     p.write_text(source)
     subprocess.run(['swiftc', str(p), '-o', d + '/checks'], check=True)
     subprocess.run([d + '/checks'], check=True)
+
+# The real controller with an inert reader and a scripted service (Codex review
+# round 1, R1–R3): session binding, durable completion and honest delivery.
+controller_stub = stub[:stub.index('struct MorningBriefing')] + r'''
+struct MorningBriefing: Decodable {
+    var id: String; var title: String; var text: String; var script_sha256: String
+    var segments: [BriefingSegment]; var steering: BriefingSteeringInfo?
+}
+struct AppVersion { static let tag = "fixture" }
+struct Readable {
+    var title: String; var body: String; var kind: String
+    var speechChunks: [SpeechChunk]; var speechDuration: Double; var stableID: String
+}
+@MainActor protocol AliciaService {
+    func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult
+}
+@MainActor final class SpeechReader {
+    var current: Readable?; var narrationChunks: [SpeechChunk] = []; var elapsed: Double = 1
+    var pieceDidStart: ((Int) -> Void)?; var playbackTick: ((Int, Double, Double) -> Void)?
+    var didSeekPiece: ((Int, Double) -> Void)?; var pathEnded: ((Bool) -> Void)?
+    var changes = 0
+    func stop() { if current != nil { pathEnded?(false) }; current = nil }
+    func read(_ item: Readable) { current = item; narrationChunks = item.speechChunks; pieceDidStart?(0) }
+    func currentPosition() -> (index: Int, fileTime: Double)? { current == nil ? nil : (0, 1) }
+    func replaceFuture(after index: Int, current: SpeechChunk?, tail: [SpeechChunk], immediate: Bool) { changes += 1 }
+    func restartPath(_ pieces: [SpeechChunk]) { changes += 1; narrationChunks = pieces; pieceDidStart?(0) }
+}
+@MainActor final class Service: AliciaService {
+    var feedback: BriefingPostResult = .accepted(Data("{\"path_status\":\"confirmed\"}".utf8))
+    var receipts: BriefingPostResult = .accepted(Data("{}".utf8))
+    var steerDelay: Duration? = nil
+    var posted: [BriefingEndpoint] = []
+    func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult {
+        posted.append(endpoint)
+        switch endpoint {
+        case .steer:
+            if let steerDelay { try? await Task.sleep(for: steerDelay) }
+            return .unreachable
+        case .receipt: return receipts
+        case .feedback: return feedback
+        }
+    }
+}
+'''
+
+controller_checks = r'''
+var passed = 0
+func check(_ ok: Bool, _ message: String) { precondition(ok, message); passed += 1 }
+func ended(_ outbox: BriefingOutbox) -> [[String: Any]] {
+    outbox.entries.compactMap { try? JSONSerialization.jsonObject(with: $0.body) as? [String: Any] }
+        .filter { $0["kind"] as? String == "session_ended" }
+}
+@main struct Checks {
+    @MainActor static func main() async throws {
+        let payload = try JSONDecoder().decode(MorningBriefing.self, from: Data(PAYLOAD.utf8))
+        var duringPayload = payload; duringPayload.steering?.arm = "during"
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: base) }
+        func make(_ name: String) -> (BriefingSteeringController, SpeechReader, Service, BriefingOutbox, URL) {
+            let folder = base.appendingPathComponent(name)
+            let outbox = BriefingOutbox(directory: folder)
+            let c = BriefingSteeringController(outbox: outbox, cache: BriefingAudioCache(directory: folder))
+            let r = SpeechReader(), s = Service()
+            c.configure(service: s, reader: r)
+            return (c, r, s, outbox, folder)
+        }
+
+        // R2: a natural end is durable without a verdict, and survives a cold start.
+        var (c, r, s, outbox, folder) = make("natural-end")
+        s.receipts = .unreachable; s.feedback = .unreachable
+        c.play(payload); r.playbackTick?(0, 5, 4); r.pathEnded?(true)
+        let rows = ended(outbox)
+        check(rows.count == 1 && rows[0]["reached_end"] as? Bool == true && rows[0]["reason"] as? String == "completed"
+              && (rows[0]["seconds_heard"] as? Double ?? 0) >= 4, "Natural end queues a completed session_ended with seconds")
+        check(ended(BriefingOutbox(directory: folder)).count == 1, "The completion survives a cold start (outbox on disk)")
+        // Replay after the end and stop: a later cumulative end; the first one is kept.
+        c.play(payload)
+        let after = ended(outbox)
+        check(after.count == 2 && after[0]["reached_end"] as? Bool == true, "A later end never erases the completion")
+
+        // R3: a refused verdict is not saved, says so and can be retried.
+        (c, r, s, outbox, folder) = make("refused")
+        c.play(payload); r.playbackTick?(0, 5, 3); r.pathEnded?(true)
+        s.feedback = .rejected(Data())
+        c.verdict(true)
+        try? await Task.sleep(for: .milliseconds(150))
+        check(c.savedVerdict == nil && !c.verdictNotice.hasPrefix("Saved") && !c.busy, "Refused: not saved, buttons open")
+        // An accepted verdict whose path didn't match is saved, honestly labelled.
+        s.feedback = .accepted(Data("{\"path_status\":\"mismatch\"}".utf8))
+        c.verdict(false)
+        try? await Task.sleep(for: .milliseconds(150))
+        check(c.savedVerdict == "didnt_land" && c.verdictNotice != "Saved.", "Accepted mismatch is not plain Saved.")
+        // Lost acknowledgment: queued, then a later delivery's refusal reaches the UI.
+        (c, r, s, outbox, folder) = make("queued")
+        c.play(payload); r.playbackTick?(0, 5, 3); r.pathEnded?(true)
+        s.feedback = .unreachable
+        c.verdict(true)
+        try? await Task.sleep(for: .milliseconds(150))
+        check(c.savedVerdict == "landed" && c.verdictNotice.contains("when she's back")
+              && outbox.entries.contains { $0.endpoint == "feedback" }, "Unreachable: queued and kept")
+        s.feedback = .rejected(Data())
+        c.flush()
+        try? await Task.sleep(for: .milliseconds(150))
+        check(c.savedVerdict == nil && !c.verdictNotice.hasPrefix("Saved"), "A queued verdict's later refusal is shown")
+
+        // R1: a slow steer never changes a replacement session, stop or a restart.
+        for ending in ["replace", "stop", "restart"] {
+            (c, r, s, outbox, folder) = make("pending-" + ending)
+            c.serverTimeout = .seconds(5)
+            s.steerDelay = .milliseconds(200)
+            c.play(duringPayload)
+            c.steer(.higher)
+            check(c.busy, "The press is in flight (" + ending + ")")
+            try? await Task.sleep(for: .milliseconds(30))
+            switch ending {
+            case "replace": var next = duringPayload; next.id = UUID().uuidString; c.play(next)
+            case "stop": r.stop()
+            default: c.play(duringPayload)
+            }
+            let before = r.changes
+            try? await Task.sleep(for: .milliseconds(350))
+            check(r.changes == before && c.line == nil, "Old press changes nothing after " + ending)
+            check(outbox.entries.contains { $0.endpoint == "steer" }, "The old press is still delivered (" + ending + ")")
+        }
+        // A verdict pending across a replacement never marks the new session.
+        (c, r, s, outbox, folder) = make("verdict-pending")
+        c.play(payload); r.playbackTick?(0, 5, 3); r.pathEnded?(true)
+        s.receipts = .unreachable; s.feedback = .unreachable
+        c.verdict(true)
+        var next = payload; next.id = UUID().uuidString
+        c.play(next)
+        try? await Task.sleep(for: .milliseconds(150))
+        check(c.savedVerdict == nil && c.verdictNotice.isEmpty && !c.busy, "A late verdict leaves the new session alone")
+        print("\(passed) steering controller checks passed")
+    }
+}
+'''
+
+with tempfile.TemporaryDirectory() as d:
+    full = json.dumps(fixture)
+    source = controller_stub + (root / 'Alicia/Core/NarrationDocument.swift').read_text() + \
+        (root / 'Alicia/Core/BriefingSteering.swift').read_text() + \
+        (root / 'Alicia/Core/BriefingSteeringController.swift').read_text() + \
+        '\nlet PAYLOAD = ' + json.dumps(full) + '\n' + controller_checks
+    p = Path(d) / 'controller.swift'
+    p.write_text(source)
+    subprocess.run(['swiftc', '-parse-as-library', str(p), '-o', d + '/controller'], check=True)
+    subprocess.run([d + '/controller'], check=True)
