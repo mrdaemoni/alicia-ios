@@ -319,6 +319,10 @@ final class BriefingSteeringController {
             guard self.generation == issued else { return }
             self.busy = false
             guard self.sessionID == sessionID, !self.sessionEnded, self.isCurrent(reader) else { return }
+            // Pressed while it played, answered after it finished: the remainder
+            // it meant to change is gone. The event stands; it never becomes the
+            // whole-briefing replay that belongs to a press after the end.
+            if phase == "during" && self.ended { self.show(steering.line("nothing_left")); return }
             var meaning: SteerInterpretation
             switch answer {
             case .server(let reading) where self.servable(reading): meaning = reading
@@ -438,10 +442,13 @@ final class BriefingSteeringController {
     private func settle(_ delivery: Delivery, verdict: String, id: String) {
         switch delivery {
         case .accepted(let response):
-            struct Reply: Decodable { var path_status: String? }
-            let status = (try? JSONDecoder().decode(Reply.self, from: response))?.path_status
+            // The Mac answers {"ok", "validation": {"path_status", ...}, "briefing"}.
+            // Only an explicit confirmed path reads as plain Saved; mismatch,
+            // no_receipts or a missing/unreadable validation do not.
+            struct Reply: Decodable { struct Validation: Decodable { var path_status: String? }; var validation: Validation? }
+            let status = (try? JSONDecoder().decode(Reply.self, from: response))?.validation?.path_status
             savedVerdict = verdict
-            verdictNotice = status == nil || status == "confirmed" ? "Saved."
+            verdictNotice = status == "confirmed" ? "Saved."
                 : "Saved, but it couldn't be matched to what played."
             queuedVerdict = nil
         case .queued:
@@ -468,7 +475,7 @@ final class BriefingSteeringController {
 
     /// This record's own outcome, as the Mac answered it.
     private func send(_ endpoint: BriefingEndpoint, _ body: [String: Any], id: String) async -> Delivery {
-        if previewMode { return .accepted(Data()) }
+        if previewMode { return .accepted(Data(#"{"ok":true,"validation":{"path_status":"confirmed"}}"#.utf8)) }
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { return .rejected(Data()) }
         awaited.insert(id)
         defer { awaited.remove(id) }

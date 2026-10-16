@@ -190,6 +190,11 @@ struct Readable {
     var title: String; var body: String; var kind: String
     var speechChunks: [SpeechChunk]; var speechDuration: Double; var stableID: String
 }
+/// What POST /api/morning_briefing/feedback actually returns for a verdict
+/// (skills/morning_briefing.record_feedback): the status is nested.
+func envelope(_ status: String) -> Data {
+    Data("{\"ok\":true,\"validation\":{\"verdict\":\"landed\",\"path_status\":\"\(status)\",\"steered\":false},\"briefing\":{}}".utf8)
+}
 @MainActor protocol AliciaService {
     func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult
 }
@@ -205,7 +210,7 @@ struct Readable {
     func restartPath(_ pieces: [SpeechChunk]) { changes += 1; narrationChunks = pieces; pieceDidStart?(0) }
 }
 @MainActor final class Service: AliciaService {
-    var feedback: BriefingPostResult = .accepted(Data("{\"path_status\":\"confirmed\"}".utf8))
+    var feedback: BriefingPostResult = .accepted(envelope("confirmed"))
     var receipts: BriefingPostResult = .accepted(Data("{}".utf8))
     var steerDelay: Duration? = nil
     var posted: [BriefingEndpoint] = []
@@ -265,7 +270,7 @@ func ended(_ outbox: BriefingOutbox) -> [[String: Any]] {
         try? await Task.sleep(for: .milliseconds(150))
         check(c.savedVerdict == nil && !c.verdictNotice.hasPrefix("Saved") && !c.busy, "Refused: not saved, buttons open")
         // An accepted verdict whose path didn't match is saved, honestly labelled.
-        s.feedback = .accepted(Data("{\"path_status\":\"mismatch\"}".utf8))
+        s.feedback = .accepted(envelope("mismatch"))
         c.verdict(false)
         try? await Task.sleep(for: .milliseconds(150))
         check(c.savedVerdict == "didnt_land" && c.verdictNotice != "Saved.", "Accepted mismatch is not plain Saved.")
@@ -281,6 +286,65 @@ func ended(_ outbox: BriefingOutbox) -> [[String: Any]] {
         c.flush()
         try? await Task.sleep(for: .milliseconds(150))
         check(c.savedVerdict == nil && !c.verdictNotice.hasPrefix("Saved"), "A queued verdict's later refusal is shown")
+
+        // R7: the notice reads the backend's nested validation; only an
+        // explicit confirmed path is plain "Saved.".
+        let shapes: [(String, Data, Bool)] = [("confirmed", envelope("confirmed"), true),
+            ("mismatch", envelope("mismatch"), false), ("no_receipts", envelope("no_receipts"), false),
+            ("top-level only", Data("{\"path_status\":\"confirmed\"}".utf8), false),
+            ("missing validation", Data("{\"ok\":true}".utf8), false),
+            ("malformed", Data("not json".utf8), false)]
+        for (name, body, plain) in shapes {
+            (c, r, s, outbox, folder) = make("envelope-" + name)
+            c.play(payload); r.playbackTick?(0, 5, 3); r.pathEnded?(true)
+            s.feedback = .accepted(body)
+            c.verdict(true)
+            try? await Task.sleep(for: .milliseconds(150))
+            check(c.savedVerdict == "landed" && (c.verdictNotice == "Saved.") == plain
+                  && c.verdictNotice.hasPrefix("Saved"), "Accepted " + name + " envelope: notice matches its path")
+        }
+        // A queued verdict delivered later reports its real path status.
+        for (name, plain) in [("mismatch", false), ("confirmed", true)] {
+            (c, r, s, outbox, folder) = make("queued-then-" + name)
+            c.play(payload); r.playbackTick?(0, 5, 3); r.pathEnded?(true)
+            s.feedback = .unreachable
+            c.verdict(true)
+            try? await Task.sleep(for: .milliseconds(150))
+            s.feedback = .accepted(envelope(name)); c.flush()
+            try? await Task.sleep(for: .milliseconds(150))
+            check(c.savedVerdict == "landed" && (c.verdictNotice == "Saved.") == plain
+                  && !c.verdictNotice.contains("when she's back"), "Queued then accepted " + name + ": real status shown")
+        }
+
+        // R8: a during press still waiting when the briefing finishes naturally
+        // never becomes an after-end replay, whether the server answers late or
+        // the local timeout fires; the event is kept and the line is honest.
+        for command in [SteerCommand.higher, .lower, .again] {
+            for (route, timeout, delay) in [("late-server", 5000, 200), ("local-timeout", 60, 2000)] {
+                (c, r, s, outbox, folder) = make("finish-" + command.rawValue + "-" + route)
+                c.serverTimeout = .milliseconds(timeout)
+                s.steerDelay = .milliseconds(delay)
+                c.play(duringPayload)
+                c.steer(command)
+                check(c.busy, "The press is in flight before the finish")
+                try? await Task.sleep(for: .milliseconds(30))
+                r.pathEnded?(true)   // natural completion; the session stays open
+                let before = r.changes
+                try? await Task.sleep(for: .milliseconds(350))
+                let tag = command.rawValue + " " + route
+                check(r.changes == before, "No playback after a natural finish (" + tag + ")")
+                check(c.line == duringPayload.steering?.line("nothing_left"), "It says it no longer applied (" + tag + ")")
+                check(!c.busy && outbox.entries.contains { $0.endpoint == "steer" }, "The press is still delivered (" + tag + ")")
+            }
+        }
+        // A genuine after-end press in the after arm still replays the briefing.
+        var afterPayload = payload; afterPayload.steering?.arm = "after"
+        (c, r, s, outbox, folder) = make("after-end")
+        c.play(afterPayload); r.playbackTick?(0, 5, 3); r.pathEnded?(true)
+        let beforeAfter = r.changes
+        c.steer(.higher)
+        try? await Task.sleep(for: .milliseconds(150))
+        check(r.changes == beforeAfter + 1, "An after-end press still replays the whole briefing")
 
         // R1: a slow steer never changes a replacement session, stop or a restart.
         for ending in ["replace", "stop", "restart"] {

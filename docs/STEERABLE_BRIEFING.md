@@ -58,6 +58,9 @@ silence as a signal.
    validation.
 4. An untimed sentence can only be entered at its chunk's start (a little may
    repeat), and a cut without timing waits for the chunk's end.
+5. If the briefing finishes before a press made while it played is answered,
+   the press is still delivered but changes nothing ("Not changed. That was
+   the end"). It never becomes the whole-briefing replay of a press after the end.
 
 **The text above the playhead never changes.** The reader's narration is
 rebuilt from the path, one paragraph per segment. The heard pieces keep their
@@ -70,7 +73,7 @@ exact text and measured cues, so word following and tap-to-seek keep working.
 | `session_started` | When a steerable briefing starts playing (the opportunity) |
 | `consequence` | Each time a new stretch actually starts. It names its event when a steer caused it; natural progression is `initial`, a scrub or skip is `seek`. |
 | `session_ended` | Once per session, with measured seconds heard and the heard path: on stop or replace, after Landed / Didn't land, or when the next session starts |
-| Landed / Didn't land | After every queued consequence has been delivered, so the server can confirm the path |
+| Landed / Didn't land | After every queued consequence has been delivered, so the server can confirm the path. Plain "Saved." only when the response's `validation.path_status` is `confirmed`. |
 
 Everything goes through a durable outbox (Application Support,
 `completeUntilFirstUserAuthentication`, so it still writes in a locked
