@@ -183,6 +183,9 @@ final class AppStore {
     var episodeDay: EpisodeDay?
     var episodeError = ""
     var showWalk = false
+    /// The full-screen morning briefing room (Hector, 2026-10-17). Opens when a
+    /// briefing starts; closing it leaves the briefing playing in the bar.
+    var showBriefingStage = false
     var walkPrompt = UserDefaults.standard.string(forKey: "alicia.walkPrompt") ?? "" {
         didSet { UserDefaults.standard.set(walkPrompt, forKey: "alicia.walkPrompt") }
     }
@@ -831,11 +834,14 @@ final class AppStore {
             configureRemoteCommandsOnce()
             if briefingSteering.isCurrent(reader), briefingSteering.briefing?.id == briefing.id { reader.toggle(); return }
             briefingSteering.play(briefing)
+            showBriefingStage = true
             return
         }
+        let starting = reader.current?.stableID != "morning:" + briefing.id
         readAloud(Readable(title: briefing.title, body: briefing.text, kind: "note",
             speechChunks: briefing.speechChunks.isEmpty ? [SpeechChunk(url: url, duration: briefing.duration)] : briefing.speechChunks,
             speechDuration: briefing.duration, stableID: "morning:" + briefing.id))
+        if starting { showBriefingStage = true }
     }
 
     func openMorningPlaylist(_ id: String) {

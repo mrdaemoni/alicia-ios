@@ -389,6 +389,31 @@ enum BriefingPlanner {
         reading.change == "level_changed" || reading.change == "replay"
     }
 
+    /// How strongly her voice is sounding now (0…1), for the briefing stage's
+    /// field. It reads the measured word cues of the piece being heard: each
+    /// word swells and falls back, and the gaps between words rest. Untimed
+    /// audio (no measured cues) breathes slowly and evenly; nothing invents
+    /// syllables. Silent when not speaking. Never NaN.
+    static func voiceLevel(_ chunks: [SpeechChunk], at position: (index: Int, fileTime: Double)?,
+                           speaking: Bool, clock: Double) -> Double {
+        guard speaking else { return 0 }
+        let breath = clock.isFinite ? 0.4 + 0.1 * sin(clock * .pi) : 0.4
+        guard let position, chunks.indices.contains(position.index), position.fileTime.isFinite,
+              !chunks[position.index].cues.isEmpty else { return breath }
+        let chunk = chunks[position.index]
+        let t = position.fileTime - chunk.clipStart
+        var level = 0.08
+        for cue in chunk.cues where cue.start.isFinite && cue.end.isFinite {
+            if t < cue.start { break }
+            if t < cue.end {
+                level = 0.45 + 0.55 * sin(.pi * min(1, (t - cue.start) / max(0.05, cue.end - cue.start)))
+                break
+            }
+            level = max(0.08, 0.45 * exp(-(t - cue.end) / 0.12))
+        }
+        return level.isFinite ? min(1, max(0, level)) : 0
+    }
+
     // MARK: building the played path
 
     /// The variant that plays for a segment at a dial: the dial if validated, else L0.

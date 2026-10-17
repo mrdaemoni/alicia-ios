@@ -92,6 +92,27 @@ check(changes(meaning(.higher, "s03", 1, 0, phase: "after_end", arm: "after"))
       && !changes(meaning(.higher, "s03", 1, 0, phase: "after_end", arm: "after", segments: noHigher)),
       "After the end: open only if some part has that version")
 
+// The briefing stage's breath follows her measured words (Hector, 2026-10-17).
+do {
+    let words = [NarrationCue(start: 1.0, end: 1.4, text: "Two", start_char: 0, end_char: 3),
+                 NarrationCue(start: 1.6, end: 2.0, text: "goals", start_char: 4, end_char: 9)]
+    var piece = SpeechChunk(url: URL(string: "https://fixture.invalid/a.m4a")!, duration: 3, cues: words)
+    piece.clipStart = 10   // a clipped piece: cue times are piece-relative, file time is not
+    let at = { (t: Double) in BriefingPlanner.voiceLevel([piece], at: (0, 10 + t), speaking: true, clock: 0) }
+    check(BriefingPlanner.voiceLevel([piece], at: (0, 11.2), speaking: false, clock: 0) == 0, "Silent when not speaking")
+    check(at(1.2) > 0.95 && at(1.8) > 0.95, "Mid-word she swells")
+    check(abs(at(1.0) - 0.45) < 0.01 && at(1.1) > at(1.0), "A word starts at the rest level and rises")
+    check(at(1.5) < 0.45 && at(1.5) > 0.08 && at(2.9) < 0.1, "Between words she falls back and rests")
+    check(at(0.5) == 0.08, "Before the first word: at rest")
+    let untimed = SpeechChunk(url: URL(string: "https://fixture.invalid/b.m4a")!, duration: 3)
+    let breaths = stride(from: 0.0, to: 2.0, by: 0.25).map {
+        BriefingPlanner.voiceLevel([untimed], at: (0, $0), speaking: true, clock: $0) }
+    check(breaths.allSatisfy { $0 >= 0.3 && $0 <= 0.5 } && Set(breaths).count > 1, "Untimed audio breathes evenly, no invented syllables")
+    check(BriefingPlanner.voiceLevel([piece], at: nil, speaking: true, clock: .nan) == 0.4, "No position: even breath, never NaN")
+    check(BriefingPlanner.voiceLevel([piece], at: (3, 1), speaking: true, clock: 0) == 0.4
+          && BriefingPlanner.voiceLevel([piece], at: (0, .infinity), speaking: true, clock: 0) == 0.4, "Bad positions are safe")
+}
+
 // The initial path: every chunk, title included, word timing intact.
 let path = BriefingPlanner.path(segs, dial: 0, fromSegment: 0, resolve: resolve)
 let chunkCount = segs.map { $0.variant(0)!.chunks.count }.reduce(0, +)

@@ -8,8 +8,32 @@ pre-registration, altitude definitions and event model are in the board task.*
 
 ## What he sees and hears
 
+**The briefing is a room** (`Features/Reading/BriefingStage.swift`, Hector,
+2026-10-17: "the phone should not lock … a full screen experience in where I
+can see the particles dancing of Alicia as she's narrating it. Then I don't
+need to have the text readout anymore").
+- **Opening.** Starting the morning briefing from its card opens a
+  full-screen cover, composed like the walk's `ListeningStage`: backdrop,
+  time-of-day tint, her one field full-bleed, grain.
+- **What's on it.** There is no text. At the bottom are the same
+  `BriefingSteeringPanel` (Higher · Lower · Again, the interpretation line,
+  Landed / Didn't land), play/pause and the clock.
+- **Her breath.** The field breathes with her voice:
+  `BriefingPlanner.voiceLevel` reads the measured word cues of the piece
+  being heard, so each word swells and the gaps rest. It feeds the same
+  voice-reactive state the walk uses for his voice.
+  - Untimed audio breathes slowly and evenly, and nothing invents syllables.
+  - Reduce Motion stills the field, as everywhere.
+- **The screen stays awake** while the room is open and the app is active.
+  The prior setting is restored on close or backgrounding, as in the walk.
+- **Leaving and returning.** CLOSE leaves the briefing playing in the reading
+  bar. For the briefing, the bar's title reads FULL SCREEN and opens the room
+  again; other readings keep READ ALONG and the text reader.
+- **Behind the room.** The tabs' field stops drawing while it is up.
+- **Fixture:** `--morning-briefing-steer-preview --briefing-stage-preview`.
+
 The briefing card and reading bar look as before. When the day's briefing is
-steerable, the reading bar and the immersive reader gain one quiet row:
+steerable, the room, the reading bar and the immersive reader carry one quiet row:
 
 **HIGHER · LOWER · AGAIN**, with the arm on the right ("STEER WHILE IT PLAYS ·
 WEEK 1"). The commands are ink-drawn small caps with her underline: no SF

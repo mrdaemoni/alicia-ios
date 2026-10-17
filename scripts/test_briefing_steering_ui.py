@@ -124,6 +124,7 @@ final class BriefingSteeringUITests: XCTestCase {
  func startLive() -> (XCUIApplication, XCUIElement) {
   let app=launch(["--steer-live-audio","--tab","us"])
   let play=app.buttons["morningBriefing.play"];XCTAssertTrue(play.waitForExistence(timeout:20));play.tap()
+  XCTAssertTrue(app.buttons["briefingStage.close"].waitForExistence(timeout:10),"Starting the briefing opens the full-screen room")
   let path=app.staticTexts["steer.debug.path"];XCTAssertTrue(path.waitForExistence(timeout:10))
   XCTAssertTrue(pathContains(path,"s01·0·0",10),"Playback begins with s01 at L0")
   return (app,path)
@@ -152,6 +153,38 @@ final class BriefingSteeringUITests: XCTestCase {
   XCTAssertTrue(pathContains(path,"s01·0·0 > s01·0·0",10),"Again starts the same sentence once more: \(path.label)")
   XCTAssertTrue(pathContains(path,"s02·0·0",30),"Then the briefing continues at L0: \(path.label)")
   XCTAssertFalse(app.staticTexts["reading.failure"].exists)
+ }
+ // The briefing as a room (Hector, 2026-10-17): her field, no text, the same controls, the screen held awake.
+ func testBriefingStageIsTheBriefingRoom() {
+  let app=launch(["--briefing-stage-preview"])
+  XCTAssertTrue(app.buttons["steer.higher"].waitForExistence(timeout:15))
+  XCTAssertTrue(app.buttons["steer.lower"].exists && app.buttons["steer.again"].exists)
+  XCTAssertTrue(app.buttons["briefingStage.play"].exists && app.buttons["briefingStage.close"].exists)
+  XCTAssertTrue(app.staticTexts["steer.arm"].label.contains("STEER WHILE IT PLAYS"))
+  XCTAssertFalse(app.staticTexts["Tap a word to listen from there."].exists,"No text readout in the room")
+  XCTAssertEqual(app.staticTexts["briefingStage.debug.awake"].label,"awake","The screen is held awake")
+  capture("briefing-stage",app)
+ }
+ func testBriefingStageEndsWithTheCheck() {
+  let app=launch(["--briefing-stage-preview","--steer-ended-preview"])
+  XCTAssertTrue(app.buttons["steer.landed"].waitForExistence(timeout:15))
+  XCTAssertFalse(app.buttons["steer.higher"].exists,"During weeks: no steering after the end")
+  capture("briefing-stage-end",app)
+ }
+ func testLiveStageBreathesWithHerWordsAndReopensFromTheBar() {
+  let (app,_)=startLive()
+  let level=app.staticTexts["briefingStage.debug.level"];XCTAssertTrue(level.waitForExistence(timeout:5))
+  var seen:[Double]=[]
+  for _ in 0..<16 { if let v=Double(level.label) { seen.append(v) }; usleep(180_000) }
+  XCTAssertTrue(Set(seen).count>=3 && (seen.max() ?? 0)>0.6 && (seen.min() ?? 1)<0.45,"Her breath follows her words: \(seen)")
+  XCTAssertEqual(app.staticTexts["briefingStage.debug.awake"].label,"awake","The screen is held awake while she reads")
+  capture("briefing-stage-live",app)
+  app.buttons["briefingStage.close"].tap()
+  let open=app.buttons["reading.open"];XCTAssertTrue(open.waitForExistence(timeout:5),"Closing leaves her reading in the bar")
+  XCTAssertTrue(open.label.contains("FULL SCREEN"))
+  XCTAssertTrue(app.staticTexts["steer.debug.path"].exists,"Playback continues after closing the room")
+  open.tap()
+  XCTAssertTrue(app.buttons["briefingStage.close"].waitForExistence(timeout:5),"The bar opens the room again")
  }
  func testLargeTypeKeepsTheControls() {
   let app=XCUIApplication();app.launchArguments=["--morning-briefing-steer-preview","--reading-bar-preview",

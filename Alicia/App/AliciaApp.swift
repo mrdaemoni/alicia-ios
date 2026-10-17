@@ -42,7 +42,10 @@ struct AliciaApp: App {
         WindowGroup {
             Group {
 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") && ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") {
+                if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") && ProcessInfo.processInfo.arguments.contains("--briefing-stage-preview") {
+                    // The steering fixture already prepared the reader; no audio loads.
+                    BriefingStage()
+                } else if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") && ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") {
                     // The steering fixture already prepared the reader; no audio loads.
                     ImmersiveReadingView()
                 } else if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") && ProcessInfo.processInfo.arguments.contains("--reading-bar-preview") {
