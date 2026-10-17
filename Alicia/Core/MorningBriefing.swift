@@ -77,9 +77,15 @@ struct MorningBriefing: Codable, Equatable, Identifiable {
     var script_sha256: String = ""
     struct Feedback: Codable, Equatable { var verdict: String; var text: String }
     var feedback: Feedback?
+    /// CL-20261015-steerable-briefing: the same briefing as segments with up to
+    /// three validated altitudes each. Empty for older backends and on days
+    /// that fell back to a single track; then the legacy fields play as before.
+    var segments: [BriefingSegment] = []
+    var steering: BriefingSteeringInfo?
 
     enum CodingKeys: String, CodingKey {
         case id, day, title, text, status, audio_url, duration, playlist_id, error, sources, speech, script_sha256, feedback
+        case segments, steering
     }
 
     init(id: String = "", day: String = "", title: String = "", text: String = "",
@@ -112,6 +118,9 @@ struct MorningBriefing: Codable, Equatable, Identifiable {
         sources = try values.decodeIfPresent([Source].self, forKey: .sources) ?? []
         script_sha256 = try values.decodeIfPresent(String.self, forKey: .script_sha256) ?? ""
         feedback = try values.decodeIfPresent(Feedback.self, forKey: .feedback)
+        // A malformed steering payload never costs him the briefing itself.
+        segments = (try? values.decodeIfPresent([BriefingSegment].self, forKey: .segments)) ?? []
+        steering = try? values.decodeIfPresent(BriefingSteeringInfo.self, forKey: .steering)
     }
 
     var displayTitle: String {

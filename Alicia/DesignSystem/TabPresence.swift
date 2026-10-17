@@ -125,7 +125,7 @@ extension View {
                 if store.presenceField.enabled {
                     // Animates while this surface is on screen — a tab root or a
                     // page pushed from any tab — and rests under the walk cover.
-                    PresenceLayer(isActive: !store.showWalk, opacity: 0.55)
+                    PresenceLayer(isActive: !store.showWalk && !store.showBriefingStage, opacity: 0.55)
                 } else {
                 GeometryReader { geo in
                     AliciaPresence(

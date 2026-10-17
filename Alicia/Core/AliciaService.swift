@@ -83,6 +83,12 @@ struct SpeechChunk: Hashable {
     var timingStatus: String = "unavailable"
     var spokenText: String = ""
     var speechBackend: String = ""
+    /// A steerable-briefing piece may start and end inside its file (seconds
+    /// in the file). `duration` is always the part that plays.
+    var clipStart: TimeInterval = 0
+    var clipEnd: TimeInterval? = nil
+    /// Which segment variant this piece is, when it is one.
+    var piece: BriefingPiece? = nil
 }
 
 /// Where a read-aloud request got to.
@@ -113,6 +119,8 @@ protocol AliciaService {
     func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus
     func morningBriefing() async -> MorningBriefing?
     func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult?
+    /// Steer, receipt or Landed / Didn't land for the steerable briefing.
+    func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult
     func collaboration() async -> CollaborationState?
     func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse?
     func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource?
@@ -267,6 +275,9 @@ extension AliciaService {
     func morningBriefing() async -> MorningBriefing? {
 #if DEBUG
         // Invented fixture (this repo is public): a ready briefing with a playlist.
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") {
+            return await BriefingSteeringPreview.briefing()
+        }
         if ProcessInfo.processInfo.arguments.contains("--morning-briefing-preview") {
             return await MorningBriefingPreview.value
         }
@@ -280,6 +291,14 @@ extension AliciaService {
         }
 #endif
         return nil
+    }
+    func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") {
+            return await BriefingSteeringPreview.answer(endpoint, body: body)
+        }
+#endif
+        return .unreachable
     }
     func collaboration() async -> CollaborationState? {
 #if DEBUG

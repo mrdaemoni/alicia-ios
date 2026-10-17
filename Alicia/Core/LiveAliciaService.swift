@@ -877,7 +877,32 @@ struct LiveAliciaService: AliciaService {
                 cues: chunk.cues ?? [], timingStatus: chunk.timing_status ?? briefing.speech?.timing_status ?? "unavailable",
                 spokenText: briefing.speech?.spoken_text ?? "", speechBackend: chunk.speech_backend ?? briefing.speech?.speech_backend ?? "")
         }
+        // Variant and cue audio become authenticated media URLs here, never in a view.
+        for s in briefing.segments.indices {
+            for v in briefing.segments[s].variants.indices {
+                for c in briefing.segments[s].variants[v].chunks.indices {
+                    let path = briefing.segments[s].variants[v].chunks[c].url
+                    briefing.segments[s].variants[v].chunks[c].url = mediaURL(path)?.absoluteString ?? ""
+                }
+            }
+        }
+        if var steering = briefing.steering {
+            for (id, cue) in steering.cues { steering.cues[id]?.url = mediaURL(cue.url)?.absoluteString ?? "" }
+            briefing.steering = steering
+        }
         return briefing
+    }
+
+    func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult {
+        var req = request("/api/morning_briefing/" + endpoint.rawValue, method: "POST", body: body)
+        req.timeoutInterval = 10
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 200 { return .accepted(data) }
+            // 409 is the backend's definite "not recorded"; anything else may be transient.
+            return status == 409 || status == 400 ? .rejected(data) : .unreachable
+        } catch { return .unreachable }
     }
 
     private struct PlaylistDTO: Decodable {
