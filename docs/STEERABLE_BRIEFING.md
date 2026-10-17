@@ -19,6 +19,17 @@ Symbols, no emoji.
 - **Lower:** the rest closer in, from the next sentence.
 - **Again:** replay the sentence now, or the previous one if he pressed within
   1.5 s of a sentence's start.
+- **A faded command can't be pressed.** Higher or Lower fades when its press
+  would change nothing from here: the briefing is already at that altitude, or
+  no part from here on has a version there. It stays open when a later part
+  has one; that press changes from that part ("Changed where a version exists;
+  this part has only one"). Again never fades. The panel asks the same
+  planner, at the same position, that a press would ask
+  (`BriefingSteeringController.available`, `BriefingPlanner.changes`), and
+  redraws as playback moves. Hector asked for this on 2026-10-17, before the
+  study started: a button that answers "Not changed" is confusing. The
+  headphone mapping is unchanged: its spoken cue ("Staying here.") is the only
+  answer a pocketed phone can give.
 - One **interpretation line** says what Alicia took the press to mean ("From
   higher up, starting with the next sentence"), then fades after six seconds.
 - A short prerendered **spoken cue** in her voice ("Higher.", "Lower.",

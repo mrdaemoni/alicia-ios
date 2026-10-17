@@ -382,6 +382,13 @@ enum BriefingPlanner {
         return r
     }
 
+    /// Whether a reading changes what plays: a new altitude or a replay. A
+    /// press that would only say "Not changed" or "Already as high as it goes"
+    /// changes nothing, so its button is drawn faded and can't be pressed.
+    static func changes(_ reading: SteerInterpretation) -> Bool {
+        reading.change == "level_changed" || reading.change == "replay"
+    }
+
     // MARK: building the played path
 
     /// The variant that plays for a segment at a dial: the dial if validated, else L0.

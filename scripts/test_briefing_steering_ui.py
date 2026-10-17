@@ -117,6 +117,10 @@ final class BriefingSteeringUITests: XCTestCase {
   while Date()<end { if path.exists && path.label.contains(text) { return true }; usleep(200_000) }
   return false
  }
+ func waitEnabled(_ e:XCUIElement,_ enabled:Bool,_ t:TimeInterval) -> Bool {
+  let p=NSPredicate(format:"isEnabled == %@",NSNumber(value:enabled))
+  return XCTWaiter().wait(for:[expectation(for:p,evaluatedWith:e)],timeout:t) == .completed
+ }
  func startLive() -> (XCUIApplication, XCUIElement) {
   let app=launch(["--steer-live-audio","--tab","us"])
   let play=app.buttons["morningBriefing.play"];XCTAssertTrue(play.waitForExistence(timeout:20));play.tap()
@@ -131,6 +135,10 @@ final class BriefingSteeringUITests: XCTestCase {
   XCTAssertTrue(app.staticTexts["steer.line"].waitForExistence(timeout:5))
   XCTAssertTrue(pathContains(path,"s01·0·0 > s01·1·1",15),"After the sentence, L+1 resumes at its unheard caveat: \(path.label)")
   capture("steer-live-after-higher",app)
+  // At the top, Higher would change nothing: it is faded and can't be pressed (Hector, 2026-10-17).
+  XCTAssertTrue(waitEnabled(app.buttons["steer.higher"],false,5),"Hearing L+1: Higher is faded")
+  XCTAssertTrue(app.buttons["steer.lower"].isEnabled && app.buttons["steer.again"].isEnabled,"Lower and Again stay open")
+  capture("steer-live-higher-faded",app)
   XCTAssertTrue(pathContains(path,"s02·1·0",25),"Later segments follow the new level: \(path.label)")
   XCTAssertFalse(app.staticTexts["reading.failure"].exists)
   // The L0 piece was cut after its first sentence (~6.4 s of a ~10.3 s chunk), not played whole.

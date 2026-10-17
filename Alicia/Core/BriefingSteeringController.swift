@@ -279,13 +279,25 @@ final class BriefingSteeringController {
 
     private func segment(_ id: String) -> BriefingSegment? { briefing?.segments.first { $0.id == id } }
 
-    func steer(_ command: SteerCommand, input: String = "screen") {
-        guard let reader, let briefing, let steering = briefing.steering, isCurrent(reader), controlsVisible(reader),
-              !busy, let sessionID else { return }
+    /// Where a press lands right now: the piece being heard, its sentence and
+    /// the switch point. `steer` and `available` share it, so a faded button
+    /// and a real press read the same position with the same rule.
+    private struct PressPoint {
+        var phase: String
+        var position: (index: Int, fileTime: Double)
+        var piece: BriefingPiece
+        var segment: BriefingSegment
+        var variant: BriefingVariant
+        var current: Int
+        var sentence: Int
+        var cut: Double?
+    }
+
+    private func pressPoint(_ command: SteerCommand, reader: SpeechReader) -> PressPoint? {
         let phase = ended ? "after_end" : "during"
         let chunks = reader.narrationChunks
         // The piece being heard (a cue counts as the start of what follows it).
-        guard var position = reader.currentPosition() else { return }
+        guard var position = reader.currentPosition(), chunks.indices.contains(position.index) else { return nil }
         if ended, let last = chunks.lastIndex(where: { $0.piece?.isCue == false }) {
             position = (last, chunks[last].clipEnd ?? chunks[last].duration + chunks[last].clipStart)
         } else if chunks[position.index].piece?.isCue == true,
@@ -293,7 +305,7 @@ final class BriefingSteeringController {
             position = (next, chunks[next].clipStart)
         }
         guard let piece = chunks[position.index].piece, !piece.isCue, let seg = segment(piece.segmentID),
-              let variant = seg.variant(piece.level) else { return }
+              let variant = seg.variant(piece.level) else { return nil }
         let current = BriefingPlanner.sentence(at: position.fileTime, chunk: piece.chunkIndex, in: variant)
         var sentence = current, cut: Double? = nil
         if ended {
@@ -302,6 +314,30 @@ final class BriefingSteeringController {
             let point = BriefingPlanner.switchPoint(variant, chunk: piece.chunkIndex, time: position.fileTime)
             sentence = point.sentence; cut = point.cut
         }
+        return PressPoint(phase: phase, position: position, piece: piece, segment: seg, variant: variant,
+                          current: current, sentence: sentence, cut: cut)
+    }
+
+    /// Whether pressing this on screen now would change what plays. Again
+    /// always replays. Higher or Lower is unavailable when its reading would
+    /// change nothing: already at that altitude, or no part from here on has a
+    /// version there. A later part that has one keeps it available ("Changed
+    /// where a version exists"). The headphone mapping is unchanged, because
+    /// its spoken cue is the only answer a pocketed phone can give.
+    func available(_ command: SteerCommand) -> Bool {
+        guard command != .again else { return true }
+        guard let reader, let briefing, let steering = briefing.steering, controlsVisible(reader),
+              let at = pressPoint(command, reader: reader) else { return true }
+        return BriefingPlanner.changes(BriefingPlanner.interpret(
+            segments: briefing.segments, steering: steering, command: command, segmentID: at.segment.id,
+            sentence: at.sentence, levelBefore: at.piece.level, phase: at.phase))
+    }
+
+    func steer(_ command: SteerCommand, input: String = "screen") {
+        guard let reader, let briefing, let steering = briefing.steering, isCurrent(reader), controlsVisible(reader),
+              !busy, let sessionID, let at = pressPoint(command, reader: reader) else { return }
+        let (phase, position, piece, seg, variant) = (at.phase, at.position, at.piece, at.segment, at.variant)
+        let (current, sentence, cut) = (at.current, at.sentence, at.cut)
         let eventID = UUID().uuidString
         let body: [String: Any] = ["briefing_id": briefing.id, "event_id": eventID, "session_id": sessionID,
             "segment_id": seg.id, "sentence_index": sentence, "offset_seconds": max(0, reader.elapsed),

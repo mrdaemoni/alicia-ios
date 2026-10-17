@@ -73,6 +73,25 @@ r = meaning(.lower, "s03", 1, 0, phase: "after_end", arm: "after")
 check(r.effective_from == SteerEffect(segment_id: "s01", resume_sentence_index: 0, level: -1, replay: true), "After-end replay")
 check(meaning(.higher, "s01", 0, 0, phase: "after_end").reason == "arm_during", "During arm refuses an after-end press")
 
+// A button is faded exactly when its press would change nothing (Hector, 2026-10-17).
+let changes = { (r: SteerInterpretation) in BriefingPlanner.changes(r) }
+check(changes(meaning(.higher, "s01", 0, 0)) && changes(meaning(.lower, "s01", 0, 0)), "Both open at L0 with versions")
+check(!changes(meaning(.higher, "s01", 0, 1)) && changes(meaning(.lower, "s01", 0, 1)), "At the top: Higher faded, Lower open")
+check(!changes(meaning(.lower, "s01", 0, -1)) && changes(meaning(.higher, "s01", 0, -1)), "At the bottom: Lower faded")
+check(changes(meaning(.again, "s02", 1, -1)) && changes(meaning(.again, "s01", 0, 1)), "Again is always open")
+var noHigher = segs; for i in noHigher.indices { noHigher[i].variants.removeAll { $0.level == 1 } }
+check(!changes(meaning(.higher, "s01", 0, 0, segments: noHigher))
+      && changes(meaning(.lower, "s01", 0, 0, segments: noHigher)), "No part has a higher version: Higher faded")
+check(changes(meaning(.higher, "s01", 0, 0, segments: partial)), "A later part has one: Higher stays open (partial)")
+var lastOnly = segs; for i in lastOnly.indices.dropLast() { lastOnly[i].variants.removeAll { $0.level == 1 } }
+check(changes(meaning(.higher, "s01", 0, 0, segments: lastOnly)), "Only the last part has one: still open")
+var firstOnly = segs; for i in firstOnly.indices.dropFirst() { firstOnly[i].variants.removeAll { $0.level == 1 } }
+check(!changes(meaning(.higher, "s02", 0, 0, segments: firstOnly)), "Past the only part with one: Higher faded")
+check(!changes(meaning(.higher, "s03", 1, 0)), "Nothing left after the last sentence: faded")
+check(changes(meaning(.higher, "s03", 1, 0, phase: "after_end", arm: "after"))
+      && !changes(meaning(.higher, "s03", 1, 0, phase: "after_end", arm: "after", segments: noHigher)),
+      "After the end: open only if some part has that version")
+
 // The initial path: every chunk, title included, word timing intact.
 let path = BriefingPlanner.path(segs, dial: 0, fromSegment: 0, resolve: resolve)
 let chunkCount = segs.map { $0.variant(0)!.chunks.count }.reduce(0, +)
@@ -345,6 +364,28 @@ func ended(_ outbox: BriefingOutbox) -> [[String: Any]] {
         c.steer(.higher)
         try? await Task.sleep(for: .milliseconds(150))
         check(r.changes == beforeAfter + 1, "An after-end press still replays the whole briefing")
+
+        // Faded buttons read the same position as a press (Hector, 2026-10-17).
+        (c, r, s, outbox, folder) = make("available")
+        check(c.available(.higher) && c.available(.lower) && c.available(.again), "Nothing playing: drawn as before")
+        c.play(duringPayload)
+        check(c.available(.higher) && c.available(.lower) && c.available(.again), "Playing L0: all three open")
+        if let i = r.narrationChunks.firstIndex(where: { $0.piece?.isCue == false }) {
+            r.narrationChunks[i].piece?.level = 1
+            check(!c.available(.higher) && c.available(.lower) && c.available(.again), "Hearing L+1: Higher faded")
+            r.narrationChunks[i].piece?.level = 0
+        }
+        var flat = duringPayload
+        for k in flat.segments.indices { flat.segments[k].variants.removeAll { $0.level == 1 } }
+        (c, r, s, outbox, folder) = make("available-flat")
+        c.play(flat)
+        check(!c.available(.higher) && c.available(.lower), "No higher version anywhere: Higher faded")
+        var flatAfter = flat; flatAfter.steering?.arm = "after"
+        (c, r, s, outbox, folder) = make("available-after")
+        c.play(flatAfter)
+        check(c.available(.higher), "After arm while playing: controls hidden, nothing faded")
+        r.playbackTick?(0, 5, 3); r.pathEnded?(true)
+        check(!c.available(.higher) && c.available(.lower) && c.available(.again), "After the end: Higher faded, Lower open")
 
         // R1: a slow steer never changes a replacement session, stop or a restart.
         for ending in ["replace", "stop", "restart"] {

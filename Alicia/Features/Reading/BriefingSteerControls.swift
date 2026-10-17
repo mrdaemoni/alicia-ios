@@ -19,6 +19,9 @@ struct BriefingSteeringPanel: View {
         if steering.isCurrent(reader), let info = steering.steering, info.enabled {
             VStack(alignment: .leading, spacing: 6) {
                 if steering.controlsVisible(reader) {
+                    // Availability follows the sentence being heard, so read
+                    // the playback position to redraw as it moves.
+                    let _ = reader.progress
                     HStack(spacing: 0) {
                         command(.higher, label: "Higher, more general")
                         dot
@@ -68,20 +71,23 @@ struct BriefingSteeringPanel: View {
 
     private func command(_ command: SteerCommand, label: String) -> some View {
         let busy = store.briefingSteering.busy
+        // Faded when a press would change nothing from here (see `available`).
+        let open = store.briefingSteering.available(command)
         return Button { store.briefingSteering.steer(command) } label: {
             VStack(spacing: 2) {
                 Text(command.title)
                     .font(.system(size: 10, design: .monospaced).weight(.bold)).tracking(1.6)
-                    .foregroundStyle(ink.opacity(busy ? 0.45 : 1))
-                InkUnderline(color: ink.opacity(0.7), seed: command.rawValue.inkSeed, lineWidth: 1)
+                    .foregroundStyle(ink.opacity(!open ? 0.28 : busy ? 0.45 : 1))
+                InkUnderline(color: ink.opacity(open ? 0.7 : 0.15), seed: command.rawValue.inkSeed, lineWidth: 1)
                     .frame(width: 34, height: 3)
             }
             .frame(minWidth: 52, minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(busy)
+        .disabled(busy || !open)
         .accessibilityLabel(label)
+        .accessibilityValue(open ? "" : "Nothing to change from here")
         .accessibilityIdentifier("steer." + command.rawValue)
     }
 }
