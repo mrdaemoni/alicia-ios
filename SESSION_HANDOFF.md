@@ -1,3 +1,13 @@
+## October 18 — reply latency and composer delivery repair
+
+Candidate branch `codex/chat-delivery-20261018`, based on the actual TestFlight
+49 source `71ce1d8`. Early matching Mac receipts clear only the submitted
+section draft; completed history reconciles old sends after disconnect/relaunch.
+Backend bounds advisory recall and coalesces overlapping diagnostics. Original
+words remain in the protected outbox until completion. No briefing room, study
+arm, steering behavior or experimental particle-field changes are included.
+Release and device acceptance must be verified separately.
+
 ## October 16 — steerable morning briefing candidate (CL-20261015-steerable-briefing)
 
 The morning briefing can be steered while it plays: Higher · Lower · Again in

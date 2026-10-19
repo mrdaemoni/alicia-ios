@@ -63,6 +63,18 @@ struct PendingChatSend: Codable {
         do { try persist() } catch { entries.removeValue(forKey: key); throw error }
         return entry
     }
+    /// A completed assistant receipt clears only its original draft. This also
+    /// repairs sends that finished after a connection loss or phone relaunch.
+    func reconcileCompleted(_ replyIDs: Set<UUID>, drafts: ComposerDrafts) {
+        let completed = entries.values.filter { UUID(uuidString: $0.requestID).map(replyIDs.contains) == true }
+        for pending in completed {
+            if let section = pending.surfaceContext?.section {
+                drafts.acknowledge(pending.text, for: section)
+            }
+            acknowledge(pending.requestID)
+        }
+    }
+
     func acknowledge(_ requestID: String) {
         let old = entries
         entries = entries.filter { UUID(uuidString: $0.value.requestID) != UUID(uuidString: requestID) }
@@ -87,5 +99,5 @@ struct ChatDeliveryFailure: Hashable, Sendable {
 
     static let interrupted = Self(message: "Delivery could not be confirmed. Your words remain in the composer. Check Dialogue before trying again.")
     static let replyInterrupted = Self(message: "Your message was received, but the reply did not finish. Reopen Dialogue to recover the saved reply.")
-    static let pending = Self(message: "Alicia is still preparing this reply. Your draft is kept. Check Dialogue shortly; this send has not been repeated.")
+    static let pending = Self(message: "Alicia has your message and is still preparing a reply. Check Dialogue shortly; this send has not been repeated.")
 }

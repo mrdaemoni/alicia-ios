@@ -398,7 +398,7 @@ struct LiveAliciaService: AliciaService {
                     let (bytes, resp) = try await URLSession.shared.bytes(for: chatRequest)
                     guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
                         if (resp as? HTTPURLResponse)?.statusCode == 202 {
-                            continuation.yield(await recoverChat(requestID))
+                            continuation.yield(await recoverChat(requestID, received: { continuation.yield(.accepted($0)) }))
                             continuation.finish()
                             return
                         }
@@ -418,13 +418,17 @@ struct LiveAliciaService: AliciaService {
                               let data = line.dropFirst(6).data(using: .utf8),
                               let event = try? JSONDecoder().decode(WireEvent.self, from: data)
                         else { continue }
+                        if let accepted = event.accepted,
+                           UUID(uuidString: accepted) == UUID(uuidString: requestID) {
+                            continuation.yield(.accepted(accepted))
+                        }
                         if let t = event.t { continuation.yield(.token(t)) }
                         if let id = event.reply_id { continuation.yield(.details(id)) }
                         if let v = event.voice, let url = mediaURL(v) {
                             continuation.yield(.voice(url))
                         }
                         if let err = event.error, !err.isEmpty {
-                            continuation.yield(await recoverChat(requestID))
+                            continuation.yield(await recoverChat(requestID, received: { continuation.yield(.accepted($0)) }))
                             finished = true
                             break
                         }
@@ -434,9 +438,9 @@ struct LiveAliciaService: AliciaService {
                             break
                         }
                     }
-                    if !finished { continuation.yield(await recoverChat(requestID)) }
+                    if !finished { continuation.yield(await recoverChat(requestID, received: { continuation.yield(.accepted($0)) })) }
                 } catch {
-                    continuation.yield(await recoverChat(requestID))
+                    continuation.yield(await recoverChat(requestID, received: { continuation.yield(.accepted($0)) }))
                 }
                 continuation.finish()
             }
@@ -444,18 +448,24 @@ struct LiveAliciaService: AliciaService {
         }
     }
 
-    private func recoverChat(_ requestID: String) async -> ChatEvent {
+    private func recoverChat(_ requestID: String, received: (String) -> Void) async -> ChatEvent {
         guard UUID(uuidString: requestID) != nil else { return .failure(.interrupted) }
         var pending = false
         for attempt in 0..<10 {
             if Task.isCancelled { break }
             var check = request("/api/chat_receipt?request_id=" + requestID)
-            check.timeoutInterval = 8
+            check.timeoutInterval = 3
             guard let (data, response) = try? await URLSession.shared.data(for: check),
                   (response as? HTTPURLResponse)?.statusCode == 200,
                   let receipt = try? JSONDecoder().decode(ChatSendReceipt.self, from: data),
-                  UUID(uuidString: receipt.request_id) == UUID(uuidString: requestID) else { break }
+                  UUID(uuidString: receipt.request_id) == UUID(uuidString: requestID) else {
+                // A second route change must not turn the first lost response
+                // into a permanent unknown. These are GETs, never send replays.
+                if attempt < 9 { try? await Task.sleep(for: .milliseconds(400)) }
+                continue
+            }
             if receipt.confirms(requestID) { return .recovered(receipt) }
+            if ["pending", "uncertain"].contains(receipt.state) { received(requestID) }
             if receipt.state == "rejected" {
                 return .failure(.init(message: "The reply did not finish. Your words remain in the composer.", definitelyRejected: true))
             }
@@ -467,6 +477,7 @@ struct LiveAliciaService: AliciaService {
     }
 
     private struct WireEvent: Decodable {
+        var accepted: String?
         var t: String?
         var voice: String?
         var done: Bool?

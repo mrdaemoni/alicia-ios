@@ -27,20 +27,21 @@ context = between(collaboration, 'struct WorkDialogueContext:', 'enum Collaborat
 
 class Handler(BaseHTTPRequestHandler):
     modes = {}
+    checks = {}
     def log_message(self, *args):
         pass
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0'))))
         self.modes[body['request_id']] = self.path
-        status = {'/reject': 400, '/auth': 401, '/timeout': 408, '/server': 502, '/recover': 202}.get(self.path, 200)
+        status = {'/reject': 400, '/auth': 401, '/timeout': 408, '/server': 502, '/recover': 202, '/recover-transient': 202}.get(self.path, 200)
         self.send_response(status)
         self.send_header('Content-Type', 'application/json' if status != 200 else 'text/event-stream')
         self.end_headers()
         if status != 200:
             self.wfile.write(json.dumps({'error': 'The prepared passage is no longer current. Refresh Together.'}).encode())
-        elif self.path == '/success':
-            for event in [{'reply_id': 'saved-reply'}, {'t': 'An inert answer.'}, {'done': True, 'message_id': 12}]:
+        elif self.path in ['/success', '/accepted']:
+            for event in [{'accepted': body['request_id']}, {'reply_id': body['request_id']}, {'t': 'An inert answer.'}, {'done': True, 'message_id': 12}]:
                 self.wfile.write(('data: ' + json.dumps(event) + '\n\n').encode())
         elif self.path == '/sse-error':
             self.wfile.write(b'data: {"error":"inert generation failure","done":true}\n\n')
@@ -50,8 +51,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         query = parse_qs(urlparse(self.path).query)
         rid = query.get('request_id', [''])[0]
+        self.checks[rid] = self.checks.get(rid, 0) + 1
+        if self.modes.get(rid) == '/recover-transient' and self.checks[rid] <= 2:
+            self.send_response(503); self.end_headers(); return
         receipt = {'request_id': rid, 'state': 'missing'}
-        if self.modes.get(rid) == '/recover':
+        if self.modes.get(rid) in ['/recover', '/recover-transient']:
             receipt.update(state='completed', reply='The saved reply.', reply_id=rid, message_id=99, inspectable=True)
         self.send_response(200); self.end_headers()
         self.wfile.write(json.dumps(receipt).encode())
@@ -187,7 +191,7 @@ struct LiveHarness {
   await settle(h)
   let uncertainID = h.service.requests.last!
   precondition(confirmed == false && rejectedID != uncertainID && !h.pendingSendRequestIDs.isEmpty)
-  h.service.events = [.details("saved"),.failure(.interrupted)]
+  h.service.events = [.details(uncertainID),.failure(.interrupted)]
   h.send(original) {ok in confirmed = ok; if ok {drafts.acknowledge(original,for:"studio")}}
   await settle(h)
   precondition(h.service.requests.last == uncertainID)
@@ -274,7 +278,34 @@ struct LiveHarness {
   recovery.send(original) {confirmed = $0}; await settle(recovery)
   precondition(confirmed == true && recovery.messages.count == 2 && recovery.messages.last?.text == "Recorded once")
 
-  for path in ["reject","auth","timeout","server","sse-error","malformed","success","recover"] {
+  // Receipt acceptance clears only the source draft before inference finishes;
+  // the durable send remains recoverable across relaunch until completion.
+  let acceptedHarness = Harness()
+  acceptedHarness.composerDrafts.set("  " + original + "\n", for:"studio")
+  acceptedHarness.composerDrafts.set("Private words", for:"body")
+  let pending = try acceptedHarness.chatOutbox.reserve(text:original,recordingID:"",voice:false,workContext:nil,surfaceContext:originalContext)
+  acceptedHarness.service.events = [.accepted(UUID().uuidString), .failure(.interrupted)]
+  acceptedHarness.send(original,surfaceContext:originalContext) {_ in}
+  await settle(acceptedHarness)
+  precondition(!acceptedHarness.composerDrafts.text(for:"studio").isEmpty, "foreign receipt cleared words")
+  acceptedHarness.service.events = [.accepted(pending.requestID), .failure(.interrupted)]
+  acceptedHarness.send(original,surfaceContext:originalContext) {_ in}
+  await settle(acceptedHarness)
+  precondition(acceptedHarness.composerDrafts.text(for:"studio").isEmpty)
+  precondition(acceptedHarness.composerDrafts.text(for:"body") == "Private words")
+  let afterReceipt = try acceptedHarness.chatOutbox.reserve(text:original,recordingID:"",voice:false,workContext:nil,surfaceContext:originalContext)
+  precondition(afterReceipt.requestID == pending.requestID, "accepted prematurely discarded replay protection")
+  acceptedHarness.composerDrafts.set("Newer words",for:"studio")
+  acceptedHarness.chatOutbox.reconcileCompleted([UUID(uuidString:pending.requestID)!],drafts:acceptedHarness.composerDrafts)
+  precondition(acceptedHarness.composerDrafts.text(for:"studio") == "Newer words")
+  let newRequest = try acceptedHarness.chatOutbox.reserve(text:original,recordingID:"",voice:false,workContext:nil,surfaceContext:originalContext)
+  precondition(newRequest.requestID != pending.requestID)
+  acceptedHarness.composerDrafts.set(original,for:"studio")
+  let restoredOutbox = ChatSendOutbox(directory:URL(fileURLWithPath:CommandLine.arguments[2]+"/outbox"))
+  restoredOutbox.reconcileCompleted([UUID(uuidString:newRequest.requestID)!],drafts:acceptedHarness.composerDrafts)
+  precondition(acceptedHarness.composerDrafts.text(for:"studio").isEmpty, "late saved reply left its old draft behind")
+
+  for path in ["reject","auth","timeout","server","sse-error","malformed","success","recover","recover-transient"] {
    let service = LiveHarness(base:URL(string:CommandLine.arguments[1]+"/"+path)!)
    var failures:[ChatDeliveryFailure] = [], tokens:[String] = [], completed = false, recovered = false
    let rid = UUID().uuidString
@@ -284,11 +315,11 @@ struct LiveHarness {
     case .token(let token): tokens.append(token)
     case .done: completed = true
     case .recovered(let receipt): recovered = receipt.confirms(rid)
-    case .details, .voice: break
+    case .accepted, .details, .voice: break
     }
    }
    if path == "success" {precondition(failures.isEmpty && completed && tokens == ["An inert answer."])}
-   else if path == "recover" {precondition(recovered && failures.isEmpty)}
+   else if path.hasPrefix("recover") {precondition(recovered && failures.isEmpty)}
    else {
     precondition(failures.count == 1 && !completed && tokens.isEmpty)
     precondition(failures[0].definitelyRejected == ["reject","auth"].contains(path))

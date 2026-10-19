@@ -37,7 +37,8 @@ struct SurfaceContext: Codable, Equatable {
     /// Clear only the exact draft acknowledged by its original section's send.
     /// A callback from a dismissed sheet cannot erase another room's words.
     func acknowledge(_ text: String, for section: String) {
-        guard values[section] == text else { return }
+        guard values[section]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            == text.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
         set("", for: section)
     }
 

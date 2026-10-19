@@ -126,7 +126,10 @@ struct ConversationSheet: View {
                 guard let last = messages.last else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
             }
-            .task { if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) } }
+            .task {
+                if !privateBody { await store.refreshConversation() }
+                if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+            }
         }
     }
 
