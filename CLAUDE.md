@@ -337,6 +337,10 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 
 | Endpoint | For |
 |---|---|
+| `GET /api/chat_receipt` | Recover the durable result for an existing chat request without resending it. |
+| `GET /api/morning_briefing/receipt` | Inspect a briefing segment receipt bound to the played snapshot. |
+| `POST /api/morning_briefing/feedback` | Save explicit feedback for the bound briefing section. |
+| `POST /api/morning_briefing/steer` | Request a bounded change of altitude for a briefing segment. |
 | `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds tap-to-play media. Reviewed Mac voice adds `client_request_id`, `recording_id`, machine source IDs and captured `episode_id`. |
 | `GET /api/body` · `POST /api/body` | Private overview and explicit wellness/ritual receipts |
 | `GET /api/body/source` · `POST /api/body/ask` | Exact private report passages and optional local health answer |
