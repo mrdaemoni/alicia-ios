@@ -62,6 +62,20 @@ final class PresenceField {
     /// His voice, straight from the microphone tap (0…1). Drawn every frame,
     /// never eased, so she breathes with him rather than after him.
     var voiceLevel: Double = 0
+    /// She is reading to him (the briefing room): her own pose, not the walk's
+    /// listening one. Only the DEBUG Motion Lab sets it until
+    /// CL-20261018-organic-field ships after the study.
+    private(set) var speaking = false
+    /// Paused while speaking: the same form at a lower tempo (a settle, not a morph).
+    private(set) var speakingSettled = false
+    /// Her measured words, and the playback clock they run on. The organic
+    /// candidate reads her voice inside each frame from these, with no poll.
+    private var voiceCues: [OrganicVoice.Cue] = []
+    private var playbackAnchor: (wall: Date, seconds: Double, running: Bool)?
+    /// A steering gesture in flight: +1 Higher (gather and lift), −1 Lower (open and settle).
+    private var gestureStart: Date?
+    private var gestureSign = 0.0
+    static let gestureSeconds = 1.4
 
     private var section: AppSection = .us
     private var from = Target.initial
@@ -84,20 +98,40 @@ final class PresenceField {
                                     coherence: 0.75, focus: CGPoint(x: 0.5, y: 0.5))
     }
 
-    /// What one frame needs. A value, so the Canvas can draw it off the main thread.
-    struct Frame: Sendable {
-        var primary: Int, secondary: Int, mix: Double
-        var phase, energy, openness, coherence: Double
-        var focus: CGPoint
-        var listening = false
-        var level: Double = 0
-    }
+    /// What one frame needs (PresenceGeometry.swift), drawn off the main thread.
+    typealias Frame = PresenceFrame
 
     func setListening(_ on: Bool, now: Date = .now) {
         guard on != listening else { return }
         listening = on
         if !on { voiceLevel = 0 }
         retarget(now: now)
+    }
+
+    func setSpeaking(_ on: Bool, now: Date = .now) {
+        guard on != speaking else { return }
+        speaking = on
+        speakingSettled = false
+        retarget(now: now)
+    }
+
+    func setSpeakingSettled(_ settled: Bool, now: Date = .now) {
+        guard speaking, settled != speakingSettled else { return }
+        speakingSettled = settled
+        retarget(now: now)
+    }
+
+    /// `cues` must be sorted by start, on the same clock as `syncPlayback`.
+    func setVoice(cues: [OrganicVoice.Cue]) { voiceCues = cues }
+
+    func syncPlayback(seconds: Double, running: Bool, now: Date = .now) {
+        guard seconds.isFinite else { return }
+        playbackAnchor = (now, seconds, running)
+    }
+
+    func gesture(higher: Bool, now: Date = .now) {
+        gestureSign = higher ? 1 : -1
+        gestureStart = now
     }
 
     func receive(_ reading: PresenceAwareness, now: Date = .now) {
@@ -131,6 +165,14 @@ final class PresenceField {
             weights[Self.family(forStance: awareness.stance).index] += 0.4
             return Target(weights: weights, energy: 0.62, openness: 1, coherence: 0.9,
                           focus: CGPoint(x: 0.5, y: 0.44))
+        }
+        if speaking {
+            // Reading to him: her own form, open but held, leaning toward him.
+            // A pause keeps the form and only slows her (a settle, not a morph).
+            weights[Self.family(forStance: awareness.stance).index] += 0.85
+            weights[Self.family(forSection: section).index] += 0.15
+            return Target(weights: weights, energy: speakingSettled ? 0.3 : 0.56, openness: 0.72,
+                          coherence: 0.84, focus: CGPoint(x: 0.5, y: 0.42))
         }
         // The section only nudges: at a quarter it read as a different body per
         // room; at this weight a room tints her without moving her.
@@ -166,9 +208,24 @@ final class PresenceField {
         let ranked = now.weights.enumerated().sorted { $0.element > $1.element }
         let a = ranked[0], b = ranked[1]
         let mix = a.element + b.element > 0 ? b.element / (a.element + b.element) : 0
-        return Frame(primary: a.offset, secondary: b.offset, mix: mix, phase: phase(at: date),
-                     energy: now.energy, openness: now.openness, coherence: now.coherence, focus: now.focus,
-                     listening: listening, level: listening && voiceLevel.isFinite ? min(1, max(0, voiceLevel)) : 0)
+        var frame = Frame(primary: a.offset, secondary: b.offset, mix: mix, phase: phase(at: date),
+                          energy: now.energy, openness: now.openness, coherence: now.coherence, focus: now.focus,
+                          listening: listening, level: listening && voiceLevel.isFinite ? min(1, max(0, voiceLevel)) : 0)
+        frame.speaking = speaking
+        if speaking, let anchor = playbackAnchor {
+            let t = anchor.seconds + (anchor.running ? date.timeIntervalSince(anchor.wall) : 0)
+            let near = OrganicVoice.window(voiceCues, around: t)
+            frame.word = OrganicVoice.word(near, at: t)
+            frame.phraseTrail = OrganicVoice.trail(near, at: t)
+        }
+        if let start = gestureStart {
+            let progress = date.timeIntervalSince(start) / Self.gestureSeconds
+            if progress >= 0, progress <= 1 {
+                let bump = sin(.pi * progress)
+                frame.gesture = gestureSign * bump * bump
+            }
+        }
+        return frame
     }
 
     /// Still frame for Reduce Motion: the settled target, at a fixed phase.
@@ -178,6 +235,10 @@ final class PresenceField {
         // Reduce Motion is still: the open listening pose stays, but his voice
         // level must not keep resizing her (Codex review of #45, 2026-09-27).
         f.level = 0
+        // Her words and a gesture are motion too: a still frame holds neither.
+        f.word = 0
+        f.phraseTrail = []
+        f.gesture = 0
         return f
     }
 

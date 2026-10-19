@@ -14,6 +14,7 @@ struct MotionLabView: View {
     @State private var showsConstruction = false
     @State private var previewsReduceMotion = false
     @State private var auditReport: String?
+    @State private var showsRoomCompare = false
     private let runsAuditOnLaunch: Bool
 
     init() {
@@ -103,6 +104,7 @@ struct MotionLabView: View {
             .task {
                 if runsAuditOnLaunch { runAudit() }
             }
+            .fullScreenCover(isPresented: $showsRoomCompare) { OrganicRoomCompare() }
         }
     }
 
@@ -161,6 +163,9 @@ struct MotionLabView: View {
                     .minimumScaleFactor(0.8)
                 Spacer()
                 Button("AUDIT ALL") { runAudit() }
+                    .labButton()
+                // The briefing room, as shipped and organic (CL-20261018-organic-field).
+                Button("ROOM") { showsRoomCompare = true }
                     .labButton()
             }
             .font(.system(size: 8, design: .monospaced))

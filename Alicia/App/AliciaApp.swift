@@ -64,6 +64,8 @@ struct AliciaApp: App {
                     // has to be dark on paper and light on the tinted plate,
                     // and only seeing them together proves it inverts.
                     RitualWidgetPreview()
+                } else if ProcessInfo.processInfo.arguments.contains("--organic-compare") {
+                    OrganicRoomCompare()
                 } else if ProcessInfo.processInfo.arguments.contains("--motion-lab") {
                     MotionLabView()
                 } else if ProcessInfo.processInfo.arguments.contains("--dialogue-review-sheet-preview") {
