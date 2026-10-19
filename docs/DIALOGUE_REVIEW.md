@@ -84,3 +84,19 @@ socket loss after a completed action, current-passage mutation, private health
 exclusion, exact outbox restoration and delayed startup diagnostics. The
 sort benchmark compares the exact build-45 implementation with the candidate.
 No synthetic conversation, feedback or health capture is sent to production.
+
+
+## October 18 — early receipt and late draft reconciliation
+
+A matching `accepted` SSE UUID proves that the Mac durably retained the typed
+request. The original section's composer clears at that point, while the
+protected send outbox retains the immutable request until the saved reply or
+terminal event confirms completion. Failed sends without a receipt keep their
+draft. A foreign receipt cannot clear it. Newer text and other sections' drafts
+are never acknowledged by an older send.
+
+Receipt GET recovery retries brief network failures without repeating the POST.
+Reopening the conversation or refreshing history reconciles completed assistant
+reply UUIDs against the outbox and clears any matching old draft, including
+sends completed while the app was disconnected. No model or tool is replayed.
+The private Body/health and reviewed voice lanes retain their separate handling.

@@ -590,9 +590,25 @@ final class AppStore {
         guard !isStreaming, voiceArchive.recordings.contains(where: { $0.submissionStatus?.state == "completed" }) else { return }
         let before = messages.map(\.id)
         if let history = await service.conversationHistory(), !isStreaming, messages.map(\.id) == before {
+            reconcileCompletedChatDrafts(history)
             messages = history.messages.map(historyMessage)
         }
     }
+    private func reconcileCompletedChatDrafts(_ history: ConversationHistory) {
+        let completed = Set(history.messages.filter { $0.role == "assistant" }
+            .compactMap { $0.reply_id.flatMap(UUID.init(uuidString:)) })
+        chatOutbox.reconcileCompleted(completed, drafts: composerDrafts)
+    }
+
+    func refreshConversation() async {
+        guard !isStreaming else { return }
+        let before = messages.map(\.id)
+        guard let history = await service.conversationHistory(), !isStreaming,
+              messages.map(\.id) == before else { return }
+        reconcileCompletedChatDrafts(history)
+        messages = history.messages.map(historyMessage)
+    }
+
     private func historyMessage(_ row: ConversationHistory.Turn) -> Message {
         let replyID = row.reply_id?.isEmpty == false ? row.reply_id : nil
         let savedVoice = row.role == "assistant" ? voiceArchive.voiceReplyStatus(replyID) : nil
@@ -955,6 +971,7 @@ final class AppStore {
         async let pls = service.playlists()
         if let fresh = await day { acceptEpisodeDay(fresh) }
         if let transcript = await history, !isStreaming, messages.map(\.id) == messagesAtStart {
+            reconcileCompletedChatDrafts(transcript)
             messages = transcript.messages.map(historyMessage)
         }
         Task { await flushPlaybackOutbox() }
@@ -1484,6 +1501,7 @@ final class AppStore {
         }
         isStreaming = true
         Task {
+            var received = false
             var confirmed = false
             var finished = false
             var failure: ChatDeliveryFailure?
@@ -1494,10 +1512,19 @@ final class AppStore {
                 for await event in service.stream(pending.text, voice: pending.voice, recordingID: pending.recordingID, workContext: workContext, surfaceContext: pending.surfaceContext, requestID: requestID) {
                     guard messages.indices.contains(idx) else { break }
                     switch event {
+                    case .accepted(let identity):
+                        guard UUID(uuidString: identity) == UUID(uuidString: requestID) else { continue }
+                        received = true
+                        if let section = pending.surfaceContext?.section {
+                            composerDrafts.acknowledge(pending.text, for: section)
+                        }
                     case .token(let t):   messages[idx].text += t
                     case .details(let id):
-                        guard !id.isEmpty else { continue }
+                        guard UUID(uuidString: id) == UUID(uuidString: requestID) else { continue }
                         confirmed = true
+                        if let section = pending.surfaceContext?.section {
+                            composerDrafts.acknowledge(pending.text, for: section)
+                        }
                         messages[idx].replyID = id
                         chatOutbox.acknowledge(requestID)
                         pendingSendRequestIDs.removeValue(forKey: key)
@@ -1506,6 +1533,9 @@ final class AppStore {
                     case .recovered(let receipt):
                         guard receipt.confirms(requestID) else { continue }
                         confirmed = true; finished = true; failure = nil
+                        if let section = pending.surfaceContext?.section {
+                            composerDrafts.acknowledge(pending.text, for: section)
+                        }
                         messages[idx].text = receipt.reply ?? ""
                         messages[idx].replyID = receipt.inspectable == true ? receipt.reply_id : nil
                         messages[idx].messageID = receipt.message_id
@@ -1518,18 +1548,25 @@ final class AppStore {
                     case .failure(let problem):
                         failure = problem
                         if problem.definitelyRejected {
+                            if received, let section = pending.surfaceContext?.section,
+                               composerDrafts.text(for: section).isEmpty {
+                                composerDrafts.set(pending.text, for: section)
+                            }
                             pendingSendRequestIDs.removeValue(forKey: key)
                             chatOutbox.acknowledge(requestID)
                         }
                     case .done(let mid, _):
                         finished = true
+                        if let section = pending.surfaceContext?.section {
+                            composerDrafts.acknowledge(pending.text, for: section)
+                        }
                         messages[idx].messageID = mid
                         chatOutbox.acknowledge(requestID)
                         pendingSendRequestIDs.removeValue(forKey: key)
                     }
                 }
                 if let problem = failure ?? (!finished && !confirmed ? .interrupted : nil), messages.indices.contains(idx) {
-                    messages[idx].deliveryFailure = confirmed ? .replyInterrupted : problem
+                    messages[idx].deliveryFailure = (confirmed || (received && problem != .pending)) ? .replyInterrupted : problem
                 }
                 completion(confirmed || (finished && failure == nil))
                 // During a walk the backend accumulates instead of chatting —

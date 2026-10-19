@@ -45,6 +45,7 @@ struct History {var messages:[String] = []}
  func flushPlaybackOutbox() async {}
  func publishWidgetCache(hasFreshData:Bool) {}
  func historyMessage(_ row:String) -> Message {.init()}
+ func reconcileCompletedChatDrafts(_ history:History) {}
 __LOAD__
 }
 @main struct Checks {

@@ -33,6 +33,7 @@ struct Message: Identifiable, Hashable {
 
 /// One event in a streamed chat reply.
 enum ChatEvent {
+    case accepted(String)
     case token(String)
     case details(String)
     case voice(URL)
