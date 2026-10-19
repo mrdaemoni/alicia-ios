@@ -39,6 +39,11 @@ actor DelayedBodyService: AliciaService {
         return .init(status: "saved", request_id: event.id)
     }
 }
+/// Offline, so a toggle's follow-up refresh returns at once and never syncs.
+struct OfflineBodyService: AliciaService {
+    func bodyOverview() async -> BodyOverview? { nil }
+    func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult? { nil }
+}
 @main struct BodySyncTests {
     @MainActor static func until(_ condition: @escaping () async -> Bool) async {
         for _ in 0..<60 {
@@ -48,6 +53,11 @@ actor DelayedBodyService: AliciaService {
         fatalError("Timed out waiting for expected sync state")
     }
     @MainActor static func main() async throws {
+        // A child process standing in for the widget: one tap, then exit.
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "tap" {
+            let event = try BodyCapture.toggle("exercise", source: "widget", directory: URL(fileURLWithPath: CommandLine.arguments[2]))
+            print(event.completed); return
+        }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -89,6 +99,52 @@ actor DelayedBodyService: AliciaService {
         rejected.discardRejected(edit)
         assert(rejected.pendingIDs.isEmpty)
         assert(FileManager.default.fileExists(atPath: rejectedDirectory.appendingPathComponent(edit.id + ".json").path))
-        print("3 real BodyStore sync scenarios passed: burst, lost response, explicit discard")
+        try await mixedTaps(root)
+        print("4 real BodyStore sync scenarios passed: burst, lost response, explicit discard, mixed Body/widget taps")
+    }
+    /// The Body screen's button and a widget tap that overlap must alternate:
+    /// one records, one undoes, and the day ends undone.
+    @MainActor static func mixedTaps(_ root: URL) async throws {
+        func trial(_ widget: @escaping (URL) throws -> Bool) async throws -> Bool {
+            let dir = root.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let store = BodyStore(service: OfflineBodyService(), captureDirectory: dir, refreshWidgets: {})
+            let gate = DispatchSemaphore(value: 0), done = DispatchSemaphore(value: 0)
+            var widgetResult: Bool?
+            DispatchQueue.global(qos: .userInitiated).async {
+                gate.wait(); widgetResult = try? widget(dir); done.signal()
+            }
+            gate.signal()
+            let saved = await store.toggleRitual("exercise")
+            done.wait()
+            let events = try BodyCapture.events(directory: dir)
+            let body = events.filter { $0.source == "ios" }, tapped = events.filter { $0.source == "widget" }
+            return saved && widgetResult != nil && store.error == nil && events.count == 2
+                && body.count == 1 && tapped.count == 1
+                && events.filter(\.completed).count == 1
+                && body[0].completed != widgetResult
+                && !BodyCapture.completed("exercise", events: events)
+        }
+        var threadFailures = 0
+        for _ in 0..<500 {
+            if !(try await trial { try BodyCapture.toggle("exercise", source: "widget", directory: $0).completed }) { threadFailures += 1 }
+        }
+        print("mixed threads: \(threadFailures) of 500 overlapping Body/widget tap pairs failed to alternate")
+        precondition(threadFailures == 0)
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0])
+        var processFailures = 0
+        for _ in 0..<40 {
+            let ok = try await trial { dir in
+                let child = Process(), pipe = Pipe()
+                child.executableURL = executable; child.arguments = ["tap", dir.path]; child.standardOutput = pipe
+                try child.run(); child.waitUntilExit()
+                let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                guard child.terminationStatus == 0 else { throw CocoaError(.fileWriteUnknown) }
+                return output.hasPrefix("true")
+            }
+            if !ok { processFailures += 1 }
+        }
+        print("mixed processes: \(processFailures) of 40 overlapping Body/widget-process tap pairs failed to alternate")
+        precondition(processFailures == 0)
     }
 }

@@ -103,4 +103,40 @@ enum BodyCapture {
     static func completed(_ ritual: String, at date: Date = .now, events: [BodyEvent]) -> Bool {
         events.last { $0.kind == "ritual" && $0.ritual == ritual && $0.local_day == day(date) }?.completed ?? false
     }
+    /// A ritual tap flips today's state, like the Body screen. Reads the record on
+    /// disk at tap time, never a possibly stale widget timeline; the receipt is a
+    /// new immutable event, so an undo syncs exactly like a record. The read and
+    /// the append happen under one exclusive flock shared by the app and widget,
+    /// so two overlapping taps alternate instead of both recording.
+    @discardableResult
+    static func toggle(_ ritual: String, source: String, now: Date = .now, directory: URL? = nil) throws -> BodyEvent {
+        let dir = try directory ?? root()
+        return try exclusively(in: dir) {
+            let existing = try events(directory: dir)
+            var event = BodyEvent(kind: "ritual", now: now)
+            event.source = source; event.ritual = ritual
+            event.completed = !completed(ritual, at: now, events: existing)
+            // A tap stamped before the lock was won, or in the same millisecond,
+            // must still sort after the receipt it read, or latest-wins would go
+            // backwards.
+            if let last = existing.last(where: { $0.kind == "ritual" && $0.ritual == ritual && $0.local_day == event.local_day }),
+               instant(last.captured_at) >= instant(event.captured_at) {
+                event.captured_at = timestamp(instant(last.captured_at).addingTimeInterval(0.001))
+            }
+            try save(event, directory: dir)
+            return event
+        }
+    }
+    /// Advisory lock on a file beside the receipts; flock holds across processes
+    /// and between separate opens within one process, and drops if a process dies.
+    static func exclusively<T>(in dir: URL, _ body: () throws -> T) throws -> T {
+        let fd = open(dir.appendingPathComponent(".toggle.lock").path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw CocoaError(.fileWriteUnknown) }
+        defer { close(fd) }
+        while flock(fd, LOCK_EX) != 0 {
+            guard errno == EINTR else { throw CocoaError(.fileLocking) }
+        }
+        defer { flock(fd, LOCK_UN) }
+        return try body()
+    }
 }
