@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 root=Path(__file__).resolve().parents[1]
 work=Path(tempfile.mkdtemp(prefix='alicia-voice-tests-'))
 project=work/'Alicia.xcodeproj';shutil.copytree(root/'Alicia.xcodeproj',project)
-for name in ['Alicia','AliciaWidgets']:(work/name).symlink_to(root/name,target_is_directory=True)
+for name in ['Alicia','AliciaWidgets','Shared']:(work/name).symlink_to(root/name,target_is_directory=True)
 for source in root.glob('*.plist'):(work/source.name).symlink_to(source)
 p=json.loads(subprocess.check_output(['plutil','-convert','json','-o','-',str(project/'project.pbxproj')]))
 o=p['objects'];r=o[p['rootObject']]
@@ -37,6 +37,7 @@ folder=work/'VoiceEvidenceTests';folder.mkdir()
 (folder/'VoiceEnrichment.swift').symlink_to(root/'Alicia/Core/VoiceEnrichment.swift')
 (folder/'VoiceEvidence.swift').symlink_to(root/'Alicia/Core/VoiceEvidence.swift')
 (folder/'VoiceProcessing.swift').symlink_to(root/'Alicia/Core/VoiceProcessing.swift')
+(folder/'SurfaceContext.swift').symlink_to(root/'Alicia/Core/SurfaceContext.swift')
 context_source=(root/'Alicia/Core/Collaboration.swift').read_text().split('struct WorkDialogueContext:',1)[1].split('enum CollaborationReturnPreferences',1)[0]
 (folder/'WorkDialogueContext.swift').write_text('import Foundation\nstruct WorkDialogueContext:'+context_source)
 # Exercise the actual shared history mapper, with inert dependencies instead of AppStore.init/load.
@@ -113,14 +114,19 @@ protocol AliciaService {
 }
 final class VoiceEvidenceTests:XCTestCase {
 
- @MainActor func macCapture(_ a:VoiceArchive,id:String,destination:String="dialogue",close:Bool=true)throws->VoiceAudioSink {
-  let sink=try a.begin(id:id,context:context(id),review:VoiceReview(destination:destination,proactiveID:destination=="proactive" ? "original-ask" : "",proactiveExcerpt:"Original question"))
+ @MainActor func macCapture(_ a:VoiceArchive,id:String,destination:String="dialogue",close:Bool=true,section:String?=nil)throws->VoiceAudioSink {
+  var captureContext=context(id)
+  if let section {
+   captureContext.episode_id="";captureContext.question_presented=""
+   captureContext.surface_context=SurfaceContext(section:section,captured_at:captureContext.started_at)
+  }
+  let sink=try a.begin(id:id,context:captureContext,review:VoiceReview(destination:destination,proactiveID:destination=="proactive" ? "original-ask" : "",proactiveExcerpt:"Original question"))
   sink.append(buffer())
   if close {a.addSegments(sink.drain(close:true).segments,to:id)}
   return sink
  }
- @MainActor func ready(_ a:VoiceArchive,id:String,destination:String="dialogue")async throws->FakeService {
-  _ = try macCapture(a,id:id,destination:destination)
+ @MainActor func ready(_ a:VoiceArchive,id:String,destination:String="dialogue",section:String?=nil)async throws->FakeService {
+  _ = try macCapture(a,id:id,destination:destination,section:section)
   XCTAssertTrue(a.finalize(id))
   var remote=a.recording(id)!
   let transcript=UUID().uuidString
@@ -286,6 +292,51 @@ final class VoiceEvidenceTests:XCTestCase {
   XCTAssertNotEqual(a.recording(id)?.review?.text,"Ignored")
   a.editRejectedSubmission(id);a.editReview(id,text:"New exact text")
   XCTAssertTrue(a.prepareSubmission(id,voice:false));XCTAssertNotEqual(a.recording(id)?.submission?.requestID,original)
+ }
+
+ @MainActor func testSectionWalkSendPreservesFrozenSurfaceAcrossRestartAndRetry()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id,destination:"walk",section:"us")
+  a.editReview(id,text:"A complete short thought that belongs to this original section.")
+  XCTAssertTrue(a.prepareSubmission(id,voice:false))
+  await a.advanceProcessing(using:f)
+  await VoiceArchive(root:a.root).advanceProcessing(using:f)
+  XCTAssertEqual(f.sends.count,2);XCTAssertEqual(f.sends[0],f.sends[1])
+  XCTAssertEqual(f.sends[0].body["surface"] as? String,"us")
+  XCTAssertEqual(f.sends[0].body["episode_id"] as? String,"")
+  XCTAssertEqual(f.sends[0].body["topic"] as? String,"")
+  XCTAssertEqual(f.sends[0].text,"A complete short thought that belongs to this original section.")
+ }
+ func testOldPendingSubmissionWithoutSurfaceStillDecodesExactly()throws {
+  let original=VoiceSubmission(requestID:"request",recordingID:"recording",transcriptionRequestID:"asr",transcriptID:"draft",text:"Exact words",destination:"walk",episodeID:"",prompt:"",proactiveID:"",voice:false,attempted:true)
+  var object=try JSONSerialization.jsonObject(with:JSONEncoder().encode(original)) as! [String:Any]
+  object.removeValue(forKey:"surface")
+  let restored=try JSONDecoder().decode(VoiceSubmission.self,from:JSONSerialization.data(withJSONObject:object))
+  XCTAssertEqual(restored,original);XCTAssertNil(restored.body["surface"])
+ }
+ @MainActor func testShortMacThoughtIsNotHiddenAsMisfire()async throws {
+  let a=archive(),id=UUID().uuidString,_=try await ready(a,id:id,destination:"walk",section:"us")
+  a.editReview(id,text:"Clarity needs the right orientation before I can act.")
+  XCTAssertLessThan(a.recording(id)!.duration,20)
+  XCTAssertFalse(a.recording(id)!.isMisfire)
+  a.editReview(id,text:"Thanks for watching!")
+  XCTAssertTrue(a.recording(id)!.isMisfire)
+ }
+ @MainActor func testMacDeliveryClosesRejectedPhoneSendWithoutReplay()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id,destination:"walk",section:"us")
+  XCTAssertTrue(a.prepareSubmission(id,voice:false))
+  f.submitResult = .rejected("Original section omitted")
+  await a.advanceProcessing(using:f)
+  var delivered=f.payload!.recordings[0]
+  delivered.links=[VoiceLink(receipt_id:"mac-receipt",text:"Machine words for review",kind:"walk")]
+  f.payload=VoiceEvidencePayload(recordings:[delivered])
+  await a.refresh(using:f)
+  XCTAssertEqual(a.recording(id)?.stage,.sent)
+  XCTAssertFalse(a.recording(id)!.canReopenSubmission)
+  a.editRejectedSubmission(id)
+  XCTAssertNotNil(a.recording(id)?.submission)
+  XCTAssertFalse(a.prepareSubmission(id,voice:false))
+  await a.advanceProcessing(using:f)
+  XCTAssertEqual(f.sends.count,1)
  }
 
  @MainActor func testDefiniteFailedStatusCanReopenExactWordsWithNewReceiptOnlyExplicitly()async throws {

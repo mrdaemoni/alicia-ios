@@ -1,5 +1,23 @@
 # Mac voice processing — A2-016 candidate
 
+## October 23 walk-delivery repair candidate
+
+A reviewed walk submission now freezes the original app section alongside its
+episode, question, words and machine-source receipts. A missing optional section
+still decodes from older pending submissions; the paired backend resolves it only
+from the immutable recording context. Explicit targets are never replaced.
+A delivered Mac link closes a pending or rejected phone send: it cannot reopen
+or resend, and the review surface hides the stale rejection notice. Walk review
+copy points to the delivery status rather than implying all walks require Send.
+
+Recordings with at least eight transcript words are not grouped as misfires just
+because they are short. Classification uses the reviewed or Mac text when present,
+then the on-device words. The paired backend removes the duration/character floor
+from its existing automatic walk delivery. Dialogue and private Body routing,
+recording finalization and uncertain-send rules are unchanged. Ordinary automatic
+walk delivery predates this repair; the explicit-send-only workflow below is
+historical. Release status and device acceptance remain separate from tests.
+
 New voice input follows capture → finish → upload → Mac transcription → review →
 explicit send. Capture-only mode asks for microphone permission, preserves the
 existing original-audio sink and meter, and does not start an Apple speech task.
