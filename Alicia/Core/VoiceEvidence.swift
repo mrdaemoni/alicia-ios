@@ -53,7 +53,7 @@ struct VoiceRecording: Codable, Identifiable {
     var submissionRejected: Bool?
     var submissionError: String?
     var canReopenSubmission: Bool {
-        !deleted && submission != nil && submissionStatus?.state != "outcome_unknown"
+        !deleted && links.isEmpty && submission != nil && submissionStatus?.state != "outcome_unknown"
             && (submissionRejected == true || submissionStatus?.state == "failed")
     }
     func canResumeDialogue(episodeID: String, proactiveID: String) -> Bool {
@@ -181,14 +181,16 @@ struct VoiceRecording: Codable, Identifiable {
             return lhs == rhs ? a.id < b.id : lhs < rhs
         }
     }
-    /// A press of the button, not a thought: short AND wordless. The ONE rule
+    /// Empty or near-empty words, not the length of a thought. The ONE rule
     /// every "needs you" surface uses. Before 2026-09-22 Sessions and the home
     /// count used it but the composer band did not, so Hector deleted one
     /// accidental S16E08 recording from the band, went home, and the band
     /// showed the next of four more — while Sessions said "none waiting on you".
     /// The backend's walk_autosend.is_misfire applies the same rule.
     var isMisfire: Bool {
-        stage != .sent && duration < 20 && latestWords.count < 200
+        let reviewed = review?.text ?? ""
+        let words = reviewed.isEmpty ? transcription?.draft?.text ?? latestWords : reviewed
+        return stage != .sent && words.split(whereSeparator: \.isWhitespace).count < 8
     }
 
     var latestWords: String {
@@ -656,7 +658,7 @@ final class VoiceArchive {
     }
 
     func retryTranscription(_ id: String) {
-        guard var record = recording(id), !record.isPrivateBody, !record.deleted, record.submission == nil,
+        guard var record = recording(id), !record.isPrivateBody, !record.deleted, record.links.isEmpty, record.submission == nil,
               let seal = record.finalization, record.transcription?.canRetryExplicitly == true else { return }
         if record.pendingTranscriptionRetry == nil {
             record.pendingTranscriptionRetry = VoiceTranscriptionRetry(recording_id: id,
@@ -675,7 +677,8 @@ final class VoiceArchive {
         record.submission = VoiceSubmission(requestID: UUID().uuidString, recordingID: id,
             transcriptionRequestID: state.request_id, transcriptID: transcriptID, text: text,
             destination: review.destination, episodeID: record.context.episode_id,
-            prompt: record.context.question_presented, proactiveID: review.proactiveID, voice: voice)
+            prompt: record.context.question_presented, proactiveID: review.proactiveID, voice: voice,
+            surface: record.context.episode_id.isEmpty ? record.context.surface_context?.section : nil)
         do { try replace(record); return true }
         catch { lastError = "Send could not be saved on this phone. Your words are kept."; return false }
     }
@@ -734,7 +737,7 @@ final class VoiceArchive {
     }
 
     private func advanceSubmission(_ id: String, using service: AliciaService) async {
-        guard var record = recording(id), !record.deleted, var submission = record.submission,
+        guard var record = recording(id), !record.deleted, record.links.isEmpty, var submission = record.submission,
               record.submissionRejected != true,
               !["completed", "failed", "outcome_unknown"].contains(record.submissionStatus?.state ?? "") else { return }
         var shouldPost = !submission.attempted
