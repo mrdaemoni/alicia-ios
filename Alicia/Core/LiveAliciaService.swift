@@ -130,9 +130,10 @@ struct LiveAliciaService: AliciaService {
                     if reportsConnection { ConnectionStatus.note(.unreachable) }
                     return nil
                 }
-                if reportsConnection { ConnectionStatus.note(.ok) }   // reachable + authorized
                 do {
-                    return try JSONDecoder().decode(D.self, from: data)
+                    let decoded = try JSONDecoder().decode(D.self, from: data)
+                    if reportsConnection { ConnectionStatus.note(.ok) }
+                    return decoded
                 } catch {
                     // Reached her and she answered; the shape disagreed. That
                     // is drift between this DTO and skills/ios_api.py, not a
@@ -588,6 +589,11 @@ struct LiveAliciaService: AliciaService {
     }
 
     private struct ModeDTO: Decodable { var mode: String; var words: Int }
+
+    func probeConnection() async -> Bool {
+        let mode: ModeDTO? = await fetchOne("/api/mode")
+        return mode != nil
+    }
 
     func modeState() async -> (mode: String, words: Int) {
         do {

@@ -29,13 +29,13 @@ struct EpisodeHomeView: View {
                         loadingBriefingID: store.reader.isLoadingMedia ? store.currentMorningBriefingID : nil,
                         failedBriefingID: store.reader.failure != nil ? store.currentMorningBriefingID : nil,
                         playbackError: store.reader.failure,
-                        isRefreshing: store.morningBriefingRefreshing,
+                        isRefreshing: store.morningBriefingRefreshing || store.connectionRecovering,
                         onTogglePlayback: store.toggleMorningBriefing,
                         // Pushed inside Us, so BACK returns home. It used to switch
                         // to the Studio tab, where BACK could only reach Studio
                         // (build 35 on the phone, 2026-09-27).
                         onOpenPlaylist: { briefingPlaylistID = $0 },
-                        onRefresh: { Task { await store.refreshMorningBriefing() } })
+                        onRefresh: { Task { await store.reprobeConnection() } })
                     MindBodyOverview()
                     // Option A (CL-20260918-context-graph-behaviours): his situation,
                     // above the goals, opening into the room with the whole graph.

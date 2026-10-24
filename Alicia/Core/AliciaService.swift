@@ -178,6 +178,8 @@ protocol AliciaService {
     func episodeNotes(label: String) async -> String
     /// Current thinking-mode state — ("walk"|"drive"|"idle", word count).
     func modeState() async -> (mode: String, words: Int)
+    /// A decoded, authenticated read; failure is distinct from idle mode.
+    func probeConnection() async -> Bool
     /// Start/end a thinking mode ("start_walk"/"end_walk"). Returns her
     /// acknowledgment message, or nil on failure.
     func modeAction(_ action: String, topic: String) async -> String?
@@ -254,6 +256,7 @@ protocol AliciaService {
 }
 
 extension AliciaService {
+    func probeConnection() async -> Bool { false }
     func intelligenceMode() async -> IntelligenceModeState? {
 #if DEBUG
         if self is MockAliciaService { return .localPreview }
