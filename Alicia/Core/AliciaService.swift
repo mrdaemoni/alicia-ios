@@ -121,6 +121,9 @@ protocol AliciaService {
     func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult?
     /// Steer, receipt or Landed / Didn't land for the steerable briefing.
     func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult
+    /// The steering study's weekly note card (CL-20261023-study-note-card).
+    func studyNote() async -> StudyNoteStatus?
+    func saveStudyNote(_ body: Data) async -> StudyNoteSave
     func collaboration() async -> CollaborationState?
     func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse?
     func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource?
@@ -297,6 +300,18 @@ extension AliciaService {
         if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") {
             return await BriefingSteeringPreview.answer(endpoint, body: body)
         }
+#endif
+        return .unreachable
+    }
+    func studyNote() async -> StudyNoteStatus? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--study-note-preview") { return await StudyNotePreview.status() }
+#endif
+        return nil
+    }
+    func saveStudyNote(_ body: Data) async -> StudyNoteSave {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--study-note-preview") { return await StudyNotePreview.save(body) }
 #endif
         return .unreachable
     }

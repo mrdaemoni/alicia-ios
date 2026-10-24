@@ -378,6 +378,7 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/episode/<label>` | shownotes markdown |
 | `POST /api/speak` · `GET /api/speech/<name>` | read-aloud: her voice rendered in ramped chunks (`skills/reading_voice.py`), returned as an ordered chunk list — `ready` / `streaming` / `rendering`, never blocking |
 | `GET /api/morning_briefing` (`segments[]`, `steering`) · `POST /api/morning_briefing/steer` · `POST /api/morning_briefing/receipt` · `GET /api/morning_briefing/audio/<id>/<file>.m4a` | the steerable morning briefing (CL-20261015-steerable-briefing): per-segment L+1/L0/L−1 variants with ledger-tagged sentences and measured cues; Higher · Lower · Again returns a deterministic interpretation; the phone posts opportunity, consequence and session-end receipts. Landed / Didn't land goes to `POST /api/morning_briefing/feedback` with the heard path. Study records, never training. See `docs/STEERABLE_BRIEFING.md` |
+| `GET /api/study_note` · `POST /api/study_note` | the steering study's weekly note (CL-20261023-study-note-card): whether Us shows the card today (a study week's last day, or the next day if that note is missing; same in both arms; no note text), and saving the template's answers verbatim with a UUID receipt to the study's own notes, which Alicia never reads |
 | `GET /api/playlists` · `POST /api/playlist` | Studio's listening queues (create/rename/delete/add/remove/reorder); adding also renders that piece's audio so a queue is warm before he drives |
 | `POST /api/cocreate` (base64 PNG + size + anchor, 120 s timeout) | canvas co-creation: she draws from where the pencil stopped, returns an overlay layer + caption |
 | `POST /api/complement` (base64 PNG, 120 s timeout) | drawing reply w/ vision — superseded by cocreate in the UI; `requestComplement` is currently unused |
@@ -534,3 +535,22 @@ what follows the sounding piece (`replaceFuture`). The arm comes from the
 payload; Landed / Didn't land is bound to the heard path; pause is never a
 signal. Fixture: `--morning-briefing-steer-preview` (invented text). See
 `docs/STEERABLE_BRIEFING.md`.
+
+
+## CL-20261023-study-note-card — the study's weekly note on Us
+
+`Core/StudyNote.swift` (status, draft with its receipt, protected per-week draft
+files, response mapping) and `Features/Home/StudyNoteCard.swift`.
+- **The card.** A quiet line sits at the top of Us only when
+  `GET /api/study_note` says so: a study week's last day, or the next day if
+  that week's note is missing. It reads "Week N note · two minutes, your own
+  words".
+- **The sheet.** It opens the template's six prompts plus "Mornings I played
+  it", and blank is valid. Every keystroke is kept on the phone.
+- **Saving.** SAVE posts the words verbatim with a UUID receipt. A retry of the
+  same words reuses it; changed words get a new one. Only a confirmed save
+  clears the draft. The card then reads "Week N note saved" for the rest of
+  the day.
+- **Fixture:** `--study-note-preview` (`--study-note-fail-once` for the retry
+  path). Logic is in `scripts/test_study_note.py`, UI in
+  `scripts/test_study_note_ui.py`.

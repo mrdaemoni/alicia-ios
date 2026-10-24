@@ -820,6 +820,29 @@ final class AppStore {
         if let fresh = await service.morningBriefing() { morningBriefing = fresh }
     }
 
+    // MARK: the study's weekly note (CL-20261023-study-note-card)
+
+    var studyNote: StudyNoteStatus?
+
+    func refreshStudyNote() async {
+        guard let fresh = await service.studyNote() else { return }
+        studyNote = fresh.isUsable ? fresh : nil
+    }
+
+    /// Sends his words with their receipt. Only a save the Mac confirms lets
+    /// the phone forget them; anything else keeps the draft and its receipt
+    /// for a retry.
+    func saveStudyNote(_ draft: inout StudyNoteDraft) async -> StudyNoteSave {
+        let receipt = draft.receipt()
+        StudyNoteDrafts.store(draft)
+        let result = await service.saveStudyNote(draft.body(requestID: receipt))
+        if case .saved = result {
+            StudyNoteDrafts.clear(week: draft.week)
+            await refreshStudyNote()
+        }
+        return result
+    }
+
     var currentMorningBriefingID: String? {
         guard let id = reader.current?.stableID, id.hasPrefix("morning:") else { return nil }
         return String(id.dropFirst("morning:".count))
@@ -934,6 +957,7 @@ final class AppStore {
     func load() async {
         Task { await refreshPresence() }
         Task { await refreshMorningBriefing() }
+        Task { await refreshStudyNote() }
         briefingSteering.flush()
         Task { await collaboration.load() }
         Task { await refreshVoiceArchive() }

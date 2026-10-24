@@ -905,6 +905,21 @@ struct LiveAliciaService: AliciaService {
         } catch { return .unreachable }
     }
 
+    // MARK: the study's weekly note (CL-20261023-study-note-card)
+
+    func studyNote() async -> StudyNoteStatus? {
+        await fetchOne("/api/study_note")
+    }
+
+    func saveStudyNote(_ body: Data) async -> StudyNoteSave {
+        var req = request("/api/study_note", method: "POST", body: body)
+        req.timeoutInterval = 15
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            return StudyNoteResponse.decode(status: (response as? HTTPURLResponse)?.statusCode ?? 0, data: data)
+        } catch { return .unreachable }
+    }
+
     private struct PlaylistDTO: Decodable {
         struct ItemDTO: Decodable {
             var id, kind, title: String?

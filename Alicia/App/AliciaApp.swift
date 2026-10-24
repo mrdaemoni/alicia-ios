@@ -6,7 +6,7 @@ struct AliciaApp: App {
     /// mock otherwise — see AliciaConfig.
     @State private var store = AppStore(service: {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--body-preview") || ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") || ProcessInfo.processInfo.arguments.contains("--collaboration-preview") || ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") || ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") || ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") || ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return MockAliciaService() }
+        if ProcessInfo.processInfo.arguments.contains("--body-preview") || ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") || ProcessInfo.processInfo.arguments.contains("--collaboration-preview") || ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") || ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") || ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") || ProcessInfo.processInfo.arguments.contains("--study-note-preview") || ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return MockAliciaService() }
 #endif
         return AliciaConfig.makeService()
     }())
