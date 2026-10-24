@@ -1,3 +1,21 @@
+## September 30 — contextual input is shared furniture
+
+The five-tab shell now owns one real text field above navigation. Hector can
+type and send from Us, Mind, Body, Alicia or Studio without opening another
+screen first; the reply opens over the room that accepted the words, carrying
+that frozen `SurfaceContext`. Drafts remain separate by section. TALK opens the
+shared full-screen particle listening room. A chosen episode enriches Us and
+Studio, while Body, Mind and Alicia spoken turns keep their visible section as
+the subject; Body remains private between the phone and Mac.
+
+The Daily rituals widget uses an unconditional full-colour near-black plate
+with white text and opts out of removable container backgrounds. The Mac body
+journal had no widget receipt after September 27 at inspection time, so the
+reported September 30 tap had not synced to the Mac; its phone-local state was
+unavailable because Pandaiux was not connected. Candidate source and evidence
+live in `CL-20260930-contextual-input`; release status belongs to its shared
+task record.
+
 ## September 19 — blind Jev impulse study in Aves
 
 This paired backend/app release adds an auditable private study surface under

@@ -23,7 +23,7 @@ struct RitualWidgetPreview: View {
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .accessibilityIdentifier("widget.plain")
             Text("WIDGET · TINTED").font(.system(size: 10, design: .monospaced)).tracking(2)
-            RitualWidgetContent(entry: entry, forceAccented: true)
+            RitualWidgetContent(entry: entry)
                 .frame(height: 160)
                 .padding(14).background(Color(red: 0.08, green: 0.12, blue: 0.10))
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))

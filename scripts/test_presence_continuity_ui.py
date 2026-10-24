@@ -90,7 +90,7 @@ final class PresenceContinuityUITests: XCTestCase {
   let app=launch("us")
   for name in ["US","MIND","BODY","ALICIA","STUDIO"] {
    app.buttons[name].tap()
-   XCTAssertTrue(app.buttons["dialogue.composer"].waitForExistence(timeout:10))
+   XCTAssertTrue(app.textFields["conversation.fieldInline"].waitForExistence(timeout:10))
    capture("room-"+name,app)
   }
  }

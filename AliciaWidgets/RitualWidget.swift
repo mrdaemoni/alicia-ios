@@ -32,5 +32,6 @@ struct RitualWidget: Widget {
         .configurationDisplayName("Daily rituals")
         .description("Exercise, cold plunge and sauna. One tap to record each; open Alicia to sync.")
         .supportedFamilies([.systemMedium])
+        .containerBackgroundRemovable(false)
     }
 }

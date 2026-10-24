@@ -62,8 +62,7 @@ struct RootView: View {
         VStack(spacing: 0) {
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--ritual-widget-preview") {
-                RitualWidgetContent(entry: RitualEntry(date: .now, events: [], pending: 0, failed: false),
-                    forceAccented: ProcessInfo.processInfo.arguments.contains("--accented-preview"))
+                RitualWidgetContent(entry: RitualEntry(date: .now, events: [], pending: 0, failed: false))
                     .frame(height: 160).padding(16)
             }
 #endif
@@ -97,7 +96,9 @@ struct RootView: View {
             ReadingBar()
             EditorialTabBar()
         }
-        .ignoresSafeArea(edges: .bottom)
+        // Keep the hard bottom edge for the home indicator, but let the
+        // keyboard lift the real shared field instead of covering it.
+        .ignoresSafeArea(.container, edges: .bottom)
         // The screen she is placed against, measured once for every surface.
         .background {
             GeometryReader { geo in

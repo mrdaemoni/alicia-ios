@@ -385,6 +385,13 @@ final class AppStore {
     /// what it is *about* changes, and `walkSurface` is what carries that to
     /// the backend.
     func openWalk(probe: String = "", surface: SurfaceContext? = nil) {
+        // A section that does not display the chosen episode is authoritative.
+        // Without this, TALK from Body became an episode walk whenever Studio
+        // happened to have an episode selected.
+        if let surface, surface.episode_id.isEmpty {
+            openSurfaceWalk(surface, probe: probe)
+            return
+        }
         guard let episode = episodeDay?.episode else {
             guard let surface else {
                 episodeError = "Play an episode in Studio to begin."
@@ -508,7 +515,7 @@ final class AppStore {
             playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0,
             proactive_id: walk ? nil : answeringAskID)
         context.surface_context = surface ?? walkSurfaceContext
-        let privateBody = surface?.section == "body"
+        let privateBody = (surface ?? walkSurfaceContext)?.section == "body"
         let review = VoiceReview(destination: walk ? "walk" : answeringAskID == nil ? "dialogue" : "proactive",
                                  proactiveID: walk ? "" : answeringAskID ?? "",
                                  proactiveExcerpt: walk ? "" : answeringAskExcerpt)
@@ -1343,8 +1350,11 @@ final class AppStore {
     /// the arc is something he looks at and closes, not somewhere he goes.
     var showArc = false
 
-    func openConversation() {
-        conversationContext = surfaceContext()
+    func openConversation(context: SurfaceContext? = nil) {
+        // A caller that already accepted words freezes the exact room those
+        // words came from. Opening the reply layer must not re-sample a tab
+        // that may be changing during the same gesture.
+        conversationContext = context ?? surfaceContext()
         showConversation = true
     }
 
