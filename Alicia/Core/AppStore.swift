@@ -23,6 +23,9 @@ final class AppStore {
     var intelligenceMode: IntelligenceModeState = .balanced
     var intelligenceModeSaving = false
     var intelligenceModeError = ""
+    private var intelligenceModeRevision = 0
+    private var connectionRecoveryTask: Task<Void, Never>?
+    var connectionRecovering: Bool { connectionRecoveryTask != nil }
 
     // Player state — real AVPlayer for backend tracks, ticker fallback for
     // sample data (see "Studio player" below)
@@ -240,7 +243,12 @@ final class AppStore {
     }
 
     func refreshIntelligenceMode() async {
-        if let fresh = await service.intelligenceMode() {
+        guard !intelligenceModeSaving else { return }
+        let revision = intelligenceModeRevision
+        let fresh = await service.intelligenceMode()
+        // A retry read must not overwrite a setting changed while it waited.
+        guard revision == intelligenceModeRevision, !intelligenceModeSaving else { return }
+        if let fresh {
             intelligenceMode = fresh
             intelligenceModeError = ""
         } else if !isMock {
@@ -250,6 +258,7 @@ final class AppStore {
 
     func setLocalIntelligence(_ enabled: Bool) async {
         guard !intelligenceModeSaving else { return }
+        intelligenceModeRevision += 1
         intelligenceModeSaving = true
         intelligenceModeError = ""
         let previous = intelligenceMode
@@ -1389,10 +1398,25 @@ final class AppStore {
     /// the Us title opens. Through the store because views do not touch the
     /// network; kept as plain reads because this surface shows state, it does
     /// not own any.
-    /// One cheap read whose only job is to find out whether she is reachable.
-    /// `fetchOne` reports the outcome to ConnectionStatus, so a success here
-    /// clears the banner.
-    func reprobeConnection() async { _ = await service.modeState() }
+    /// Share one authenticated probe and home reload between automatic and
+    /// explicit retries. A failed probe cannot turn idle fallback into success.
+    func reprobeConnection() async {
+        if let task = connectionRecoveryTask { await task.value; return }
+        let task = Task { [weak self] in
+            guard let self, await self.service.probeConnection() else { return }
+            async let mode: Void = self.refreshIntelligenceMode()
+            // Recovery owns fresh reads even if an older page load is still
+            // waiting. Do not skip a recovered reading behind its busy flag.
+            async let briefing = self.service.morningBriefing()
+            async let episode = self.service.episodeDay(day: "")
+            let (_, freshBriefing, freshEpisode) = await (mode, briefing, episode)
+            if let freshBriefing { self.morningBriefing = freshBriefing }
+            if let freshEpisode { self.acceptEpisodeDay(freshEpisode) }
+        }
+        connectionRecoveryTask = task
+        await task.value
+        connectionRecoveryTask = nil
+    }
 
     func ourArc() async -> [TimelineDay] { await service.timeline() }
     func herPictureOfYou() async -> ContextEnrichment? { await service.contextEnrichment(replyID: "") }

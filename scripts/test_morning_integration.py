@@ -25,6 +25,7 @@ struct SpeechChunk: Hashable { var url:URL; var duration:TimeInterval; var text:
 @MainActor final class Steering { var briefing:MorningBriefing?; func isCurrent(_ r:Reader) -> Bool { false }; func play(_ b:MorningBriefing) {} }
 enum Section {case us,studio}
 @MainActor final class Store {
+ var showBriefingStage=false
  let service=FakeService();let reader=Reader();var selectedSection=Section.us
  let briefingSteering=Steering()
  func configureRemoteCommandsOnce() {}
