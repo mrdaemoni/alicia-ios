@@ -149,3 +149,15 @@ steers, and a DEBUG label shows the heard path and seconds.
 Simulator results are not phone evidence. Still to check on Pandaiux: how
 the seams and fades sound, the lock screen and headphone mapping, Bluetooth
 latency, and the after-arm replay.
+
+
+## The weekly note card (CL-20261023-study-note-card)
+
+The study asks for a weekly note. From week 2, Us shows a quiet card on a study
+week's last day, and the next day if that note is still missing. It's the same
+in both arms. It is not part of the briefing, its steering or its verdict.
+- **The sheet:** the template's six prompts. The answers are saved verbatim,
+  with a receipt, to the study's own `study/notes/week-N.md`, which Alicia
+  never reads.
+- **Recorded as a dated deviation** on the study task. The build is installed
+  at a study-week boundary.
