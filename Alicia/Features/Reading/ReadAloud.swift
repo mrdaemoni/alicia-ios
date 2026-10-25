@@ -188,12 +188,14 @@ struct ReadingBar: View {
     var body: some View {
         let reader = store.reader
         if let item = reader.current {
+            // The morning briefing opens as a room with no text (BriefingStage).
+            let briefing = (item.stableID ?? "").hasPrefix("morning:")
             VStack(spacing: 7) {
                 HStack(spacing: 12) {
                     // The title block opens the reader: a real Button (it was
                     // a tap gesture on text), with READ ALONG in its label so
                     // the UI test and VoiceOver both find it.
-                    Button { showReader = true } label: {
+                    Button { if briefing { store.showBriefingStage = true } else { showReader = true } } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.title.strippedEmojis.isEmpty
                                  ? "A reading" : item.title.strippedEmojis)
@@ -213,7 +215,7 @@ struct ReadingBar: View {
                                     .foregroundStyle(Theme.paper.opacity(0.6))
                             }
                             HStack(spacing: 4) {
-                                Text("READ ALONG")
+                                Text(briefing ? "FULL SCREEN" : "READ ALONG")
                                     .font(.system(size: 9, design: .monospaced).weight(.semibold))
                                     .tracking(1.2).foregroundStyle(Theme.paper.opacity(0.85))
                                 InkChevron(pointing: .right, size: 9, color: Theme.paper.opacity(0.7), seed: 61)
@@ -226,7 +228,7 @@ struct ReadingBar: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityAddTraits(.isButton)
                     .accessibilityIdentifier("reading.open")
-                    .accessibilityHint("Open immersive reading")
+                    .accessibilityHint(briefing ? "Open the full-screen briefing" : "Open immersive reading")
                     Spacer(minLength: 4)
                     Button { reader.cycleRate() } label: {
                         Text(rateLabel)
@@ -282,6 +284,10 @@ struct ReadingBar: View {
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(Theme.paper.opacity(0.55))
                 }
+                // The steerable briefing: Higher · Lower · Again, its one-line
+                // interpretation and, at the end, Landed / Didn't land. While the
+                // full-screen room is up the controls live there, never twice.
+                if !store.showBriefingStage { BriefingSteeringPanel(onInk: true) }
             }
             .padding(.horizontal, 18)
             .padding(.top, 12)

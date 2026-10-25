@@ -166,7 +166,12 @@ struct MessageBubble: View {
                     .font(.caption2)
                     .foregroundStyle(Theme.accentSoft)
                 }
-                bubble
+                if let failure = message.deliveryFailure {
+                    InkNotice(text: failure.message, kind: .error)
+                        .accessibilityIdentifier("conversation.deliveryFailure")
+                } else {
+                    bubble
+                }
                 // v23: her explicit asks carry the door to answer them —
                 // the reply lands in her capture loops, not a fresh chat.
                 if message.isAsk, message.proactiveID != nil {

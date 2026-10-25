@@ -137,7 +137,7 @@ struct PlaylistDetailView: View {
                     title: item.title,
                     excerpt: String(item.body.prefix(220)),
                     body: item.body,
-                    date: item.source,
+                    date: item.source == "scaleofus_original" ? "Scaleofus · Original recording" : item.source,
                     speechChunks: item.speechChunks,
                     speechDuration: item.duration,
                     stableReadingID: item.readable.stableID))

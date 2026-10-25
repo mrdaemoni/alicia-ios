@@ -77,8 +77,8 @@ struct ConversationSheet: View {
                 Text("Private · this stays between your phone and your Mac.")
                     .font(.caption).foregroundStyle(Theme.inkSoft)
             }
-            // Context he attached elsewhere travels in with him rather than
-            // being silently dropped by the change of surface.
+            // A passage enters through Discuss this, not a leftover global
+            // selection from a different room.
             if !privateBody, let work = store.collaboration.dialogueContext {
                 HStack {
                     Text("Passage · " + work.sectionTitle.strippedEmojis).font(.caption).foregroundStyle(Theme.inkSoft).lineLimit(1)
@@ -126,13 +126,16 @@ struct ConversationSheet: View {
                 guard let last = messages.last else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
             }
-            .task { if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) } }
+            .task {
+                if !privateBody { await store.refreshConversation() }
+                if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+            }
         }
     }
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if sent {
+            if sent, draft.wrappedValue.isEmpty {
                 Text(privateBody ? "Asked. Her answer appears above."
                                  : "Sent. Her reply appears above, and stays in Dialogue.")
                     .font(.caption).foregroundStyle(Theme.inkSoft)
@@ -144,6 +147,7 @@ struct ConversationSheet: View {
                     .lineLimit(1...6)
                     .font(.system(size: 17, design: .serif))
                     .focused($focused)
+                    .disabled(!privateBody && busy)
                     .padding(.horizontal, 13).padding(.vertical, 11)
                     .background(Theme.paper.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.stroke, lineWidth: 0.7))
@@ -181,10 +185,18 @@ struct ConversationSheet: View {
         if privateBody {
             store.sendPrivateBody(text, recordingID: UserDefaults.standard
                 .string(forKey: "alicia.bodyDraftRecordingID") ?? "")
+            draft.wrappedValue = ""
+            sent = true
         } else {
-            store.send(text, surfaceContext: section)
+            sent = false
+            let sourceSection = section.section
+            let drafts = store.composerDrafts
+            // Keep the durable draft until the server acknowledges this send.
+            // A validation/transport failure leaves his exact words editable.
+            store.send(text, surfaceContext: section) { confirmed in
+                if confirmed { drafts.acknowledge(text, for: sourceSection) }
+                sent = confirmed
+            }
         }
-        draft.wrappedValue = ""
-        sent = true
     }
 }

@@ -215,17 +215,11 @@ struct VoiceEvidenceResult: Decodable {
 }
 
 func voiceDate(_ timestamp: String) -> Date {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    if let date = formatter.date(from: timestamp) { return date }
-    formatter.formatOptions = [.withInternetDateTime]
-    return formatter.date(from: timestamp) ?? .distantPast
+    BodyCapture.instant(timestamp)
 }
 
 func voiceTimestamp(_ date: Date = .now) -> String {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return formatter.string(from: date)
+    BodyCapture.timestamp(date)
 }
 
 /// Microphone tap sink. PCM bytes are preserved independently of recognition.

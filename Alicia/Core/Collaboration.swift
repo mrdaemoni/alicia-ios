@@ -235,6 +235,11 @@ final class CollaborationStore {
     private let key = "alicia.collaboration."
     private let notifications: Bool
     var canEdit: Bool { !busy && pending.isEmpty }
+    /// An uncertain receipt locks only its passage. Other reviews may queue
+    /// behind it; each retains its own words, hash and expected revision.
+    func canReview(resultID: String, sectionID: String) -> Bool {
+        !pending.contains { $0.action == "work_review" && $0.result_id == resultID && $0.section_id == sectionID }
+    }
     var locallyStopped: Bool { defaults.bool(forKey: key + "stopped") }
 
     init(service: AliciaService, defaults: UserDefaults = .standard, notifications: Bool = true) {
@@ -318,7 +323,9 @@ final class CollaborationStore {
         await service.collaborationSource(connectionID: connectionID, resultID: resultID, evidenceID: evidenceID)
     }
     @discardableResult func submit(_ mutation: CollaborationMutation, draftName: String? = nil) async -> Bool {
-        guard canEdit else { return false }
+        guard mutation.action == "work_review"
+            ? canReview(resultID: mutation.result_id ?? "", sectionID: mutation.section_id ?? "")
+            : canEdit else { return false }
         if let draftName {
             var saved = draft(draftName) ?? [:]
             saved["request_id"] = mutation.event_id

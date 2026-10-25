@@ -138,6 +138,8 @@ struct RootView: View {
         // Serif body type everywhere — the sketchbook voice.
         .fontDesign(.serif)
         .fullScreenCover(isPresented: $store.showWalk) { WalkReflectionView() }
+        // The morning briefing as a room: her field, her voice, the steering row.
+        .fullScreenCover(isPresented: $store.showBriefingStage) { BriefingStage() }
         // Writing to her is contextual: it belongs on top of the page he is
         // already on, carrying that page in with it, and it gives the page
         // back when he closes it. Dialogue stays a place he can also go.

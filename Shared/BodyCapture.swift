@@ -30,10 +30,23 @@ struct BodyEvent: Codable, Identifiable, Equatable {
 }
 
 enum BodyCapture {
+    /// ISO timestamps are immutable inputs. Reusing the parser and a bounded
+    /// date cache avoids thousands of ICU formatter constructions in UI sorts.
+    private final class TimestampCodec: @unchecked Sendable {
+        let lock = NSLock()
+        let fractional = ISO8601DateFormatter()
+        let plain = ISO8601DateFormatter()
+        let dates = NSCache<NSString, NSDate>()
+        init() {
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            plain.formatOptions = [.withInternetDateTime]
+            dates.countLimit = 4096
+        }
+    }
+    private static let codec = TimestampCodec()
     static func timestamp(_ date: Date = .now) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: date)
+        codec.lock.lock(); defer { codec.lock.unlock() }
+        return codec.fractional.string(from: date)
     }
     static let rituals = [("exercise", "Exercise"), ("cold_plunge", "Cold plunge"), ("sauna", "Sauna")]
     static func day(_ date: Date) -> String {
@@ -45,15 +58,24 @@ enum BodyCapture {
         return formatter.string(from: date)
     }
     static func instant(_ text: String) -> Date {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: text) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: text) ?? .distantPast
+        codec.lock.lock(); defer { codec.lock.unlock() }
+        if let date = codec.dates.object(forKey: text as NSString) { return date as Date }
+        let date = codec.fractional.date(from: text) ?? codec.plain.date(from: text) ?? .distantPast
+        codec.dates.setObject(date as NSDate, forKey: text as NSString)
+        return date
     }
     static func before(_ lhs: BodyEvent, _ rhs: BodyEvent) -> Bool {
         let a = instant(lhs.captured_at), b = instant(rhs.captured_at)
         return a == b ? lhs.id < rhs.id : a < b
+    }
+    static func sorted(_ events: [BodyEvent]) -> [BodyEvent] {
+        // Parse once per event, never inside the O(n log n) comparator.
+        let dated: [(event: BodyEvent, instant: Date)] = events.map { (event: $0, instant: instant($0.captured_at)) }
+        let ordered = dated.sorted { left, right in
+            if left.instant == right.instant { return left.event.id < right.event.id }
+            return left.instant < right.instant
+        }
+        return ordered.map { $0.event }
     }
     static func root() throws -> URL {
         guard let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.myalicia.app") else {
@@ -78,10 +100,10 @@ enum BodyCapture {
     }
     static func events(directory: URL? = nil) throws -> [BodyEvent] {
         let dir = try directory ?? root()
-        return try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+        let events = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "json" && !isDiscarded($0.deletingPathExtension().lastPathComponent, directory: dir) }
             .map { try JSONDecoder().decode(BodyEvent.self, from: Data(contentsOf: $0)) }
-            .sorted(by: before)
+        return sorted(events)
     }
     static func acknowledge(_ id: String, directory: URL? = nil) throws {
         let dir = try directory ?? root()
@@ -101,6 +123,7 @@ enum BodyCapture {
         }
     }
     static func completed(_ ritual: String, at date: Date = .now, events: [BodyEvent]) -> Bool {
-        events.last { $0.kind == "ritual" && $0.ritual == ritual && $0.local_day == day(date) }?.completed ?? false
+        let today = day(date)
+        return events.last { $0.kind == "ritual" && $0.ritual == ritual && $0.local_day == today }?.completed ?? false
     }
 }

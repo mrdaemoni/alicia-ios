@@ -21,20 +21,22 @@ def method(name):
 methods = '\n'.join(method(name) for name in [
     'func toggle()', 'private func locate(', 'private func rebuildQueue(',
     'private func updateMediaState(', 'private func mediaDidFail(',
-    'private func retryMedia()', 'private func extend(', 'func seekToNarration('])
+    'private func retryMedia()', 'private func extend(', 'func seekToNarration(', 'var isActuallySpeaking:',
+    'private func runEnd('])
 
 # Keep the fake IO separate; only the production methods above decide state.
 harness = r'''
 import Foundation
-struct Readable: Equatable { var id: String; var episodeID: String? = nil }
-struct SpeechChunk { var duration: Double }
-struct CMTime { var seconds: Double; var preferredTimescale: Int }
+struct Readable: Equatable { var id: String; var episodeID: String? = nil; var stableID: String? = nil }
+struct SpeechChunk { var duration: Double; var clipStart: Double = 0 }
+struct CMTime { var seconds: Double; var preferredTimescale: Int; static let zero = CMTime(seconds: 0, preferredTimescale: 600) }
 enum Status { case unknown, readyToPlay, failed }
 enum TimeStatus { case paused, waitingToPlayAtSpecifiedRate, playing }
 final class AVPlayerItem {
     var status = Status.unknown
     var sought = 0.0
-    func seek(to time: CMTime, completionHandler: ((Bool) -> Void)?) { sought = time.seconds }
+    func seek(to time: CMTime, toleranceBefore: CMTime = .zero, toleranceAfter: CMTime = .zero,
+              completionHandler: ((Bool) -> Void)?) { sought = time.seconds }
 }
 final class AVQueuePlayer {
     enum Action { case advance }
@@ -76,6 +78,9 @@ final class Synth {
     func seek(to fraction: Double) { seekFractions.append(fraction) }
     var episodeStopped: ((Bool) -> Void)?
     var appendShouldFail = false
+    var lastTick: (index: Int, time: TimeInterval)?
+    var hasPieces = false, reportedPiece = -1
+    var pieceDidStart: ((Int) -> Void)?
     func activateAudioSession() {}
     func publishNowPlaying() {}
     func deviceCharIndex(for: Double) -> Int { 0 }
@@ -113,12 +118,18 @@ final class Synth {
     finished.toggle()
     check(finished.isSpeaking && finished.progress == 0, "A finished reading restarts explicitly")
     let startup = Probe()
+    check(!startup.isActuallySpeaking, "Play intent cannot claim observed speaking")
     startup.updateMediaState(generation: 1)
     check(startup.isSpeaking && startup.isLoadingMedia, "Startup intent remains loading before the first player callback")
     startup.queue.timeControlStatus = .playing; startup.updateMediaState(generation: 1)
     check(startup.isSpeaking && !startup.isLoadingMedia, "Actual playing clears loading")
+    let audible = AVPlayerItem(); audible.status = .readyToPlay; startup.queue.items = [audible]
+    check(startup.isActuallySpeaking, "Ready samples on a playing queue are observed speaking")
     startup.queue.timeControlStatus = .waitingToPlayAtSpecifiedRate; startup.updateMediaState(generation: 1)
     check(startup.isSpeaking && startup.isLoadingMedia, "Buffer stall remains visibly loading")
+    check(!startup.isActuallySpeaking, "A buffer stall clears observed speaking despite play intent")
+    startup.queue.timeControlStatus = .playing
+    check(startup.isActuallySpeaking, "Actual playback recovery restores observed speaking")
     startup.toggle()
     check(!startup.isSpeaking && !startup.isLoadingMedia && startup.queue.rate == 0, "Pause clears playback intent and loading")
     startup.queue.beforePlay = { precondition(startup.isLoadingMedia, "Loading precedes queue.play") }
