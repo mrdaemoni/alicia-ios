@@ -14,7 +14,9 @@ struct MindBodyOverview: View {
     private var mindGoals: [CollaborationState.Goal] { store.collaboration.state?.activeGoals ?? [] }
     private var bodyGoals: [BodyEvent] { store.bodyStore.goals.filter { $0.status == "active" } }
     private var recorded: [String] {
-        BodyCapture.rituals.filter { BodyCapture.completed($0.0, events: store.bodyStore.events) }.map(\.1)
+        let events = store.bodyStore.events
+        let now = Date()
+        return BodyCapture.rituals.filter { BodyCapture.completed($0.0, at: now, events: events) }.map(\.1)
     }
     private var observation: String? {
         guard let overview = store.bodyStore.overview, overview.status == "ready",
@@ -38,7 +40,8 @@ struct MindBodyOverview: View {
         let mind = mindGoals.isEmpty
             ? (finished > 0 ? "Mind: ready for a next goal" : "Mind: no shared goal yet")
             : "Mind: \(mindGoals.count) shared goal\(mindGoals.count == 1 ? "" : "s")"
-        let body = recorded.isEmpty ? "Body: nothing logged today" : "Body: " + recorded.joined(separator: ", ")
+        let rituals = recorded
+        let body = rituals.isEmpty ? "Body: nothing logged today" : "Body: " + rituals.joined(separator: ", ")
         return mind + " · " + body
     }
 

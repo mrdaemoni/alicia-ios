@@ -22,9 +22,16 @@ struct ListeningPresence: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            AliciaPresence(voice: voice, state: isRecording ? .listening : isStarting ? .thinking : .resting,
+            Group {
+            if LivePresenceClient.shared.enabled {
+                RelationalPresence(motion: LivePresenceClient.shared.motion,
+                    isActive: isRecording && scenePhase == .active, previewReduction: previewReduction)
+            } else {
+                AliciaPresence(voice: voice, state: isRecording ? .listening : isStarting ? .thinking : .resting,
                 attention: isRecording ? 0.55 + 0.3 * (level.isFinite ? min(1, max(0, level)) : 0) : 0.45,
                 isActive: isRecording && scenePhase == .active, previewsReduceMotion: previewReduction)
+            }
+            }
                 .frame(width: 110, height: 90)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {

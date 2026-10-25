@@ -83,6 +83,12 @@ struct SpeechChunk: Hashable {
     var timingStatus: String = "unavailable"
     var spokenText: String = ""
     var speechBackend: String = ""
+    /// A steerable-briefing piece may start and end inside its file (seconds
+    /// in the file). `duration` is always the part that plays.
+    var clipStart: TimeInterval = 0
+    var clipEnd: TimeInterval? = nil
+    /// Which segment variant this piece is, when it is one.
+    var piece: BriefingPiece? = nil
 }
 
 /// Where a read-aloud request got to.
@@ -103,10 +109,8 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
-#if DEBUG
     func livePresence() async -> LivePresenceFact?
     func reportPresence(_ event: PresenceEvent) async -> Bool
-#endif
     func intelligenceMode() async -> IntelligenceModeState?
     func setIntelligenceMode(_ mode: String) async -> IntelligenceModeState?
     func askBody(_ text: String) async -> BodyAnswer?
@@ -116,6 +120,9 @@ protocol AliciaService {
     func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult?
     func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus
     func morningBriefing() async -> MorningBriefing?
+    func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult?
+    /// Steer, receipt or Landed / Didn't land for the steerable briefing.
+    func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult
     func collaboration() async -> CollaborationState?
     func collaborationAction(_ mutation: CollaborationMutation) async -> CollaborationResponse?
     func collaborationSource(connectionID: String, resultID: String, evidenceID: String) async -> ContextSource?
@@ -173,6 +180,8 @@ protocol AliciaService {
     func episodeNotes(label: String) async -> String
     /// Current thinking-mode state — ("walk"|"drive"|"idle", word count).
     func modeState() async -> (mode: String, words: Int)
+    /// A decoded, authenticated read; failure is distinct from idle mode.
+    func probeConnection() async -> Bool
     /// Start/end a thinking mode ("start_walk"/"end_walk"). Returns her
     /// acknowledgment message, or nil on failure.
     func modeAction(_ action: String, topic: String) async -> String?
@@ -249,10 +258,9 @@ protocol AliciaService {
 }
 
 extension AliciaService {
-#if DEBUG
     func livePresence() async -> LivePresenceFact? { nil }
     func reportPresence(_ event: PresenceEvent) async -> Bool { false }
-#endif
+    func probeConnection() async -> Bool { false }
     func intelligenceMode() async -> IntelligenceModeState? {
 #if DEBUG
         if self is MockAliciaService { return .localPreview }
@@ -274,13 +282,30 @@ extension AliciaService {
     func morningBriefing() async -> MorningBriefing? {
 #if DEBUG
         // Invented fixture (this repo is public): a ready briefing with a playlist.
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") {
+            return await BriefingSteeringPreview.briefing()
+        }
         if ProcessInfo.processInfo.arguments.contains("--morning-briefing-preview") {
-            return MorningBriefing(id: "preview-briefing", day: Date.now.formatted(.iso8601.year().month().day()),
-                                   title: "Preview · Three quiet signals", text: "Preview text of a short briefing.",
-                                   status: "ready", playlist_id: "preview-briefing-playlist")
+            return await MorningBriefingPreview.value
         }
 #endif
         return nil
+    }
+    func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-preview") {
+            return await MorningBriefingPreview.save(mutation)
+        }
+#endif
+        return nil
+    }
+    func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") {
+            return await BriefingSteeringPreview.answer(endpoint, body: body)
+        }
+#endif
+        return .unreachable
     }
     func collaboration() async -> CollaborationState? {
 #if DEBUG

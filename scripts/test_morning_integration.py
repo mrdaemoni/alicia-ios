@@ -12,20 +12,34 @@ readable=r[r.index('struct Readable:'):r.index('extension String')]
 featured=m[m.index('struct FeaturedSynthesis:'):m.index('// In an extension so the memberwise') ]
 program='''import Foundation
 import CryptoKit
-struct SpeechChunk: Hashable { var url:URL; var duration:TimeInterval }
-'''+(root/'Alicia/Core/NarrationDocument.swift').read_text().split('/// Exact text')[0]+(root/'Alicia/Core/MorningBriefing.swift').read_text()+readable+playlist+featured+'''
+struct SpeechChunk: Hashable { var url:URL; var duration:TimeInterval; var text:String = ""; var cues:[NarrationCue] = []
+ var timingStatus:String = "unavailable"; var spokenText:String = ""; var speechBackend:String = ""
+ var clipStart:TimeInterval = 0; var clipEnd:TimeInterval? = nil; var piece:BriefingPiece? = nil }
+'''+(root/'Alicia/Core/NarrationDocument.swift').read_text().split('/// Exact text')[0]+(root/'Alicia/Core/MorningBriefing.swift').read_text()+(root/'Alicia/Core/BriefingSteering.swift').read_text()+readable+playlist+featured+'''
 @MainActor final class FakeService {
  var value:MorningBriefing?
  func morningBriefing() async -> MorningBriefing? { value }
+ func briefingFeedback(_ mutation:BriefingFeedbackMutation) async -> BriefingFeedbackResult? { nil }
 }
-@MainActor final class Reader { var current:Readable?; var isSpeaking=false }
+@MainActor final class Reader { var current:Readable?; var isSpeaking=false; func toggle() { isSpeaking.toggle() } }
+@MainActor final class Steering { var briefing:MorningBriefing?; func isCurrent(_ r:Reader) -> Bool { false }; func play(_ b:MorningBriefing) {} }
 enum Section {case us,studio}
 @MainActor final class Store {
+ var showBriefingStage=false
  let service=FakeService();let reader=Reader();var selectedSection=Section.us
+ let briefingSteering=Steering()
+ func configureRemoteCommandsOnce() {}
  func readAloud(_ item:Readable) { if reader.current?.id == item.id {reader.isSpeaking.toggle()} else {reader.current=item;reader.isSpeaking=true} }
 '''+methods+'''}
 @main struct Checks {
  @MainActor static func main() async {
+  let rejected = Data(#"{"ok":false,"error":"The saved script changed."}"#.utf8)
+  precondition(BriefingFeedbackResult.decode(data: rejected, status: 409)?.ok == false)
+  for statusCode in [401, 403, 500, 0] { precondition(BriefingFeedbackResult.decode(data: rejected, status: statusCode) == nil) }
+  precondition(BriefingFeedbackResult.decode(data: Data(#"{"ok":true}"#.utf8), status: 409) == nil)
+  precondition(BriefingFeedbackResult.decode(data: Data(#"{"ok":false}"#.utf8), status: 409) == nil)
+  precondition(BriefingFeedbackResult.decode(data: Data("malformed".utf8), status: 409) == nil)
+  precondition(BriefingFeedbackResult.decode(data: Data(#"{"ok":true}"#.utf8), status: 200)?.ok == true)
   let old = try! JSONDecoder().decode(MorningBriefing.self, from: Data(#"{"id":"old","status":"ready","audio_url":"https://fixture.invalid/audio","duration":12,"text":"Old full text"}"#.utf8))
   precondition(old.speech == nil && old.speechChunks.isEmpty && old.hasPlayableAudio)
   let empty = try! JSONDecoder().decode(MorningBriefing.self, from: Data(#"{"id":"old","status":"ready","audio_url":"https://fixture.invalid/audio","duration":12,"speech":{}}"#.utf8))

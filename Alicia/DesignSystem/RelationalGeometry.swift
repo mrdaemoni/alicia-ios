@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 
 /// The four recovered equations. Shared fixtures bind these to the room renderer.
@@ -113,4 +112,3 @@ struct RelationalMotion {
         from = current.parameters; phases = current.phases; to = next; anchor = now
     }
 }
-#endif

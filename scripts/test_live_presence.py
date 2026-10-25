@@ -3,7 +3,7 @@
 from pathlib import Path
 import subprocess, tempfile
 root = Path(__file__).resolve().parents[1]
-models = (root/'Alicia/Core/LivePresence.swift').read_text().split('/// DEBUG candidate only.')[0]
+models = (root/'Alicia/Core/LivePresence.swift').read_text().split('/// Live presence.')[0]
 models = models.removeprefix('#if DEBUG\n').replace('import Observation', '')
 geometry = (root/'Alicia/DesignSystem/RelationalGeometry.swift').read_text().removeprefix('#if DEBUG\n').removesuffix('#endif\n')
 harness = r'''

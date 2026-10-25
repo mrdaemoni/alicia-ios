@@ -104,6 +104,11 @@ final class SpeechReader: NSObject {
 
     private(set) var current: Readable?
     private(set) var isSpeaking = false
+    /// The observed player, independent of a pending play request.
+    var isActuallySpeaking: Bool {
+        isSpeaking && !mediaFailed && queue.timeControlStatus == .playing && queue.currentItem?.status == .readyToPlay
+    }
+
     /// Playback intent stays in isSpeaking; this distinguishes startup/stalling
     /// from samples actually playing. Prepared audio never needs a new render.
     private(set) var isLoadingMedia = false
@@ -134,6 +139,18 @@ final class SpeechReader: NSObject {
     var episodeProgress: ((String, Double, Double) -> Void)?
     var episodeStopped: ((Bool) -> Void)?
 
+    // Steerable briefing (CL-20261015-steerable-briefing). The reader stays a
+    // player; the steering controller decides what plays next and receives
+    // what actually played. None of these fire for ordinary readings.
+    /// A piece became the one sounding (index into the path).
+    var pieceDidStart: ((Int) -> Void)?
+    /// While samples play: piece index, seconds inside its file, media seconds since the last tick.
+    var playbackTick: ((Int, TimeInterval, TimeInterval) -> Void)?
+    /// A seek, scrub or skip landed inside a piece (index, seconds inside its file).
+    var didSeekPiece: ((Int, TimeInterval) -> Void)?
+    /// The path finished (true) or was stopped or replaced (false).
+    var pathEnded: ((Bool) -> Void)?
+
     // MARK: engine state
 
     private var queue = AVQueuePlayer()
@@ -154,6 +171,11 @@ final class SpeechReader: NSObject {
     private var mediaFailed = false
     private var pollTask: Task<Void, Never>?
     private var prefetchTask: Task<Void, Never>?
+    private var seamObserver: Any?
+    private var fadeTask: Task<Void, Never>?
+    private var lastTick: (index: Int, time: TimeInterval)?
+    private var reportedPiece: Int?
+    private var hasPieces: Bool { chunks.contains { $0.piece != nil } }
 
     override init() {
         super.init()
@@ -249,6 +271,10 @@ final class SpeechReader: NSObject {
             duration = item.speechDuration
             start(chunks: item.speechChunks)
         } else {
+            if item.stableID?.hasPrefix("story:") == true {
+                failure = "The original story recording is unavailable. Refresh Studio and retry."
+                return
+            }
             // Nothing cached — hold the play button in a visible "preparing"
             // state while the lead chunk renders, rather than falling to a
             // voice Hector doesn't want to hear.
@@ -266,6 +292,7 @@ final class SpeechReader: NSObject {
         guard isActive else { return }
         if mediaFailed { retryMedia(); return }
         if failure != nil, let item = current {
+            if item.stableID?.hasPrefix("story:") == true { return }
             failure = nil; isPreparing = true; isStreaming = true
             requestHerVoice(for: item); return
         }
@@ -287,6 +314,7 @@ final class SpeechReader: NSObject {
 
     func stop() {
         if current?.episodeID != nil { episodeStopped?(false) }
+        if hasPieces { pathEnded?(false) }
         pollTask?.cancel()
         pollTask = nil
         prefetchTask?.cancel()
@@ -358,6 +386,10 @@ final class SpeechReader: NSObject {
         // Only what's rendered can be sought into; a scrub past the rendered
         // edge lands on the last chunk we actually have.
         let target = locate(duration * progress)
+        // Told first, so the stretch the rebuilt run starts is a seek.
+        if hasPieces, chunks.indices.contains(target.index) {
+            didSeekPiece?(target.index, chunks[target.index].clipStart + target.offset)
+        }
         rebuildQueue(from: target.index, offset: target.offset)
         publishNowPlaying()
     }
@@ -366,6 +398,14 @@ final class SpeechReader: NSObject {
         chunks = newChunks
         if duration <= 0 { duration = chunks.reduce(0) { $0 + $1.duration } }
         rebuildQueue(from: 0, offset: 0)
+    }
+
+    /// The pieces that can share one queue: a piece that starts inside its
+    /// file needs its own seek, so it begins the next run.
+    private func runEnd(from start: Int) -> Int {
+        var end = start + 1
+        while end < chunks.count, chunks[end].clipStart <= 0 { end += 1 }
+        return end
     }
 
     /// Rebuild the queue starting at a chunk, seeking into it. Used to begin
@@ -381,14 +421,17 @@ final class SpeechReader: NSObject {
         }
         indexOfItem = [:]
         queuedCount = start
-        for i in start..<chunks.count { append(chunkAt: i) }
+        for i in start..<runEnd(from: start) { append(chunkAt: i) }
         currentIndex = start
+        lastTick = nil
         attachObservers()
         guard !mediaFailed else { return }
-        if offset > 0, let item = queue.currentItem {
-            item.seek(to: CMTime(seconds: offset, preferredTimescale: 600),
-                      completionHandler: nil)
+        let into = chunks[start].clipStart + offset
+        if into > 0, let item = queue.currentItem {
+            item.seek(to: CMTime(seconds: into, preferredTimescale: 600),
+                      toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: nil)
         }
+        if hasPieces { reportedPiece = start; pieceDidStart?(start) }
         isSpeaking = true
         isPreparing = false
         isLoadingMedia = true
@@ -402,6 +445,10 @@ final class SpeechReader: NSObject {
         let item = AVPlayerItem(url: chunks[index].url)
         // Each chunk is small and +faststart, so a short buffer is plenty.
         item.preferredForwardBufferDuration = 15
+        if let end = chunks[index].clipEnd {
+            // A heard prefix ends at a sentence boundary; nothing after it plays.
+            item.forwardPlaybackEndTime = CMTime(seconds: end, preferredTimescale: 600)
+        }
         let identity = ObjectIdentifier(item)
         indexOfItem[identity] = index
         let stamp = mediaGeneration
@@ -488,8 +535,11 @@ final class SpeechReader: NSObject {
                    let index = self.indexOfItem[ObjectIdentifier(item)] {
                     self.currentIndex = index
                 }
-                let played = self.offsetOfChunk(self.currentIndex) + time.seconds
+                let piece = self.chunks.indices.contains(self.currentIndex) ? self.chunks[self.currentIndex] : nil
+                let into = max(0, min(time.seconds - (piece?.clipStart ?? 0), piece?.duration ?? time.seconds))
+                let played = self.offsetOfChunk(self.currentIndex) + into
                 self.progress = min(1, max(0, played / self.duration))
+                if self.hasPieces { self.reportPiece(time: time.seconds) }
                 self.updateNowPlayingElapsed(played)
                 if self.queue.timeControlStatus == .playing, let id = self.current?.episodeID {
                     self.episodeProgress?(id, played, Double(self.rate))
@@ -506,7 +556,12 @@ final class SpeechReader: NSObject {
                       let index = self.indexOfItem[ObjectIdentifier(item)] else { return }
                 // The last chunk of a finished reading ends the piece; the
                 // last chunk of a still-rendering one just means we've caught
-                // up with the renderer.
+                // up with the renderer. A run that ends before the path does
+                // continues with the next piece, which needs its own seek.
+                if self.hasPieces, index < self.chunks.count - 1, index + 1 >= self.queuedCount {
+                    self.continueRun(after: index)
+                    return
+                }
                 if index >= self.chunks.count - 1 {
                     if self.isStreaming {
                         self.isPreparing = true      // waiting on more audio
@@ -522,6 +577,8 @@ final class SpeechReader: NSObject {
     private func detachObservers() {
         mediaGeneration += 1
         if let timeObserver { queue.removeTimeObserver(timeObserver) }
+        if let seamObserver { queue.removeTimeObserver(seamObserver) }
+        seamObserver = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         if let mediaFailureObserver { NotificationCenter.default.removeObserver(mediaFailureObserver) }
         mediaTimeObservation?.invalidate(); mediaStatusObservation?.invalidate()
@@ -610,12 +667,119 @@ final class SpeechReader: NSObject {
 
     var narrationChunks: [SpeechChunk] { chunks }
     var narrationText: String {
-        chunks.first(where: { !$0.spokenText.isEmpty })?.spokenText ?? current?.spokenText.spokenPlainText ?? ""
+        if hasPieces { return BriefingPlanner.narration(chunks) }
+        return chunks.first(where: { !$0.spokenText.isEmpty })?.spokenText ?? current?.spokenText.spokenPlainText ?? ""
     }
     var focusedChunkIndex: Int? { chunks.indices.contains(currentIndex) ? currentIndex : nil }
     func seekToNarration(seconds: Double) {
         guard seconds.isFinite, duration > 0 else { return }
         seek(to: max(0, min(seconds, chunks.reduce(0) { $0 + $1.duration })) / duration)
+    }
+
+    // MARK: a steerable path
+
+    /// Where the path is now: the sounding piece and seconds inside its file.
+    func currentPosition() -> (index: Int, fileTime: TimeInterval)? {
+        guard hasPieces, chunks.indices.contains(currentIndex) else { return nil }
+        let seconds = queue.currentItem?.currentTime().seconds ?? chunks[currentIndex].clipStart
+        return (currentIndex, seconds.isFinite ? seconds : chunks[currentIndex].clipStart)
+    }
+
+    /// Replace everything after the sounding piece. The heard part never
+    /// changes: `current` may only end the sounding piece earlier, at a
+    /// sentence boundary still ahead of the playhead. `immediate` switches now
+    /// (Again); otherwise the new tail begins when the sounding piece ends.
+    func replaceFuture(after index: Int, current replacement: SpeechChunk?, tail: [SpeechChunk], immediate: Bool) {
+        guard hasPieces, chunks.indices.contains(index), !mediaFailed else { return }
+        if let replacement { chunks[index] = replacement }
+        chunks = Array(chunks[...index]) + tail
+        duration = chunks.reduce(0) { $0 + $1.duration }
+        if let seamObserver { queue.removeTimeObserver(seamObserver); self.seamObserver = nil }
+        for item in queue.items() where item != queue.currentItem { queue.remove(item) }
+        queuedCount = index + 1
+        guard index + 1 < chunks.count else { return }
+        if immediate {
+            fade(to: 0, over: 0.08) { [weak self] in self?.startRun(at: index + 1) }
+            return
+        }
+        if let end = chunks[index].clipEnd, let item = queue.currentItem {
+            item.forwardPlaybackEndTime = CMTime(seconds: end, preferredTimescale: 600)
+            let stamp = mediaGeneration
+            let lead = max(chunks[index].clipStart, end - 0.12)
+            // Fade the last breath of the heard sentence, then continue.
+            seamObserver = queue.addBoundaryTimeObserver(
+                forTimes: [NSValue(time: CMTime(seconds: lead, preferredTimescale: 600))], queue: .main
+            ) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, stamp == self.mediaGeneration, self.currentIndex == index else { return }
+                    self.fade(to: 0, over: 0.12) { self.startRun(at: index + 1) }
+                }
+            }
+        } else if index == currentIndex, let start = queuedCount < chunks.count ? queuedCount : nil,
+                  chunks[start].clipStart <= 0 {
+            // Whole pieces after a whole piece share the queue.
+            for i in start..<runEnd(from: start) { append(chunkAt: i) }
+        }
+        publishNowPlaying()
+    }
+
+    /// Start a new path from its beginning (the after-arm replay; Again at the end).
+    func restartPath(_ pieces: [SpeechChunk]) {
+        guard hasPieces, !pieces.isEmpty else { return }
+        chunks = pieces
+        duration = pieces.reduce(0) { $0 + $1.duration }
+        progress = 0
+        mediaFailed = false; failure = nil
+        activateAudioSession()
+        queue.volume = 1
+        rebuildQueue(from: 0, offset: 0)
+        publishNowPlaying()
+    }
+
+    private func continueRun(after index: Int) {
+        guard index + 1 < chunks.count else { return }
+        startRun(at: index + 1)
+    }
+
+    private func startRun(at index: Int) {
+        guard chunks.indices.contains(index), current != nil else { return }
+        // The seam fires from a boundary observer or the item's end, whichever
+        // is first; the second finds this run already sounding.
+        if currentIndex == index, let item = queue.currentItem, indexOfItem[ObjectIdentifier(item)] == index { return }
+        let keepPlaying = isSpeaking
+        queue.volume = 0
+        rebuildQueue(from: index, offset: 0)
+        if !keepPlaying { queue.pause(); isSpeaking = false; isLoadingMedia = false }
+        fade(to: 1, over: 0.12, completion: nil)
+    }
+
+    /// A short, linear volume ramp on the queue (the seam's crossfade).
+    private func fade(to target: Float, over seconds: Double, completion: (() -> Void)?) {
+        fadeTask?.cancel()
+        let from = queue.volume
+        fadeTask = Task { @MainActor [weak self] in
+            let steps = 6
+            for step in 1...steps {
+                try? await Task.sleep(for: .milliseconds(Int(seconds * 1000) / steps))
+                guard let self, !Task.isCancelled else { return }
+                self.queue.volume = from + (target - from) * Float(step) / Float(steps)
+            }
+            completion?()
+        }
+    }
+
+    private func reportPiece(time: TimeInterval) {
+        if reportedPiece != currentIndex {
+            reportedPiece = currentIndex
+            pieceDidStart?(currentIndex)
+            lastTick = nil
+        }
+        guard queue.timeControlStatus == .playing else { lastTick = nil; return }
+        if let last = lastTick, last.index == currentIndex {
+            let delta = time - last.time
+            if delta > 0 && delta < 1.5 { playbackTick?(currentIndex, time, delta) }
+        }
+        lastTick = (currentIndex, time)
     }
 
     // MARK: finishing
@@ -632,6 +796,7 @@ final class SpeechReader: NSObject {
     }
 
     private func finishQueue() {
+        if hasPieces { pathEnded?(true) }
         isSpeaking = false
         isLoadingMedia = false
         isPreparing = false
@@ -650,6 +815,7 @@ final class SpeechReader: NSObject {
         guard hasNext, let service else { return }
         let upcoming = queueItems[queuePosition + 1]
         guard upcoming.speechChunks.isEmpty else { return }   // already have it
+        guard upcoming.stableID?.hasPrefix("story:") != true else { return }
         prefetchTask?.cancel()
         prefetchTask = Task { [weak self] in
             _ = await service.requestSpeech(text: upcoming.spokenText,
@@ -674,6 +840,16 @@ final class SpeechReader: NSObject {
             timingStatus: unavailable ? "unavailable" : "ready", spokenText: text)]
         duration = 30; progress = 3.5 / 30
         if unavailable { failure = "Her voice is unavailable. Retry when connected." }
+    }
+
+    /// Inert steerable-briefing fixture: a path of pieces, never loaded or played.
+    func prepareSteeringPreview(_ item: Readable, pieces: [SpeechChunk], finished: Bool) {
+        current = item
+        queueItems = [item]
+        chunks = pieces
+        duration = pieces.reduce(0) { $0 + $1.duration }
+        currentIndex = 0
+        progress = finished ? 1 : 2.2 / max(1, duration)
     }
 #endif
 

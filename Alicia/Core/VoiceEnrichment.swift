@@ -31,6 +31,8 @@ struct VoiceEnrichment: Codable {
     }
     struct Receipt: Codable {
         var pass, provider, model, response_id, stop_reason, status: String?
+        var provider_response_reused: Bool?
+        var reused_from_analysis_id: String?
     }
     struct Coverage: Codable {
         var recorded_seconds, covered_seconds: Double?

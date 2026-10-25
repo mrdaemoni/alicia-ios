@@ -1,8 +1,8 @@
 # Live presence candidate
 
-This DEBUG-only candidate connects the four recovered mathematical fields to
+This release connects the four recovered mathematical fields to
 observed listening, reply preparation and playback, with an attributed emotional
-stance from the existing awareness reading. It is not deployed or promoted.
+stance from the existing awareness reading. Deployment and installation status belong to the task release receipt.
 The approved single-body jellyfish projection remains intact. No sensor is
 opened by enabling the renderer or entering the lab.
 
@@ -10,9 +10,10 @@ opened by enabling the renderer or entering the lab.
 
 `--motion-lab --live-presence-lab` opens the live review room. Its switch enables
 the candidate for this DEBUG session; the usual phone recording/playback flows
-supply facts. The backend companion must expose `/api/presence/live`.
-`--live-presence` enables the same candidate on ordinary DEBUG surfaces at launch.
-All live transport, client and new renderer types are excluded from Release.
+supply facts. The backend companion must expose `/api/presence/live`. The regular app enables
+this path by default with the live service. Mock fallback stays inert. The lab
+and synthetic controls remain DEBUG-only. `--live-presence-preview` forces the
+mock service while exercising the new renderer and observed local fixture audio.
 
 `--motion-lab --live-presence-lab --live-presence-fixture` forces MockAliciaService
 and synthetic review signals. It never publishes presence. It accepts
@@ -32,7 +33,9 @@ is excluded. Shared playback uses an explicit content-kind allowlist, excluding
 private Body narration.
 
 Reply preparation comes from actual non-private backend jobs, not an invented
-thinking timer. Playback follows the actual player/reader. Active local phone
+thinking timer. Playback follows actual `.playing` player status and ready samples, not a pending
+play request. Measured word cues can shape the phone at its audio clock; absent
+measured cues produce no invented voice energy. Buffering clears speaking. Active local phone
 capture/playback stays authoritative during transport failure. A delayed echo
 of this phone cannot reopen stopped capture. Incoming leases lose request transit
 time; cached activity expires. Missing/failed status produces unavailable/zero
@@ -51,20 +54,28 @@ sensor or Nest microphone is integrated by this candidate.
 
 ## Evidence and promotion
 
-`python3 scripts/test_live_presence.py` compiles the actual value types and
+`python3 scripts/test_live_presence_client.py` checks actual client cancellation,
+rapid toggles, capture ownership, local stop authority and ordered reporting with
+in-memory suspended service IO. `python3 scripts/test_live_presence.py` compiles the actual value types and
 geometry, checks expiration, interrupted transition continuity, deterministic
 Reduce Motion, finite/bounded point counts and the shared JavaScript equation
 fixtures in `docs/live-presence-equations.json`.
 
-The iPhone 17 simulator build and fixture screens are checked. The companion
+The iPhone 17 simulator build and fixture screens are checked. The shipping
+baseline is released build 51 (`e4546df`), preserving the study room, steering
+controls and recent delivery/connection repairs. The companion
 room renderer has authenticated proxy tests and a 1024x600 headless Chrome
 fixture run, including connection failure and settled Reduce Motion. These are
 not physical-device performance or network acceptance.
 
-Promotion still requires independent review, serial integration with overlapping
-AppStore/LiveAliciaService PRs, Pandaiux and physical Nest acceptance, and the
-existing study boundary: no interface change during the current study through
-November 14 unless Hector explicitly changes that boundary. No TestFlight upload,
-phone install, backend restart, Nest receiver launch or service replacement was
-performed. Rollback is disabling the DEBUG switch (phone); retain the prior display
-commit when reviewing the companion room candidate.
+Hector explicitly authorized an early-release exception on October 24: “exception
+because this will help with the study”. The study deviations log records the
+visual interface change as a possible influence on study outcomes; the hypotheses,
+arms, control rules and prior data are preserved. Independent committed review
+and physical acceptance remain distinct from simulator tests and Apple availability.
+The task RELEASE.md records actual backend/Nest activation, Apple build and phone
+installation times. The phone branch build includes the already released study
+and connection repairs; it does not promote those open branches into main.
+Rollback is the prior released app build and prior display commit; the backend
+channel is additive and process-local. Disabling the DEBUG switch remains a lab
+comparison tool, not a new product setting.

@@ -125,7 +125,7 @@ extension View {
                 if store.presenceField.enabled || usesLivePresence {
                     // Animates while this surface is on screen — a tab root or a
                     // page pushed from any tab — and rests under the walk cover.
-                    PresenceLayer(isActive: !store.showWalk, opacity: 0.55)
+                    PresenceLayer(isActive: !store.showWalk && !store.showBriefingStage, opacity: 0.55)
                 } else {
                 GeometryReader { geo in
                     AliciaPresence(
@@ -156,11 +156,7 @@ extension View {
     }
 
     private var usesLivePresence: Bool {
-#if DEBUG
         LivePresenceClient.shared.enabled
-#else
-        false
-#endif
     }
 }
 
@@ -191,20 +187,17 @@ struct PresenceLayer: View {
         GeometryReader { geo in
             let here = geo.frame(in: .global)
             let screen = store.presenceField.screen == .zero ? here.size : store.presenceField.screen
-#if DEBUG
             if LivePresenceClient.shared.enabled {
                 RelationalPresence(motion: LivePresenceClient.shared.motion,
                                    isActive: isActive && onScreen,
-                                   previewReduction: previewsReduceMotion)
+                                   previewReduction: previewsReduceMotion,
+                                   playbackLevel: { LivePresenceClient.shared.currentPlaybackLevel })
                     .frame(width: screen.width, height: screen.height)
                     .position(x: screen.width * 0.5 - here.minX, y: screen.height * 0.5 - here.minY)
                     .opacity(opacity)
             } else {
                 legacy(screen: screen, here: here)
             }
-#else
-            legacy(screen: screen, here: here)
-#endif
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)

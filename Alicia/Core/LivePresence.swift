@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 import Observation
 
@@ -51,7 +50,7 @@ enum PresencePlaybackPolicy {
     }
 }
 
-/// DEBUG candidate only. Raw capture never waits for this optional channel.
+/// Live presence. Raw capture never waits for this optional channel.
 @MainActor @Observable
 final class LivePresenceClient {
     static let shared = LivePresenceClient()
@@ -64,8 +63,10 @@ final class LivePresenceClient {
     private var captureID = ""
     private var service: AliciaService?
     private var playback: (() -> Bool)?
+    private var playbackLevel: (() -> Double)?
     private var foreground = true
     private var loop: Task<Void, Never>?
+    private var loopIdentity: UUID?
     private var writer: Task<Void, Never>?
     private var pending: PresenceEvent?
     private var receivedAt = -Double.infinity
@@ -73,8 +74,10 @@ final class LivePresenceClient {
     private let bootSession = UUID().uuidString.lowercased()
     private let device: String
     private var sequence: Int64
+    private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         let key = "alicia.livePresence.device"
         let prior = defaults.string(forKey: key)
         device = prior.flatMap(UUID.init(uuidString:))?.uuidString.lowercased() ?? UUID().uuidString.lowercased()
@@ -90,7 +93,7 @@ final class LivePresenceClient {
             value.level = localLevel; value.remainingMS = 8000
         } else if localPlayback {
             value.activity = "speaking"; value.source = "local_playback"; value.surface = "phone"
-            value.level = 0; value.remainingMS = 8000
+            value.level = currentPlaybackLevel ?? 0; value.remainingMS = 8000
         } else if value.deviceID == device && ["listening", "speaking"].contains(value.activity) {
             // A delayed echo cannot reopen our own stopped capture/playback.
             value.activity = "resting"; value.level = 0; value.source = "local_stopped"
@@ -98,18 +101,30 @@ final class LivePresenceClient {
         return value
     }
 
-    func configure(service: AliciaService, playback: @escaping () -> Bool) {
-        guard !(service is MockAliciaService) else { return }
-        self.service = service; self.playback = playback
-        if ProcessInfo.processInfo.arguments.contains("--live-presence") { setEnabled(true) }
+    var currentPlaybackLevel: Double? {
+        guard !localCapture, localPlayback else { return nil }
+        let value = playback?() == true ? (playbackLevel?() ?? 0) : 0
+        return value.isFinite ? min(1, max(0, value)) : 0
+    }
+
+    func configure(service: AliciaService, playbackLevel: @escaping () -> Double = { 0 }, playback: @escaping () -> Bool) {
+        if service is MockAliciaService {
+#if DEBUG
+            guard ProcessInfo.processInfo.arguments.contains("--live-presence-preview") else { return }
+#else
+            return
+#endif
+        }
+        self.service = service; self.playback = playback; self.playbackLevel = playbackLevel
+        setEnabled(true)
     }
 
     func setEnabled(_ value: Bool) {
         guard enabled != value else { return }
         enabled = value
-        if value { startLoop() }
+        if value { lastReport = -.infinity; startLoop() }
         else {
-            loop?.cancel(); loop = nil
+            loopIdentity = nil; loop?.cancel(); loop = nil
             enqueue(activity: "resting", level: 0)
             remote = .unavailable
         }
@@ -139,18 +154,27 @@ final class LivePresenceClient {
 
     private func startLoop() {
         guard loop == nil, enabled, service != nil else { return }
+        let identity = UUID()
+        loopIdentity = identity
         loop = Task { [weak self] in
             guard let self else { return }
-            defer { self.loop = nil }
-            while !Task.isCancelled && self.enabled {
+            defer {
+                if self.loopIdentity == identity { self.loop = nil; self.loopIdentity = nil }
+            }
+            while !Task.isCancelled && self.enabled && self.loopIdentity == identity {
                 let wasPlaying = self.localPlayback
                 self.localPlayback = self.playback?() ?? false
                 self.retarget()
-                if self.localCapture || self.localPlayback || wasPlaying {
-                    self.enqueue(activity: self.localCapture ? "listening" : self.localPlayback ? "speaking" : "resting", level: self.localCapture ? self.localLevel : 0)
+                let now = ProcessInfo.processInfo.systemUptime
+                if wasPlaying != self.localPlayback ||
+                    ((self.localCapture || self.localPlayback) && now-self.lastReport >= 1) {
+                    self.lastReport = now
+                    self.enqueue(activity: self.localCapture ? "listening" : self.localPlayback ? "speaking" : "resting", level: self.localCapture ? self.localLevel : (self.currentPlaybackLevel ?? 0))
                 }
                 if self.foreground, let service = self.service {
-                    self.remote = await service.livePresence() ?? .unavailable
+                    let value = await service.livePresence()
+                    guard !Task.isCancelled, self.enabled, self.loopIdentity == identity else { break }
+                    self.remote = value ?? .unavailable
                     self.receivedAt = ProcessInfo.processInfo.systemUptime
                     self.retarget()
                 }
@@ -163,7 +187,7 @@ final class LivePresenceClient {
     private func enqueue(activity: String, level: Double) {
         guard service != nil else { return }
         sequence = max(sequence + 1, Int64(Date.now.timeIntervalSince1970 * 1_000_000))
-        UserDefaults.standard.set(String(sequence), forKey: "alicia.livePresence.sequence")
+        defaults.set(String(sequence), forKey: "alicia.livePresence.sequence")
         pending = PresenceEvent(device_id: device, session_id: bootSession, sequence: sequence,
                                 activity: activity, level: level, observed_at_ms: Int64(Date.now.timeIntervalSince1970 * 1000))
         guard writer == nil else { return }
@@ -181,4 +205,3 @@ final class LivePresenceClient {
         motion.update(fact, now: ProcessInfo.processInfo.systemUptime)
     }
 }
-#endif

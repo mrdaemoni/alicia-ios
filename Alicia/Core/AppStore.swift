@@ -23,6 +23,9 @@ final class AppStore {
     var intelligenceMode: IntelligenceModeState = .balanced
     var intelligenceModeSaving = false
     var intelligenceModeError = ""
+    private var intelligenceModeRevision = 0
+    private var connectionRecoveryTask: Task<Void, Never>?
+    var connectionRecovering: Bool { connectionRecoveryTask != nil }
 
     // Player state — real AVPlayer for backend tracks, ticker fallback for
     // sample data (see "Studio player" below)
@@ -49,9 +52,12 @@ final class AppStore {
     /// Reads any page in her prepared natural voice. Shares the audio session with the podcast
     /// player, so the two hand off rather than talk over each other.
     let reader = SpeechReader()
+    /// CL-20261015-steerable-briefing: Higher · Lower · Again on the morning briefing.
+    let briefingSteering = BriefingSteeringController()
     let bodyStore: BodyStore
     let collaboration: CollaborationStore
     let voiceArchive: VoiceArchive
+    let chatOutbox: ChatSendOutbox
     var walkRecordingID = UserDefaults.standard.string(forKey: "alicia.walkRecordingID") ?? "" {
         didSet { UserDefaults.standard.set(walkRecordingID, forKey: "alicia.walkRecordingID") }
     }
@@ -65,6 +71,8 @@ final class AppStore {
             notifications: !(service is MockAliciaService))
         self.voiceArchive = VoiceArchive(root: service is MockAliciaService
             ? FileManager.default.temporaryDirectory.appendingPathComponent("voice-preview-" + UUID().uuidString) : nil)
+        self.chatOutbox = ChatSendOutbox(directory: service is MockAliciaService
+            ? FileManager.default.temporaryDirectory.appendingPathComponent("chat-preview-" + UUID().uuidString) : nil)
         if !isMock { BackgroundVoiceSync.store = self }
         if isMock { messages = SampleData.messages }
 #if DEBUG
@@ -110,12 +118,36 @@ final class AppStore {
         }
 #endif
         reader.service = service
-#if DEBUG
-        LivePresenceClient.shared.configure(service: service) { [weak self] in
+        LivePresenceClient.shared.configure(service: service, playbackLevel: { [weak self] in
+            guard let self, self.reader.isActuallySpeaking,
+                  PresencePlaybackPolicy.shared(kind: self.reader.current?.kind ?? "", stableID: self.reader.current?.stableID),
+                  let position = self.reader.currentPosition(), position.fileTime.isFinite,
+                  self.reader.narrationChunks.indices.contains(position.index),
+                  self.reader.narrationChunks[position.index].timingStatus == "ready",
+                  !self.reader.narrationChunks[position.index].cues.isEmpty else { return 0 }
+            return BriefingPlanner.voiceLevel(self.reader.narrationChunks, at: position, speaking: true, clock: 0)
+        }) { [weak self] in
             guard let self else { return false }
             let sharedReading = PresencePlaybackPolicy.shared(kind: self.reader.current?.kind ?? "",
                 stableID: self.reader.current?.stableID)
-            return self.isPlaying || (self.reader.isSpeaking && sharedReading)
+            return self.isActuallyPlaying || (self.reader.isActuallySpeaking && sharedReading)
+        }
+        briefingSteering.configure(service: service, reader: reader)
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview"),
+           ProcessInfo.processInfo.arguments.contains("--steer-live-audio") {
+            // Real local playback from the card; the mock answers steers and receipts.
+            morningBriefing = BriefingSteeringPreview.briefing()
+        } else if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") {
+            let args = ProcessInfo.processInfo.arguments
+            let briefing = BriefingSteeringPreview.briefing()
+            morningBriefing = briefing
+            let pieces = BriefingPlanner.path(briefing.segments, dial: 0, fromSegment: 0, resolve: { URL(string: $0) })
+            reader.prepareSteeringPreview(Readable(title: briefing.title, body: briefing.text, kind: "note",
+                speechChunks: pieces, stableID: "morning:" + briefing.id), pieces: pieces,
+                finished: args.contains("--steer-ended-preview"))
+            briefingSteering.preparePreview(briefing, ended: args.contains("--steer-ended-preview"),
+                line: args.contains("--steer-line-preview") ? briefing.steering?.line("higher") : nil)
         }
 #endif
         // Presence telemetry rides the same service (and is a no-op on the
@@ -168,6 +200,9 @@ final class AppStore {
     var episodeDay: EpisodeDay?
     var episodeError = ""
     var showWalk = false
+    /// The full-screen morning briefing room (Hector, 2026-10-17). Opens when a
+    /// briefing starts; closing it leaves the briefing playing in the bar.
+    var showBriefingStage = false
     var walkPrompt = UserDefaults.standard.string(forKey: "alicia.walkPrompt") ?? "" {
         didSet { UserDefaults.standard.set(walkPrompt, forKey: "alicia.walkPrompt") }
     }
@@ -222,7 +257,12 @@ final class AppStore {
     }
 
     func refreshIntelligenceMode() async {
-        if let fresh = await service.intelligenceMode() {
+        guard !intelligenceModeSaving else { return }
+        let revision = intelligenceModeRevision
+        let fresh = await service.intelligenceMode()
+        // A retry read must not overwrite a setting changed while it waited.
+        guard revision == intelligenceModeRevision, !intelligenceModeSaving else { return }
+        if let fresh {
             intelligenceMode = fresh
             intelligenceModeError = ""
         } else if !isMock {
@@ -232,6 +272,7 @@ final class AppStore {
 
     func setLocalIntelligence(_ enabled: Bool) async {
         guard !intelligenceModeSaving else { return }
+        intelligenceModeRevision += 1
         intelligenceModeSaving = true
         intelligenceModeError = ""
         let previous = intelligenceMode
@@ -521,14 +562,9 @@ final class AppStore {
                                  proactiveID: walk ? "" : answeringAskID ?? "",
                                  proactiveExcerpt: walk ? "" : answeringAskExcerpt)
         let sink = try voiceArchive.begin(id: id, context: context, review: privateBody ? nil : review)
-        let capturePresence: ((Bool, Double) -> Void)?
-#if DEBUG
-        capturePresence = privateBody ? nil : { active, level in
+        let capturePresence: ((Bool, Double) -> Void)? = privateBody ? nil : { active, level in
             LivePresenceClient.shared.capture(session: id, active: active, level: level)
         }
-#else
-        capturePresence = nil
-#endif
         try speech.start(sink: sink, onSegments: { [weak self] segments in
             guard let self else { return }
             self.voiceArchive.addSegments(segments, to: id)
@@ -580,9 +616,25 @@ final class AppStore {
         guard !isStreaming, voiceArchive.recordings.contains(where: { $0.submissionStatus?.state == "completed" }) else { return }
         let before = messages.map(\.id)
         if let history = await service.conversationHistory(), !isStreaming, messages.map(\.id) == before {
+            reconcileCompletedChatDrafts(history)
             messages = history.messages.map(historyMessage)
         }
     }
+    private func reconcileCompletedChatDrafts(_ history: ConversationHistory) {
+        let completed = Set(history.messages.filter { $0.role == "assistant" }
+            .compactMap { $0.reply_id.flatMap(UUID.init(uuidString:)) })
+        chatOutbox.reconcileCompleted(completed, drafts: composerDrafts)
+    }
+
+    func refreshConversation() async {
+        guard !isStreaming else { return }
+        let before = messages.map(\.id)
+        guard let history = await service.conversationHistory(), !isStreaming,
+              messages.map(\.id) == before else { return }
+        reconcileCompletedChatDrafts(history)
+        messages = history.messages.map(historyMessage)
+    }
+
     private func historyMessage(_ row: ConversationHistory.Turn) -> Message {
         let replyID = row.reply_id?.isEmpty == false ? row.reply_id : nil
         let savedVoice = row.role == "assistant" ? voiceArchive.voiceReplyStatus(replyID) : nil
@@ -593,7 +645,7 @@ final class AppStore {
             recordingID: row.recording_id?.isEmpty == false ? row.recording_id : nil,
             voiceURL: savedVoice?.voice_path.flatMap(service.voiceReplyURL) ?? existingURL,
             canReadVoiceReply: savedVoice != nil,
-            workContext: collaboration.dialogueContext(for: replyID))
+            workContext: collaboration.dialogueContext(for: replyID), chatRequestID: row.request_id.flatMap { UUID(uuidString: $0)?.uuidString })
     }
     func voiceEnrichmentFeedback(_ feedback: VoiceEnrichmentFeedback) async -> VoiceEvidenceResult? {
         await service.voiceAction(feedback.body)
@@ -795,6 +847,11 @@ final class AppStore {
     // MARK: playlists — the listening queues (Studio)
 
     var morningBriefing: MorningBriefing?
+    func saveBriefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult? {
+        let result = await service.briefingFeedback(mutation)
+        if result?.ok == true { await refreshMorningBriefing() }
+        return result
+    }
     var morningBriefingRefreshing = false
     var morningPlaylistID: String?
 
@@ -814,9 +871,19 @@ final class AppStore {
 
     func toggleMorningBriefing(_ briefing: MorningBriefing) {
         guard briefing.hasPlayableAudio, let url = URL(string: briefing.audio_url) else { return }
+        if briefing.isSteerable {
+            // Segment-aware playback; the legacy single track stays for older payloads.
+            configureRemoteCommandsOnce()
+            if briefingSteering.isCurrent(reader), briefingSteering.briefing?.id == briefing.id { reader.toggle(); return }
+            briefingSteering.play(briefing)
+            showBriefingStage = true
+            return
+        }
+        let starting = reader.current?.stableID != "morning:" + briefing.id
         readAloud(Readable(title: briefing.title, body: briefing.text, kind: "note",
             speechChunks: briefing.speechChunks.isEmpty ? [SpeechChunk(url: url, duration: briefing.duration)] : briefing.speechChunks,
             speechDuration: briefing.duration, stableID: "morning:" + briefing.id))
+        if starting { showBriefingStage = true }
     }
 
     func openMorningPlaylist(_ id: String) {
@@ -909,6 +976,7 @@ final class AppStore {
     func load() async {
         Task { await refreshPresence() }
         Task { await refreshMorningBriefing() }
+        briefingSteering.flush()
         Task { await collaboration.load() }
         Task { await refreshVoiceArchive() }
         let messagesAtStart = messages.map(\.id)
@@ -917,7 +985,9 @@ final class AppStore {
         async let t = service.thoughts()
         async let tr = service.tracks()
         async let g = service.gallery()
-        async let h = service.health()
+        // Diagnostic projection is slower than the conversation/library reads.
+        // It must never gate those rooms' first useful update.
+        Task { if let fresh = await service.health() { health = fresh } }
         // v29: 6 starved the Dialogue — the backend sends ~9/day and the
         // feed is capped at 100 server-side; 30 gives real history.
         async let p = service.proactive(limit: 30)
@@ -927,6 +997,7 @@ final class AppStore {
         async let pls = service.playlists()
         if let fresh = await day { acceptEpisodeDay(fresh) }
         if let transcript = await history, !isStreaming, messages.map(\.id) == messagesAtStart {
+            reconcileCompletedChatDrafts(transcript)
             messages = transcript.messages.map(historyMessage)
         }
         Task { await flushPlaybackOutbox() }
@@ -938,7 +1009,6 @@ final class AppStore {
         if let fresh = await t { thoughts = fresh }
         if let fresh = await tr { tracks = fresh }
         if let fresh = await g { gallery = fresh }
-        if let fresh = await h { health = fresh }
         let freshHome = await hc
         if let freshHome { homeContext = freshHome }
         // Keep-last-known, same rule: a failed orbit fetch must not empty
@@ -964,9 +1034,7 @@ final class AppStore {
     }
 
     private static func historyDate(_ text: String) -> Date {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: text) ?? ISO8601DateFormatter().date(from: text) ?? .distantPast
+        BodyCapture.instant(text)
     }
 
     // MARK: home-screen widget
@@ -1347,10 +1415,25 @@ final class AppStore {
     /// the Us title opens. Through the store because views do not touch the
     /// network; kept as plain reads because this surface shows state, it does
     /// not own any.
-    /// One cheap read whose only job is to find out whether she is reachable.
-    /// `fetchOne` reports the outcome to ConnectionStatus, so a success here
-    /// clears the banner.
-    func reprobeConnection() async { _ = await service.modeState() }
+    /// Share one authenticated probe and home reload between automatic and
+    /// explicit retries. A failed probe cannot turn idle fallback into success.
+    func reprobeConnection() async {
+        if let task = connectionRecoveryTask { await task.value; return }
+        let task = Task { [weak self] in
+            guard let self, await self.service.probeConnection() else { return }
+            async let mode: Void = self.refreshIntelligenceMode()
+            // Recovery owns fresh reads even if an older page load is still
+            // waiting. Do not skip a recovered reading behind its busy flag.
+            async let briefing = self.service.morningBriefing()
+            async let episode = self.service.episodeDay(day: "")
+            let (_, freshBriefing, freshEpisode) = await (mode, briefing, episode)
+            if let freshBriefing { self.morningBriefing = freshBriefing }
+            if let freshEpisode { self.acceptEpisodeDay(freshEpisode) }
+        }
+        connectionRecoveryTask = task
+        await task.value
+        connectionRecoveryTask = nil
+    }
 
     func ourArc() async -> [TimelineDay] { await service.timeline() }
     func herPictureOfYou() async -> ContextEnrichment? { await service.contextEnrichment(replyID: "") }
@@ -1359,7 +1442,11 @@ final class AppStore {
     /// the arc is something he looks at and closes, not somewhere he goes.
     var showArc = false
 
-    func openConversation() {
+    func openConversation(workContext: WorkDialogueContext? = nil) {
+        // A room's composer starts about that room. Only Discuss this
+        // explicitly attaches a prepared passage; old persisted targets must
+        // not block unrelated messages from Studio or another section.
+        collaboration.dialogueContext = workContext
         conversationContext = surfaceContext()
         showConversation = true
     }
@@ -1399,9 +1486,10 @@ final class AppStore {
         answeringAskExcerpt = ""
     }
 
-    func send(_ text: String, recordingID: String = "", surfaceContext: SurfaceContext? = nil) {
+    func send(_ text: String, recordingID: String = "", surfaceContext: SurfaceContext? = nil,
+              completion: @escaping (Bool) -> Void = { _ in }) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, !isStreaming, !episodeChoiceSyncing else { return }
+        guard !clean.isEmpty, !isStreaming, !episodeChoiceSyncing else { completion(false); return }
         noteContextActivity()
         if !recordingID.isEmpty {
             voiceArchive.addTranscript(clean, kind: "submitted", to: recordingID)
@@ -1409,48 +1497,119 @@ final class AppStore {
         }
         if let askID = answeringAskID {
             let episodeID = voiceArchive.recording(recordingID)?.context.episode_id ?? ""
-            cancelAnswering()
             messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID))
+            isStreaming = true
             Task {
+                defer { isStreaming = false }
                 let reply = await service.reply(proactiveID: askID, text: clean, recordingID: recordingID, episodeID: episodeID)
                 if let reply, !reply.isEmpty {
+                    if answeringAskID == askID { cancelAnswering() }
                     messages.append(Message(sender: .alicia, text: reply))
+                    completion(true)
                 } else {
                     messages.append(Message(
                         sender: .alicia,
-                        text: "(couldn't reach her — your answer didn't land; try again)"))
+                        text: "", deliveryFailure: .interrupted))
+                    completion(false)
                 }
             }
             return
         }
-        let workContext = collaboration.dialogueContext
+        let pending: PendingChatSend
+        do {
+            pending = try chatOutbox.reserve(text: clean, recordingID: recordingID, voice: voiceReplies,
+                workContext: collaboration.dialogueContext, surfaceContext: surfaceContext)
+        } catch {
+            messages.append(Message(sender: .alicia, text: "", deliveryFailure: .init(
+                message: "The pending send could not be saved on this phone. Your draft is kept; no message was sent.", definitelyRejected: true)))
+            completion(false)
+            return
+        }
+        let workContext = pending.workContext
         let key = SHA256.hash(data: Data(clean.utf8)).map { String(format: "%02x", $0) }.joined()
-        let stored = pendingSendRequestIDs[key]?.split(separator: "|", maxSplits: 1).map(String.init)
-        let requestID = (stored?.count == 2 && Date().timeIntervalSince1970 - (Double(stored![1]) ?? 0) < 600) ? stored![0] : UUID().uuidString
+        let requestID = pending.requestID
         pendingSendRequestIDs[key] = "\(requestID)|\(Date().timeIntervalSince1970)"
-        messages.append(Message(sender: .me, text: clean, recordingID: recordingID.isEmpty ? nil : recordingID, workContext: workContext))
-        let idx = messages.count
-        messages.append(Message(sender: .alicia, text: "", workContext: workContext))
+        let idx: Int
+        if let previous = messages.lastIndex(where: { $0.sender == .alicia && $0.chatRequestID == requestID }) {
+            idx = previous
+            messages[idx].deliveryFailure = nil
+            messages[idx].text = ""
+        } else {
+            messages.append(Message(sender: .me, text: pending.text, recordingID: recordingID.isEmpty ? nil : recordingID,
+                workContext: workContext, chatRequestID: requestID))
+            idx = messages.count
+            messages.append(Message(sender: .alicia, text: "", workContext: workContext, chatRequestID: requestID))
+        }
         isStreaming = true
         Task {
+            var received = false
+            var confirmed = false
+            var finished = false
+            var failure: ChatDeliveryFailure?
             do {
                 // `defer` rather than a trailing assignment: a thrown or cancelled
                 // stream must not leave her looking permanently mid-thought.
                 defer { isStreaming = false }
-                for await event in service.stream(clean, voice: voiceReplies, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext, requestID: requestID) {
+                for await event in service.stream(pending.text, voice: pending.voice, recordingID: pending.recordingID, workContext: workContext, surfaceContext: pending.surfaceContext, requestID: requestID) {
                     guard messages.indices.contains(idx) else { break }
                     switch event {
+                    case .accepted(let identity):
+                        guard UUID(uuidString: identity) == UUID(uuidString: requestID) else { continue }
+                        received = true
+                        if let section = pending.surfaceContext?.section {
+                            composerDrafts.acknowledge(pending.text, for: section)
+                        }
                     case .token(let t):   messages[idx].text += t
                     case .details(let id):
+                        guard UUID(uuidString: id) == UUID(uuidString: requestID) else { continue }
+                        confirmed = true
+                        if let section = pending.surfaceContext?.section {
+                            composerDrafts.acknowledge(pending.text, for: section)
+                        }
                         messages[idx].replyID = id
+                        chatOutbox.acknowledge(requestID)
                         pendingSendRequestIDs.removeValue(forKey: key)
                         if let workContext { collaboration.rememberDialogueContext(workContext, replyID: id) }
                     case .voice(let url): messages[idx].voiceURL = url
-                    case .done(let mid, let healthTerminal):
+                    case .recovered(let receipt):
+                        guard receipt.confirms(requestID) else { continue }
+                        confirmed = true; finished = true; failure = nil
+                        if let section = pending.surfaceContext?.section {
+                            composerDrafts.acknowledge(pending.text, for: section)
+                        }
+                        messages[idx].text = receipt.reply ?? ""
+                        messages[idx].replyID = receipt.inspectable == true ? receipt.reply_id : nil
+                        messages[idx].messageID = receipt.message_id
+                        messages[idx].deliveryFailure = nil
+                        pendingSendRequestIDs.removeValue(forKey: key)
+                        chatOutbox.acknowledge(requestID)
+                        if receipt.inspectable == true, let workContext, let id = receipt.reply_id {
+                            collaboration.rememberDialogueContext(workContext, replyID: id)
+                        }
+                    case .failure(let problem):
+                        failure = problem
+                        if problem.definitelyRejected {
+                            if received, let section = pending.surfaceContext?.section,
+                               composerDrafts.text(for: section).isEmpty {
+                                composerDrafts.set(pending.text, for: section)
+                            }
+                            pendingSendRequestIDs.removeValue(forKey: key)
+                            chatOutbox.acknowledge(requestID)
+                        }
+                    case .done(let mid, _):
+                        finished = true
+                        if let section = pending.surfaceContext?.section {
+                            composerDrafts.acknowledge(pending.text, for: section)
+                        }
                         messages[idx].messageID = mid
-                        if mid != nil || healthTerminal { pendingSendRequestIDs.removeValue(forKey: key) }
+                        chatOutbox.acknowledge(requestID)
+                        pendingSendRequestIDs.removeValue(forKey: key)
                     }
                 }
+                if let problem = failure ?? (!finished && !confirmed ? .interrupted : nil), messages.indices.contains(idx) {
+                    messages[idx].deliveryFailure = (confirmed || (received && problem != .pending)) ? .replyInterrupted : problem
+                }
+                completion(confirmed || (finished && failure == nil))
                 // During a walk the backend accumulates instead of chatting —
                 // keep the word counter fresh.
                 if isWalking { (thinkingMode, walkWords) = await service.modeState() }
@@ -1522,6 +1681,9 @@ final class AppStore {
     // MARK: Studio player
     // Real playback (AVPlayer) when the track carries a backend URL;
     // the simulated ticker remains the fallback for sample data.
+    var isActuallyPlaying: Bool {
+        isPlaying && player?.timeControlStatus == .playing && player?.currentItem?.status == .readyToPlay
+    }
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
@@ -1713,6 +1875,8 @@ final class AppStore {
         center.nextTrackCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                // v1.1, behind its setting: in the briefing, next track is Higher.
+                if self.briefingSteering.handlesRemoteCommands { self.briefingSteering.steer(.higher, input: "remote_command"); return }
                 guard self.reader.isActive else { self.next(); return }
                 // In a playlist these are real track buttons — the steering
                 // wheel controls have to move between pieces. Reading one
@@ -1724,6 +1888,8 @@ final class AppStore {
         center.previousTrackCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                // v1.1: previous track is Lower.
+                if self.briefingSteering.handlesRemoteCommands { self.briefingSteering.steer(.lower, input: "remote_command"); return }
                 guard self.reader.isActive else { self.previous(); return }
                 self.reader.queueItems.count > 1
                     ? self.reader.previous() : self.reader.skip(-15)
