@@ -1,3 +1,48 @@
+## Current state — October 25, 2026 (read this first)
+
+iOS `main` is `1c14936`, tagged **v43 (Oct 24)** and shipped as TestFlight
+**1.0 (53)**. It pairs with backend production `1e8b40c`, which has run on the
+Mac Studio since 2026-10-07 (the mini is kept as the rollback). Feature notes
+follow this block and also close the file, where the newest ones are
+(steering, the study note, presence). Stable architecture starts at
+"CLAUDE.md — Alicia iOS". `SESSION_HANDOFF.md` lists each release.
+
+- **Sections.** Us · Mind · Body · Alicia · Studio. Dialogue is a shared action
+  through the band above the tab bar, not a tab.
+- **Her presence.** One continuous particle field sits behind every section
+  and replaced the contour waves (`DesignSystem/TabPresence.swift`,
+  `AliciaPresence.swift`). `GET /api/presence` drives its stance from her
+  awareness. Since TF52, `GET/POST /api/presence/live` also makes it listen,
+  think and speak only while recording, reply preparation or audio playback
+  is actually happening, on the phone and on the room's Nest display
+  (`Core/LivePresence.swift`, `docs/LIVE_PRESENCE.md`).
+- **Walks.** Audio keeps uploading after lock and while the app is closed
+  (`Core/BackgroundVoiceSync.swift`). The Mac transcribes it in English, and a
+  walk of eight words or more sends itself (backend `walk_autosend.py`).
+  Opening and correcting it afterwards is optional. Dialogue voice still needs
+  an explicit Send.
+- **Morning briefing.** Higher · Lower · Again while it plays, inside a
+  full-screen particle room (`Features/Reading/BriefingStage.swift`, TF49).
+  The four-week steering study runs Oct 18 – Nov 14, and from Oct 31 a weekly
+  note card appears on Us (TF53). See `docs/STEERABLE_BRIEFING.md`.
+- **Delivery.** A typed send has a durable identity and recovers through
+  `GET /api/chat_receipt` without resending (`Core/ChatDelivery.swift`, TF50).
+  One shared recovery task clears the connection banner (TF51,
+  `docs/CONNECTION_RECOVERY.md`).
+- **Network.** Since backend #102, the iOS API on :8766 accepts only loopback
+  and tailnet clients. The phone reaches it over Tailscale, not a home-Wi-Fi
+  address.
+- **Reviewed, but not in `main`:**
+  - iOS #48 (contextual TALK on every section, shipped only as the TF42 branch
+    build).
+  - iOS #50 (a second widget tap undoes the first; approved, unmerged).
+  - iOS #54 (the phone half of the walk-delivery repair; open).
+  - A2-045's two iOS commits, which shipped only on the TF22/23 branch builds:
+    - `243ab83` (section context on proactive replies): main's `reply()`
+      posts no `surface_context`.
+    - `05c030a` (resume a section walk after a tab change): `begin` in
+      `Core/VoiceEvidence.swift` still compares contexts strictly.
+
 ## CL-20260926-goal-closure — Finished together
 
 Hector closed two goals on a walk ("We close those two goals … so I can start
@@ -190,7 +235,7 @@ bridge itself is rebuilt by a scheduled task on the Mac (backend A2-046).
 
 Evidence: `scripts/test_home_conversation_ui.py`.
 
-## A2-043 — mind and body integration candidate
+## A2-043 — mind and body (released 2026-09-13, TestFlight 18)
 
 Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action through the persistent bottom band. The band names the active section, keeps separate durable drafts and freezes that section into every send. Voice opens the full-screen shared particle field and states whether the microphone is opening, listening or paused. Body is private Mac/phone evidence and explicit wellness goals. The Daily rituals widget saves offline, shows the latest tap's local/synced state and keeps tinted white labels on a dark contrast plate. Drawing is removed from Studio navigation; files remain. Release status belongs to the current shared task record.
 
@@ -237,12 +282,12 @@ The kicker is not "Where you are" — that name belongs to place awareness.
 for Codex–Opus coordination, worktrees, file ownership, review handoffs, Git,
 and the Motion Lab promotion gate.
 
-Read `SESSION_HANDOFF.md` for the current release and known limits. This file
+Read `SESSION_HANDOFF.md` for the release record and known limits. This file
 carries stable architecture. The current product is the Alicia 2.0 episode/day
-experience; this branch adds A2-037 immersive natural reading on released source
-f6b3f81 / TestFlight 16, including shared work review and Mac voice processing.
-Read `docs/IMMERSIVE_READING.md` and `docs/WORK_REVIEW.md`;
-the shared task RELEASE.md records actual deployment and upload. Full cross-repository context is in
+experience at `main` `1c14936` / TestFlight 53 (see "Current state" at the top),
+including immersive natural reading (`docs/IMMERSIVE_READING.md`), shared work
+review (`docs/WORK_REVIEW.md`) and Mac voice processing. Each shared task's
+RELEASE.md records actual deployment and upload. Full cross-repository context is in
 `/Users/alicia/alicia/docs/ALICIA_2_0.md`; feature detail is in `docs/EPISODE_DAY.md`.
 Us and Alicia use the actually played episode and explicit human responses.
 The older orbit/cards and archetype gallery are unmounted.
@@ -251,8 +296,9 @@ The older orbit/cards and archetype gallery are unmounted.
 
 A native **pure-SwiftUI** iOS app for "Alicia," Hector's personal AI agent.
 The backend is the separate Python service in the `alicia` repo
-(github.com/mrdaemoni/alicia — also reachable via Telegram and Cowork; one
-relationship, three touchpoints). Target **iOS 17.0**, Swift 5.9+, the installed Xcode, **zero third-party
+(github.com/mrdaemoni/alicia). Hector builds with her in Cowork. Her outbound
+Telegram has been off since 2026-09-18 (Telegram now carries only the Alicia
+Labs bot), so the app and the web dashboard are where she reaches him. Target **iOS 17.0**, Swift 5.9+, the installed Xcode, **zero third-party
 dependencies**. Runs live against the backend on a real iPhone; falls back to
 mock data so the repo stays runnable for anyone who clones it.
 
@@ -283,26 +329,36 @@ API and offline WidgetKit capture contract.
 `WalkReflectionView` is a dedicated full-screen recording and review surface. It
 pauses playback and retains original microphone audio. Pause or leaving the
 foreground keeps an unfinished recording; Finish seals its complete ordered
-manifest. Foreground sync uploads the audio, and the Mac prepares a separate
-machine transcript. Hector reviews and edits it, then explicitly sends those
-words with a durable receipt. The same review is reachable from Dialogue and
-Recordings. Legacy Apple Speech code remains for existing compatibility paths;
+manifest, and leaving a walk over 20 seconds seals it too (A2-059). Upload
+continues after lock and while closed (CL-20260926-walk-sync), and the Mac
+prepares a separate English machine transcript. A walk with at least eight
+words is then sent by the Mac itself, recorded as `auto_sent` (backend
+`walk_autosend.py`). Private Body walks are never sent this way. Hector can
+still open, correct and resend it from Dialogue and Recordings; Dialogue voice
+input keeps its explicit reviewed Send. Legacy Apple Speech code remains for existing compatibility paths;
 new Mac-mode capture needs microphone permission only. Automatic screen sleep is
 disabled while the walk is visible and active, including paused editing, and the
-prior idle setting is restored on exit. No background recording is promised;
-upload continues after lock and while closed (CL-20260926-walk-sync). See `docs/MAC_VOICE_PROCESSING.md` for recovery and provenance.
+prior idle setting is restored on exit. No background recording is promised. See `docs/MAC_VOICE_PROCESSING.md` for recovery and provenance.
 
 ## Architecture
 
 ```
 Alicia/
   App/            AliciaApp (@main) · RootView (TabView, AppSection)
-  DesignSystem/   Theme.swift · ContourWaves.swift (animated home bg + AppVersion)
+  DesignSystem/   Theme · InkDrawn · InkUI · Editorial · TabPresence · AliciaPresence
+                  · ListeningPresence · RelationalPresence/Geometry
+                  · ContourWaves (Motion Lab neighbours + AppVersion)
   Core/           Models · AliciaService (protocol + mock) · LiveAliciaService
-                  · Config · AppStore · SpeechTranscriber · ProactiveNotifier
-                  · SampleData
-  Features/       Home · Talk · Mind · Body · Knowledge · Studio · Health (Canvas retained, unmounted)
+                  · Config · AppStore · BodyStore · Collaboration · ContextGraph
+                  · GoalClosure · EpisodeDay · MorningBriefing · BriefingSteering*
+                  · StudyNote · PresenceField · LivePresence · ChatDelivery
+                  · VoiceEvidence · VoiceProcessing · BackgroundVoiceSync
+                  · SurfaceContext · PlaceTracker · SpeechReader · … · SampleData
+  Features/       Home · Talk · Mind · Body · Knowledge · Studio · Reading · Health
+                  · MotionLab (DEBUG) (Canvas retained, unmounted)
   Assets.xcassets AppIcon · AccentColor · Art* (Hector's drawings)
+AliciaWidgets/    the Daily rituals widget
+Shared/           code shared by the app and the widget (BodyCapture, ritual intent)
 ```
 
 - **State:** single `@MainActor @Observable final class AppStore`
@@ -315,32 +371,33 @@ Alicia/
   (`.fontDesign(.serif)` + UINavigationBar appearance), frameless
   translucent cards. The app forces **`.preferredColorScheme(.light)`** —
   paper wants light.
-- **The living water:** every main page breathes under `ContourWaves`
-  (the fromfutureself.com contour field, marching squares at 12 fps).
-  Each tab gets a sister field via `.waveBackground(config)` — Us full,
-  Dialogue sparse, Alicia slow/dense, Studio a horizontal current. The
-  fields modulate with **time of day** (speed + ink weight, darker at
-  night), **season** (density + monthly re-seed), and **her mood**
-  (`AppStore.waveMood`, seeded from the latest proactive archetype). The
-  older `.artBackground()` drawing washes were replaced by the fields and
-  the modifier is currently unused.
+- **Her presence:** every product surface sits on one continuous particle
+  field (`TabPresence.swift` `PresenceLayer`, `AliciaPresence.swift`); a
+  section only nudges its shape. Its motion comes from `GET /api/presence`
+  (local signals plus an optional rate-limited Jev reading) and from
+  `GET /api/presence/live` (listening, thinking and speaking only while that
+  is actually happening). The walk and conversation microphones open into
+  her listening room (`ListeningRoom`, `ListeningStage`). This replaced the
+  `ContourWaves` contour fields (`.waveBackground`), which now remain only as
+  Motion Lab neighbours. The older `.artBackground()` washes are unused.
 
 ## The networking seam — LIVE
 
 Everything flows through one protocol, `Core/AliciaService.swift`.
 `Core/LiveAliciaService.swift` implements it against the backend's iOS API
 (`skills/ios_api.py` in the `alicia` repo), a token-authed HTTP/SSE server on
-port **8766** (Mac Mini; home Wi-Fi or Tailscale). Auth is
+port **8766** on the Mac Studio. Since backend #102 it serves only loopback
+and tailnet clients, so the phone uses its Tailscale address. Auth is
 `Authorization: Bearer <token>`; media URLs carry `?token=` instead
-(AVPlayer/AsyncImage can't set headers). L4-classified messages are redirected
-to Telegram by the backend. Endpoint inventory (current and retained compatibility surfaces):
+(AVPlayer/AsyncImage can't set headers). The backend refuses L4-classified
+messages on the phone and points to the Telegram passphrase flow. Telegram is
+no longer one of her surfaces, so that pointer is a known gap rather than a
+working route. Endpoint inventory (current and retained compatibility surfaces):
 
 | Endpoint | For |
 |---|---|
-| `GET /api/chat_receipt` | Recover the durable result for an existing chat request without resending it. |
-| `GET /api/morning_briefing/receipt` | Inspect a briefing segment receipt bound to the played snapshot. |
-| `POST /api/morning_briefing/feedback` | Save explicit feedback for the bound briefing section. |
-| `POST /api/morning_briefing/steer` | Request a bounded change of altitude for a briefing segment. |
+| `GET /healthz` | unauthenticated liveness; every `/api/*` route needs the bearer token |
+| `POST /api/morning_briefing/feedback` | explicit Useful / Missed (with optional words) on the whole script, or Landed / Didn't land bound to the heard steering path |
 | `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds tap-to-play media. Reviewed Mac voice adds `client_request_id`, `recording_id`, machine source IDs and captured `episode_id`. |
 | `GET /api/chat_receipt?request_id=<UUID>` | Read-only typed-send outcome. Recovery never resubmits the original model/tool action; the protected phone outbox retains its frozen words/context until acknowledgment. Private Body/health and reviewed voice retain their separate receipts. |
 | `GET /api/body` · `POST /api/body` | Private overview and explicit wellness/ritual receipts |
@@ -352,9 +409,8 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/greeting` | legacy greeting endpoint; not loaded by the current Us screen |
 | `GET /api/context` · `/api/context/<id>` | retained orbit/receipt API; old Us orbit is unmounted |
 | `GET /api/context_graph?q=&kind=` · `GET /api/context_graph/<id>` · `POST /api/context_graph` | Hector's context graph — his situation as typed, ranked nodes (stated is his, inferred is unconfirmed); node body + receipts + related; acts `confirm` / `correct` / `retire` / `propose` / `worth`, and `translate` (text → the one node it bears on). Rendered on Us as "In the middle of" (`ContextGraphViews.swift`) |
-| `GET /api/context_graph/arrangement` | The day arranged around his active nodes: per node, the episode's questions, elevated items, mind/body findings, his place and his own words that bear on it, each with the line it was drawn from; `status` preparing/ready/refreshing. Rendered under each node of "In the middle of" (CL-20260919-context-arrangement) |
+| `GET /api/context_graph/arrangement` | The day arranged around his active nodes: per node, the episode's questions, validated elevation, mind/body findings, wellness goals, his place and his own words that bear on it, each with the line it was drawn from; `status` preparing/ready/refreshing, and incompatible episode/day groups are withheld while refreshing. Rendered under each node of "In the middle of" (CL-20260919-context-arrangement) |
 | `GET /api/context_graph/elevate` · `GET /api/context_graph/translate?title=` | What Us elevates for his situation (thinkers, passages, goals with the line each was drawn from; `status` preparing/ready/refreshing) and a vault note translated into the one node it bears on |
-| `GET /api/context_graph/arrangement` | What today bears on each active context node: episode questions, validated elevation, mind/body findings, wellness goals, place, and his own words; incompatible episode/day groups are withheld while refreshing |
 | `GET /api/presence` | Her current motion-driving awareness: deterministic local signals plus an optional rate-limited Jev reading; the app ignores timestamp-only refreshes |
 | `GET /api/presence/live` | Live presence: expiring activity facts plus attributed awareness; no text or audio |
 | `POST /api/presence/live` | Live presence: bounded ephemeral capture/playback reports; Body excluded |
@@ -363,9 +419,8 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/timeline` | every lived day since she began (Timeline sheet) |
 | `GET /api/featured` · `/api/syntheses` · `/api/quote` | the day's synthesis, the shelf, the rotating quote |
 | `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Mind library + her archetype balance |
-| `POST /api/speak` | render arbitrary text in her voice (read-aloud fallback when nothing is cached) |
 | `POST /api/pin` · `/api/card_feedback` | hold a card on the home screen; 👍/👎 on a card |
-| `POST /api/events` | **presence telemetry** — batch `{events:[{kind, ref, ms, meta}]}`. Kinds: `app_open`, `screen_view`, `section_dwell`, `episode_play`, `episode_progress`, `episode_finish`, `card_view`. This is the one endpoint that reports what he *did* rather than what he deliberately tapped; without it a day spent listening reads to her as silence. Fire-and-forget — never block UI on it, and batch on background/foreground transitions. Episode playback now comes from the player via `/api/episode_day`; an audio GET is not listening evidence. |
+| `POST /api/events` | **presence telemetry** — batch `{events:[{kind, ref, ms, meta}]}`. Kinds: `app_open`, `screen_view`, `section_dwell`, `episode_play`, `episode_progress`, `episode_finish`, `card_view`, `place` (named place only, never coordinates). This is the one endpoint that reports what he *did* rather than what he deliberately tapped; without it a day spent listening reads to her as silence. Fire-and-forget — never block UI on it, and batch on background/foreground transitions. Episode playback now comes from the player via `/api/episode_day`; an audio GET is not listening evidence. |
 | `GET /api/reflections` | her morning/evening self-reflections, text + a playable reading when rendered |
 | `GET /api/mind` | on-demand reading of the current episode, corrections and explicit keeps; Sunday push paused. Current Us/Alicia use `/api/episode_day`. Missing evidence can correctly return `has_note: false`. |
 | `GET/POST /api/mode` | walk/drive state; finish accepts `text`, `episode_id`, `request_id` and acknowledges durable save. Reviewed Mac voice also supplies `recording_id`, `transcription_request_id`, `transcript_id`. |
@@ -380,12 +435,16 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `POST /api/context_enrichment` | UUID-receipted attention priority, correction, explicit note or follow-up setting |
 | `GET /api/dialogue_review?reply_id=<UUID>` | public context for one saved reply; read-only |
 | `POST /api/dialogue_review` | explicit feedback, requested opposite-model comparison, or contextual preference; UUID receipt |
+| `GET /api/collaboration` · `POST /api/collaboration` · `GET /api/collaboration/source` | shared goals, connections, prepared work, project revisions and closures; UUID-receipted actions; bounded reads of an exact source or frozen capture (`docs/COLLABORATION.md`) |
 | `GET /api/goal_closure?closure_id=` | a finished goal's frozen record: goal, his closing words and whole input, her labelled reflection and next-goal seeds, his words along the way, steps, final artifact, sources, open questions. `GET /api/collaboration` adds `closures` / `closure_proposals`; POST actions `close_goal`, `reopen_goal`, `closure_decision` |
 | `GET /api/episode/<label>` | shownotes markdown |
 | `POST /api/speak` · `GET /api/speech/<name>` | read-aloud: her voice rendered in ramped chunks (`skills/reading_voice.py`), returned as an ordered chunk list — `ready` / `streaming` / `rendering`, never blocking |
 | `GET /api/morning_briefing` (`segments[]`, `steering`) · `POST /api/morning_briefing/steer` · `POST /api/morning_briefing/receipt` · `GET /api/morning_briefing/audio/<id>/<file>.m4a` | the steerable morning briefing (CL-20261015-steerable-briefing): per-segment L+1/L0/L−1 variants with ledger-tagged sentences and measured cues; Higher · Lower · Again returns a deterministic interpretation; the phone posts opportunity, consequence and session-end receipts. Landed / Didn't land goes to `POST /api/morning_briefing/feedback` with the heard path. Study records, never training. See `docs/STEERABLE_BRIEFING.md` |
 | `GET /api/study_note` · `POST /api/study_note` | the steering study's weekly note (CL-20261023-study-note-card): whether Us shows the card today (a study week's last day, or the next day if that note is missing; same in both arms; no note text), and saving the template's answers verbatim with a UUID receipt to the study's own notes, which Alicia never reads |
 | `GET /api/playlists` · `POST /api/playlist` | Studio's listening queues (create/rename/delete/add/remove/reorder); adding also renders that piece's audio so a queue is warm before he drives |
+| `GET /api/stories/<id>.m4a` | the Scaleofus original scored stories in Studio's story queue (allowlisted ids, Range playback) |
+| `GET /api/morning_briefing/audio/<id>.m4a` | the briefing's legacy single-track audio (Range) |
+| `GET /api/audio/<file>` · `/api/voice/<file>` · `/api/drawing/<file>` | media byte-servers for episode audio, her voice notes and drawings (`?token=`) |
 | `POST /api/cocreate` (base64 PNG + size + anchor, 120 s timeout) | canvas co-creation: she draws from where the pencil stopped, returns an overlay layer + caption |
 | `POST /api/complement` (base64 PNG, 120 s timeout) | drawing reply w/ vision — superseded by cocreate in the UI; `requestComplement` is currently unused |
 
@@ -440,7 +499,10 @@ ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
   `AppStore`.
 - The section enum is `AppSection` (not `Section`) to avoid SwiftUI's `Section`.
 - **HARD RULE: no stock SF Symbols and no emoji anywhere in the app** (v21–v25,
-  enforced repeatedly). Verified: zero `systemName:` in `Alicia/`. Every glyph is
+  enforced repeatedly). No rendered screen uses `systemName:`. The four left
+  sit in legacy code nothing draws: the unused `statusStrip` in
+  `Home/HomeView.swift`, whose body is `EpisodeHomeView()`, and the unmounted
+  `Canvas/CanvasView.swift`. Delete them rather than copy them. Every glyph is
   hand-drawn Canvas from `DesignSystem/InkDrawn.swift` (InkPlayPause, InkSkip,
   InkChevron, InkWaveBars, InkSpark, InkSubmitArrow, InkBackButton, InkTabs,
   InkUnderline, HandDrawnBorder, PortraitTrace, InkReactionTag), with
@@ -456,7 +518,7 @@ ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
 `AppVersion.tag` (DesignSystem/ContourWaves.swift) shows on the Alicia tab so
 Hector can tell which build his phone runs. Bump `AppVersion.baseTag` and its
 date when an app change is promoted. TestFlight branch archives append their
-branch automatically through `ship.sh`. Current base: **v38 (2026-09-05)**. TestFlight build numbers are allocated separately; do not bump the tag for documentation or backend-only edits.
+branch automatically through `ship.sh`. Current base: **v43 (Oct 24)**, TestFlight 1.0 (53). TestFlight build numbers are allocated separately; do not bump the tag for documentation or backend-only edits.
 
 ## Actually pending
 
@@ -464,9 +526,10 @@ branch automatically through `ship.sh`. Current base: **v38 (2026-09-05)**. Test
   debugger or Secrets.plist only).
 - Canvas drawings and co-creation overlays aren't persisted between launches
   (`PKDrawing` in `@State`, overlays in `AppStore`).
-- Dead code candidates: `.artBackground()` (Theme.swift) and
-  `AppStore.requestComplement` — both superseded (wave fields / cocreate)
-  and no longer called.
+- Dead code candidates: `.artBackground()` (Theme.swift),
+  `AppStore.requestComplement` and `HomeView.statusStrip` — superseded
+  (presence field / cocreate / Us) and no longer called.
+- The reviewed iOS changes not yet in `main` (see "Current state" at the top).
 - `docs/RESEARCH.md` (library research from the scaffold session) is
   historical — the zero-dependency approach won; consult it only if a real
   need for a chat/markdown/image library appears.
@@ -485,7 +548,7 @@ The preceding v38 / 1.0 (5) entry is historical. Exact branch build and Apple
 processing status are recorded in the shared A2-006 `RELEASE.md` receipt.
 
 
-## A2-007 — context enrichment candidate
+## A2-007 — context enrichment (released 2026-09-06)
 
 Dialogue owns its inspector sheet outside LazyVStack rows; each text field has a
 separate focus identity. `ContextEnrichmentView` uses AppStore/AliciaService for
@@ -509,8 +572,10 @@ new Mac capture does not run that recognizer or depend on its permission.
 AppStore/AliciaService use GET/POST `/api/voice_evidence` and PUT/GET
 `/api/voice_evidence/audio/<recording>/<segment>`. The original stays on phone and
 private Mac until explicit deletion; no automatic training. Mac processing uses
-the paired backend's local transcription worker. The new machine draft never
-replaces the original or becomes a human statement until explicit reviewed Send.
+the paired backend's local transcription worker. The machine draft never
+replaces the original. It reaches her only when sent: by Hector after review,
+or, for a walk of eight words or more, by the Mac's auto-send, recorded as
+`auto_sent` (it is never presented as words he reviewed).
 See `docs/MAC_VOICE_PROCESSING.md` for the additive service contract and limits.
 
 ## A2-010 — collaborative partner
@@ -542,6 +607,18 @@ payload; Landed / Didn't land is bound to the heard path; pause is never a
 signal. Fixture: `--morning-briefing-steer-preview` (invented text). See
 `docs/STEERABLE_BRIEFING.md`.
 
+Two study-time changes shipped on top (both recorded as dated study
+deviations):
+- **TF48, faded commands.** Higher and Lower fade when a press would change
+  nothing.
+- **TF49, the room.** Starting the briefing opens `Features/Reading/BriefingStage.swift`.
+  It is a full-screen room of her particle field breathing with her voice, with
+  no text, and the phone stays awake. That build was the study build from day
+  one.
+
+Backend #98–#100 carry the segments, steering and the per-segment L0 check.
+Preparation starts at 04:30 during the study.
+
 
 ## CL-20261023-study-note-card — the study's weekly note on Us
 
@@ -560,3 +637,38 @@ files, response mapping) and `Features/Home/StudyNoteCard.swift`.
 - **Fixture:** `--study-note-preview` (`--study-note-fail-once` for the retry
   path). Logic is in `scripts/test_study_note.py`, UI in
   `scripts/test_study_note_ui.py`.
+
+
+## Her presence — the field as her awareness, then as what is happening
+
+Three releases built the one field that now sits behind every section.
+- **Awareness (CL-20260926-presence; in `main` since TF39).**
+  - `Core/PresenceField.swift` decodes `GET /api/presence`. The backend
+    (`skills/presence_awareness.py`) reads her own signals: whether he is
+    speaking, whether goal work is running or a question is waiting, and the
+    time of day. A rate-limited, typed Jev reading adds a stance (witness, ask,
+    offer, hold, celebrate).
+  - The stance chooses the form she leans into, and a section only nudges it.
+  - Timestamp-only refreshes are ignored.
+- **One continuous body (CL-20260927-presence-home, TF40).**
+  - `TabPresence.swift` `PresenceLayer` replaced `.waveBackground` on the
+    product surfaces.
+  - The walk and conversation microphones open `ListeningRoom` and
+    `ListeningStage`: her particles listening rather than his transcript.
+  - Back from "Play in Studio" returns to Us.
+- **Live presence (CL-20261024-live-presence, TF52; in `main` with TF53).**
+  - `Core/LivePresence.swift` posts `POST /api/presence/live` from actual
+    audio-engine capture and actual `.playing` playback, never from opening a
+    screen.
+  - Each post carries only a UUID, sequence, surface, state, a normalized meter
+    and a timestamp. Capture holds an eight-second expiring lease.
+  - The backend adds reply preparation from real non-private jobs and serves
+    `GET /api/presence/live` to the phone and to the room's Nest display. The
+    stance stays attributed to the awareness reading.
+  - Private Body capture and narration are excluded.
+  - The DEBUG Motion Lab entry is `--motion-lab --live-presence-lab`. See
+    `docs/LIVE_PRESENCE.md`.
+
+The organic-field prototype (CL-20261018-organic-field) is a DEBUG Motion Lab
+candidate on its own branch, not in `main`. Nothing from it ships before the
+study ends and Hector picks one.

@@ -6,6 +6,14 @@
 /api/morning_briefing/receipt`, Landed / Didn't land on `.../feedback`). The
 pre-registration, altitude definitions and event model are in the board task.*
 
+**Released.** Steering shipped in TestFlight 1.0 (47), the faded commands in
+(48) and the full-screen room in (49), after backend PRs #98–#100 deployed on
+October 16–17, 2026. Build 49 was the study build from its first day, October
+18. All three are in iOS main since PR #57 (`1c14936`). The weekly note card
+shipped in TestFlight 1.0 (53) with backend PR #110. Build 52 connected the
+particle field to live presence (`LIVE_PRESENCE.md`), recorded as a dated study
+deviation.
+
 ## What he sees and hears
 
 **The briefing is a room** (`Features/Reading/BriefingStage.swift`, Hector,
@@ -138,10 +146,12 @@ steers, and a DEBUG label shows the heard path and seconds.
   NarrationDocument against `scripts/fixtures/steerable_briefing_payload.json`,
   which the backend test flow generated from invented text. It checks
   interpretation parity with the backend, path building, cuts and entries,
-  every consequence branch, and narration alignment (46 checks).
-- `scripts/test_briefing_steering_ui.py` has 10 tests: both arms, the end
-  check, the immersive reader, the card setting, large type, and two
-  live-audio tests. Those two observe the real seam: after Higher, the L0
+  every consequence branch, and narration alignment (64 planner and 56
+  controller checks at the build 49 handoff).
+- `scripts/test_briefing_steering_ui.py` has 13 tests: both arms, the end
+  check, the immersive reader, the card setting, large type, the briefing
+  room, and three live-audio tests (one in the room). Two of them observe the
+  real seam: after Higher, the L0
   piece stops at the sentence boundary, the cue plays, and L+1 resumes at the
   unheard caveat. Again replays the sentence. Screenshots export to
   `steer-screenshots/`. Requires the iOS Simulator runtime (iPhone 17).
@@ -159,5 +169,7 @@ in both arms. It is not part of the briefing, its steering or its verdict.
 - **The sheet:** the template's six prompts. The answers are saved verbatim,
   with a receipt, to the study's own `study/notes/week-N.md`, which Alicia
   never reads.
-- **Recorded as a dated deviation** on the study task. The build is installed
-  at a study-week boundary.
+- **Recorded as a dated deviation** on the study task. It shipped in
+  TestFlight 1.0 (53) for the October 24–25 study-week boundary; official
+  installation on the phone is not yet confirmed. The first live card is due
+  Saturday, October 31 (week 2).

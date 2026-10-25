@@ -1,7 +1,16 @@
-# Mac voice processing — A2-016 candidate
+# Mac voice processing — A2-016
+
+Released September 9, 2026: backend PR #31 and TestFlight 1.0 (15) from
+`207279e`, now in iOS main.
 
 New voice input follows capture → finish → upload → Mac transcription → review →
-explicit send. Capture-only mode asks for microphone permission, preserves the
+send. Dialogue recordings wait for an explicit Send. A walk does not: since
+September 20, 2026 (backend PR #74, iOS PR #36, TestFlight 1.0 (28)) the Mac
+sends a finished walk itself once its transcript is ready, whether or not the
+phone is open, and records it as `auto_sent`. Opening and correcting it
+afterwards stays available. Walks under eight words and private Body
+recordings are never sent this way (backend `walk_autosend.py`; the duration
+and character floors were removed by backend PR #106 on October 23). Capture-only mode asks for microphone permission, preserves the
 existing original-audio sink and meter, and does not start an Apple speech task.
 The user can take their time. No model interrupts the recording.
 
@@ -29,12 +38,23 @@ blocks Send until the phone has saved it.
 
 The shared review surface is reachable in Walk, Dialogue and Recordings. It shows
 upload progress, Mac state, the editable draft, original replay, processing details
-and explicit Send. Its states distinguish local audio, audio received by the Mac,
+and Send (redundant for a walk, which the Mac sends itself). Its states distinguish local audio, audio received by the Mac,
 transcription and words saved with Alicia. Pending uploads continue after the
 phone locks and while the app is closed (`BackgroundVoiceSync`, best effort on
 iOS's schedule, never after a force-quit); the Mac continues once all sealed
 parts arrive. Physical capture, recognition accuracy and phone lock/reconnect
 remain device checks, not simulator claims.
+
+**Not in iOS main.** Three reviewed changes to this flow have not reached main:
+- PR #54, the phone half of the October 23 walk-delivery repair: freeze a
+  section walk's section into its submission across retries, let a Mac
+  delivery link close a stale rejected send, and drop the redundant Send. It
+  is open. The backend half (PR #106) is live.
+- A2-045's `243ab83` (send the section packet with a proactive answer) and
+  `05c030a` (resume a section walk after a tab change without replacing its
+  original context). Both shipped only in the branch builds 1.0 (22) and (23).
+  Main's `reply` posts no `surface_context`, and `VoiceArchive.begin` still
+  requires an identical section context to resume a recording.
 
 ## Service contract
 

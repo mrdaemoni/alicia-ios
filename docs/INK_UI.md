@@ -5,6 +5,7 @@ buttons … get lost with the amount of information — they're mixed with the
 text … apply the right styling … so they all look coherent and clear … the
 containment around information." Components: `Alicia/DesignSystem/InkUI.swift`.
 Reference screen: the Alicia tab (`EpisodeMindView`) and `CollaborationSummary`.
+First shipped in TestFlight 1.0 (35); in iOS main since PR #44 (TestFlight 1.0 (39)).
 
 ## The five kinds of thing on a screen
 

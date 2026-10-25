@@ -1,14 +1,15 @@
 # Dialogue response inspection — A2-006
 
-Implementation on `codex/dialogue-insight`. Exact backend deployment and Apple
-processing status live in the shared `Alicia-development/tasks/A2-006/RELEASE.md`
-receipt. The complete backend contract is `alicia/docs/DIALOGUE_REVIEW.md`.
+Released September 5, 2026: backend PR #16 and TestFlight 1.0 (6) from
+`codex/dialogue-insight`; the interface is in iOS main. Exact backend
+deployment and Apple processing status live in the shared
+`Alicia-development/tasks/A2-006/RELEASE.md` receipt. The complete backend contract is `alicia/docs/DIALOGUE_REVIEW.md`.
 
 Normal Dialogue is conversational and brief. **Behind this reply** and the
 long-press menu open a sheet for the exact saved answer. It contains Hector's
 words, a tentative reading, optional public detail, archetype lens, supplied
 context/source excerpts and granular feedback. Provider labels reflect the
-actual route. Qwen runs on the Mac mini. No private thinking transcript is shown.
+actual route. Qwen runs locally on the Mac. No private thinking transcript is shown.
 
 The model tabs switch between the original and an automatically prepared alternative for each new iOS reply,
 cached by the backend. Tapping Prefer Qwen / Prefer Claude / Tie / Neither saves
@@ -55,6 +56,9 @@ backend; retain journals and feedback. No noisy Telegram routines are restored.
 
 ## October 12 — recover the send without repeating the action
 
+Shipped in TestFlight 1.0 (46) with backend PR #97 (October 12, 2026); in iOS
+main since PR #57.
+
 Typed shared conversation now binds `request_id` to its exact original packet
 before effects. The existing review journal adds typed `chat_received`,
 `chat_completed` and `chat_failed` events. Its file lock determines the one
@@ -87,6 +91,9 @@ No synthetic conversation, feedback or health capture is sent to production.
 
 
 ## October 18 — early receipt and late draft reconciliation
+
+Shipped in TestFlight 1.0 (50) (`c2f16ab`, PR #53); in iOS main since PR #57.
+It uses the `accepted` event the backend added with PR #97.
 
 A matching `accepted` SSE UUID proves that the Mac durably retained the typed
 request. The original section's composer clears at that point, while the

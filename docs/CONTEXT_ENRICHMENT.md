@@ -6,8 +6,8 @@ collaboration endpoint is supported; context attention controls remain.
 
 Hector wants a short conversation, an inspectable account of what was supplied,
 and quick ways to correct or reprioritize that context. This follows his first
-real morning using build 6. It is a candidate until the shared task RELEASE.md
-records production and Apple evidence.
+real morning using build 6. Released September 6, 2026: backend PR #17 and
+TestFlight 1.0 (7) from `cc05703`, now in iOS main.
 
 ## Experience and evidence boundaries
 
@@ -39,7 +39,7 @@ records production and Apple evidence.
 ## Comparisons and context exposure
 
 Every new iOS reply immediately queues a tool-free opposite-provider answer
-using the captured exchange. Qwen runs on the Mac mini; Claude is cloud-hosted.
+using the captured exchange. Qwen runs locally on the Mac; Claude is cloud-hosted.
 Adapted context is labelled, and those pairs stay out of same-input training
 exports. There is one automatic worker and capacity for eight pending/running
 requests. Full queues or failures are visible and manually retryable. Opening

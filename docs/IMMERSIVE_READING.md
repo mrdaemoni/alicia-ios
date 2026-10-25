@@ -8,6 +8,9 @@ embed the website or introduce a third-party runtime.
 
 Listen opens this reader. The global reading bar's quiet **Read along** affordance reopens it later.
 Original podcasts and prepared morning briefings keep their original recordings.
+Since TestFlight 1.0 (49) the morning briefing opens the full-screen briefing
+room instead, with no text; for it the reading bar shows FULL SCREEN, and other
+readings keep Read along (`STEERABLE_BRIEFING.md`).
 Dialogue voice replies use the same reader. Together's review actions now ask for
 natural server narration; no AVSpeechSynthesizer or device voice remains.
 Preparation, unavailable media and retry are explicit. Opening text never starts
@@ -64,6 +67,7 @@ feedback receipts. `test_narration_ui.py` uses mock-only DEBUG previews and save
 measured-focus, unavailable and Reduce Motion screenshots. No fixture claims a
 real listening observation, voice capture or physical-device validation.
 
-Backend A2-036 and A2-038 must deploy before the dependent TestFlight build. The
-shared A2-037 task records own the exact release evidence. Canonical main and
-physical visual promotion remain separate from branch TestFlight testing.
+Released September 12, 2026 as TestFlight 1.0 (17) from `3aeaa1c`, after
+backend A2-036 and A2-038 shipped (backend PR #47); the reader is now in iOS
+main. The shared A2-037 task records own the exact release evidence. Physical
+visual acceptance remains separate from TestFlight testing.

@@ -5,6 +5,16 @@ merge `7ba1897`, followed by focused messaging in backend PR #13 (`44c8385`).
 TestFlight v38 / 1.0 (5) was reported VALID and IN_BETA_TESTING that day.
 See `SESSION_HANDOFF.md` for the current baseline and remaining physical checks.
 
+This page is the September 5 record. Later releases changed what it describes.
+The tabs are Us, Mind, Body, Alicia and Studio since TestFlight 1.0 (18), and
+Dialogue is no longer a tab. Walks now record original audio for transcription
+on the Mac instead of on-device dictation (A2-016, TestFlight 1.0 (15),
+`MAC_VOICE_PROCESSING.md`). Since TestFlight 1.0 (31) a finished walk no
+longer appears in the chat. Since 1.0 (33) its upload continues after the
+phone locks. Since backend PR #74 (September 20) a walk is sent from the Mac
+once it is transcribed. Since 1.0 (40) the walk screen shows her listening
+field rather than his words.
+
 Hector approved an iOS-first loop around the morning episode and his reaction.
 Us, Dialogue, and Alicia are focused on that moment; Studio and Knowledge keep
 their library roles. The app presents two or three source-grounded questions,
