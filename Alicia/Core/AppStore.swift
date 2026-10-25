@@ -110,6 +110,14 @@ final class AppStore {
         }
 #endif
         reader.service = service
+#if DEBUG
+        LivePresenceClient.shared.configure(service: service) { [weak self] in
+            guard let self else { return false }
+            let sharedReading = PresencePlaybackPolicy.shared(kind: self.reader.current?.kind ?? "",
+                stableID: self.reader.current?.stableID)
+            return self.isPlaying || (self.reader.isSpeaking && sharedReading)
+        }
+#endif
         // Presence telemetry rides the same service (and is a no-op on the
         // mock, so previews and a missing Secrets.plist send nothing).
         PresenceTracker.shared.configure(service: service)
@@ -508,11 +516,19 @@ final class AppStore {
             playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0,
             proactive_id: walk ? nil : answeringAskID)
         context.surface_context = surface ?? walkSurfaceContext
-        let privateBody = surface?.section == "body"
+        let privateBody = context.surface_context?.section == "body"
         let review = VoiceReview(destination: walk ? "walk" : answeringAskID == nil ? "dialogue" : "proactive",
                                  proactiveID: walk ? "" : answeringAskID ?? "",
                                  proactiveExcerpt: walk ? "" : answeringAskExcerpt)
         let sink = try voiceArchive.begin(id: id, context: context, review: privateBody ? nil : review)
+        let capturePresence: ((Bool, Double) -> Void)?
+#if DEBUG
+        capturePresence = privateBody ? nil : { active, level in
+            LivePresenceClient.shared.capture(session: id, active: active, level: level)
+        }
+#else
+        capturePresence = nil
+#endif
         try speech.start(sink: sink, onSegments: { [weak self] segments in
             guard let self else { return }
             self.voiceArchive.addSegments(segments, to: id)
@@ -521,7 +537,7 @@ final class AppStore {
             guard let self else { return }
             self.voiceArchive.addTranscript(text, kind: "on_device", to: id)
             Task { await self.syncVoiceArchive() }
-        }, liveTranscription: privateBody || liveText, onCaptureError: { [weak self] error in
+        }, liveTranscription: privateBody || liveText, onCaptureState: capturePresence, onCaptureError: { [weak self] error in
             self?.voiceArchive.noteCaptureError(error, id: id)
         })
         Task { await syncVoiceArchive() }
