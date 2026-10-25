@@ -17,6 +17,24 @@ import Foundation
 /// Auth is a bearer token; media URLs (audio, drawings) carry it as a
 /// `?token=` query instead, because AVPlayer/AsyncImage can't set headers.
 struct LiveAliciaService: AliciaService {
+    func livePresence() async -> LivePresenceFact? {
+        var req = request("/api/presence/live")
+        req.timeoutInterval = 2.5
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        let started = ProcessInfo.processInfo.systemUptime
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              var value = try? JSONDecoder().decode(LivePresenceFact.self, from: data) else { return nil }
+        value.remainingMS = max(0, value.remainingMS-Int((ProcessInfo.processInfo.systemUptime-started)*1000))
+        return value
+    }
+    func reportPresence(_ event: PresenceEvent) async -> Bool {
+        guard let data = try? JSONEncoder().encode(event) else { return false }
+        var req = request("/api/presence/live", method: "POST", body: data)
+        req.timeoutInterval = 2.5
+        guard let (_, response) = try? await URLSession.shared.data(for: req) else { return false }
+        return (response as? HTTPURLResponse)?.statusCode == 200
+    }
     let baseURL: URL
     let token: String
 

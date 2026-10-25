@@ -46,7 +46,7 @@ import XCTest
 final class BriefingSteeringUITests: XCTestCase {
  func launch(_ extra:[String]) -> XCUIApplication {
   continueAfterFailure=false
-  let app=XCUIApplication();app.launchArguments=["--morning-briefing-steer-preview"]+extra;app.launch();return app
+  let app=XCUIApplication();app.launchArguments=["--live-presence-preview","--morning-briefing-steer-preview"]+extra;app.launch();return app
  }
  func capture(_ name:String,_ app:XCUIApplication) {let shot=XCTAttachment(screenshot:app.screenshot());shot.name=name;shot.lifetime = .keepAlways;add(shot)}
  func testDuringArmSteersWhilePlaying() {
@@ -187,7 +187,7 @@ final class BriefingSteeringUITests: XCTestCase {
   XCTAssertTrue(app.buttons["briefingStage.close"].waitForExistence(timeout:5),"The bar opens the room again")
  }
  func testLargeTypeKeepsTheControls() {
-  let app=XCUIApplication();app.launchArguments=["--morning-briefing-steer-preview","--reading-bar-preview",
+  let app=XCUIApplication();app.launchArguments=["--live-presence-preview","--morning-briefing-steer-preview","--reading-bar-preview",
    "-UIPreferredContentSizeCategoryName","UICTContentSizeCategoryAccessibilityXXXL"];app.launch()
   XCTAssertTrue(app.buttons["steer.higher"].waitForExistence(timeout:15))
   capture("steer-large-type",app)

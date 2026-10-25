@@ -123,6 +123,7 @@ final class SpeechTranscriber {
     private var deliverSegments: (([VoiceSegment]) -> Void)?
     private var deliverTranscript: ((String) -> Void)?
     private var deliverCaptureError: ((String) -> Void)?
+    private var deliverCaptureState: ((Bool, Double) -> Void)?
 
     func requestMicrophoneAuthorization() async -> Bool {
         authorized = await AVAudioApplication.requestRecordPermission()
@@ -139,8 +140,10 @@ final class SpeechTranscriber {
     }
 
     func start(sink: VoiceAudioSink, onSegments: @escaping ([VoiceSegment]) -> Void,
-               onTranscript: @escaping (String) -> Void, liveTranscription: Bool = true, onCaptureError: ((String) -> Void)? = nil) throws {
+               onTranscript: @escaping (String) -> Void, liveTranscription: Bool = true,
+               onCaptureState: ((Bool, Double) -> Void)? = nil, onCaptureError: ((String) -> Void)? = nil) throws {
         stop()
+        deliverCaptureState = onCaptureState
         self.sink = sink
         self.liveTranscription = liveTranscription; audioCaptureFailed = false
         deliverSegments = onSegments; deliverTranscript = onTranscript; deliverCaptureError = onCaptureError
@@ -167,6 +170,7 @@ final class SpeechTranscriber {
         engine.prepare()
         do { try engine.start() } catch { stop(); throw error }
         isRecording = true
+        deliverCaptureState?(true, 0)
         startRecognition()
         timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.drainAudio() }
@@ -260,6 +264,7 @@ final class SpeechTranscriber {
             stop()
             return
         }
+        if isRecording { deliverCaptureState?(true, inputLevel) }
         if isRecording, let deadline = recognitionDeadline, now >= deadline {
             transcriptNeedsReview = true
             lastError = "Live text did not finish a passage. Review the original audio before sending."
@@ -284,6 +289,7 @@ final class SpeechTranscriber {
         isFinishing = true
         timer?.invalidate(); timer = nil
         engine.stop()
+        deliverCaptureState?(false, 0)
         if hasTap { engine.inputNode.removeTap(onBus: 0); hasTap = false }
         relay.set(nil, bufferWhileUnavailable: true)
         guard await awaitFinalRecognition(stamp: stamp) else { return }
@@ -317,6 +323,8 @@ final class SpeechTranscriber {
         if let interruption { NotificationCenter.default.removeObserver(interruption); self.interruption = nil }
         let wasActive = hasTap || isRecording || engine.isRunning
         engine.stop()
+        deliverCaptureState?(false, 0)
+        deliverCaptureState = nil
         if hasTap { engine.inputNode.removeTap(onBus: 0); hasTap = false }
         let unfinishedText = task != nil || relay.hasBufferedAudio
         finishRecognition()

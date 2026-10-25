@@ -337,6 +337,10 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 
 | Endpoint | For |
 |---|---|
+| `GET /api/chat_receipt` | Recover the durable result for an existing chat request without resending it. |
+| `GET /api/morning_briefing/receipt` | Inspect a briefing segment receipt bound to the played snapshot. |
+| `POST /api/morning_briefing/feedback` | Save explicit feedback for the bound briefing section. |
+| `POST /api/morning_briefing/steer` | Request a bounded change of altitude for a briefing segment. |
 | `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds tap-to-play media. Reviewed Mac voice adds `client_request_id`, `recording_id`, machine source IDs and captured `episode_id`. |
 | `GET /api/chat_receipt?request_id=<UUID>` | Read-only typed-send outcome. Recovery never resubmits the original model/tool action; the protected phone outbox retains its frozen words/context until acknowledgment. Private Body/health and reviewed voice retain their separate receipts. |
 | `GET /api/body` · `POST /api/body` | Private overview and explicit wellness/ritual receipts |
@@ -352,6 +356,8 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/context_graph/elevate` · `GET /api/context_graph/translate?title=` | What Us elevates for his situation (thinkers, passages, goals with the line each was drawn from; `status` preparing/ready/refreshing) and a vault note translated into the one node it bears on |
 | `GET /api/context_graph/arrangement` | What today bears on each active context node: episode questions, validated elevation, mind/body findings, wellness goals, place, and his own words; incompatible episode/day groups are withheld while refreshing |
 | `GET /api/presence` | Her current motion-driving awareness: deterministic local signals plus an optional rate-limited Jev reading; the app ignores timestamp-only refreshes |
+| `GET /api/presence/live` | Live presence: expiring activity facts plus attributed awareness; no text or audio |
+| `POST /api/presence/live` | Live presence: bounded ephemeral capture/playback reports; Body excluded |
 | `GET/POST /api/intelligence` | Global model-spend boundary shown at the top of Us: `local_first` makes Qwen the ordinary lane, keeps compatible heavy work on the signed-in Claude desktop subscription, and refuses paid Anthropic, OpenAI and general Gemini model APIs. Jev, Gemini full-audio enrichment and Gemini natural voice remain narrow paid exceptions; switching back to `balanced` is explicitly confirmed |
 | `GET /api/home` | retained home/library context; no longer the Us framing source |
 | `GET /api/timeline` | every lived day since she began (Timeline sheet) |

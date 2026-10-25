@@ -104,6 +104,11 @@ final class SpeechReader: NSObject {
 
     private(set) var current: Readable?
     private(set) var isSpeaking = false
+    /// The observed player, independent of a pending play request.
+    var isActuallySpeaking: Bool {
+        isSpeaking && !mediaFailed && queue.timeControlStatus == .playing && queue.currentItem?.status == .readyToPlay
+    }
+
     /// Playback intent stays in isSpeaking; this distinguishes startup/stalling
     /// from samples actually playing. Prepared audio never needs a new render.
     private(set) var isLoadingMedia = false

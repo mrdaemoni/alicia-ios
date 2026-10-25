@@ -118,6 +118,20 @@ final class AppStore {
         }
 #endif
         reader.service = service
+        LivePresenceClient.shared.configure(service: service, playbackLevel: { [weak self] in
+            guard let self, self.reader.isActuallySpeaking,
+                  PresencePlaybackPolicy.shared(kind: self.reader.current?.kind ?? "", stableID: self.reader.current?.stableID),
+                  let position = self.reader.currentPosition(), position.fileTime.isFinite,
+                  self.reader.narrationChunks.indices.contains(position.index),
+                  self.reader.narrationChunks[position.index].timingStatus == "ready",
+                  !self.reader.narrationChunks[position.index].cues.isEmpty else { return 0 }
+            return BriefingPlanner.voiceLevel(self.reader.narrationChunks, at: position, speaking: true, clock: 0)
+        }) { [weak self] in
+            guard let self else { return false }
+            let sharedReading = PresencePlaybackPolicy.shared(kind: self.reader.current?.kind ?? "",
+                stableID: self.reader.current?.stableID)
+            return self.isActuallyPlaying || (self.reader.isActuallySpeaking && sharedReading)
+        }
         briefingSteering.configure(service: service, reader: reader)
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview"),
@@ -543,11 +557,14 @@ final class AppStore {
             playback_position_ms: sameEpisode ? episodeDay?.position_ms ?? 0 : 0,
             proactive_id: walk ? nil : answeringAskID)
         context.surface_context = surface ?? walkSurfaceContext
-        let privateBody = surface?.section == "body"
+        let privateBody = context.surface_context?.section == "body"
         let review = VoiceReview(destination: walk ? "walk" : answeringAskID == nil ? "dialogue" : "proactive",
                                  proactiveID: walk ? "" : answeringAskID ?? "",
                                  proactiveExcerpt: walk ? "" : answeringAskExcerpt)
         let sink = try voiceArchive.begin(id: id, context: context, review: privateBody ? nil : review)
+        let capturePresence: ((Bool, Double) -> Void)? = privateBody ? nil : { active, level in
+            LivePresenceClient.shared.capture(session: id, active: active, level: level)
+        }
         try speech.start(sink: sink, onSegments: { [weak self] segments in
             guard let self else { return }
             self.voiceArchive.addSegments(segments, to: id)
@@ -556,7 +573,7 @@ final class AppStore {
             guard let self else { return }
             self.voiceArchive.addTranscript(text, kind: "on_device", to: id)
             Task { await self.syncVoiceArchive() }
-        }, liveTranscription: privateBody || liveText, onCaptureError: { [weak self] error in
+        }, liveTranscription: privateBody || liveText, onCaptureState: capturePresence, onCaptureError: { [weak self] error in
             self?.voiceArchive.noteCaptureError(error, id: id)
         })
         Task { await syncVoiceArchive() }
@@ -1664,6 +1681,9 @@ final class AppStore {
     // MARK: Studio player
     // Real playback (AVPlayer) when the track carries a backend URL;
     // the simulated ticker remains the fallback for sample data.
+    var isActuallyPlaying: Bool {
+        isPlaying && player?.timeControlStatus == .playing && player?.currentItem?.status == .readyToPlay
+    }
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?

@@ -122,7 +122,7 @@ extension View {
                 // opacity keeps it beneath the words rather than level with
                 // them. The mathematics is untouched: same body, seen from
                 // much closer.
-                if store.presenceField.enabled {
+                if store.presenceField.enabled || usesLivePresence {
                     // Animates while this surface is on screen — a tab root or a
                     // page pushed from any tab — and rests under the walk cover.
                     PresenceLayer(isActive: !store.showWalk && !store.showBriefingStage, opacity: 0.55)
@@ -154,6 +154,10 @@ extension View {
         return false
 #endif
     }
+
+    private var usesLivePresence: Bool {
+        LivePresenceClient.shared.enabled
+    }
 }
 
 /// Her body, placed against the glass rather than against whatever container
@@ -183,17 +187,31 @@ struct PresenceLayer: View {
         GeometryReader { geo in
             let here = geo.frame(in: .global)
             let screen = store.presenceField.screen == .zero ? here.size : store.presenceField.screen
-            AliciaPresence(isActive: isActive && onScreen,
-                           previewsReduceMotion: previewsReduceMotion,
-                           field: store.presenceField)
-                .frame(width: screen.width * 1.45, height: screen.height * 1.45)
-                .position(x: screen.width * 0.5 - here.minX, y: screen.height * 0.5 - here.minY)
-                .opacity(opacity)
+            if LivePresenceClient.shared.enabled {
+                RelationalPresence(motion: LivePresenceClient.shared.motion,
+                                   isActive: isActive && onScreen,
+                                   previewReduction: previewsReduceMotion,
+                                   playbackLevel: { LivePresenceClient.shared.currentPlaybackLevel })
+                    .frame(width: screen.width, height: screen.height)
+                    .position(x: screen.width * 0.5 - here.minX, y: screen.height * 0.5 - here.minY)
+                    .opacity(opacity)
+            } else {
+                legacy(screen: screen, here: here)
+            }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .onAppear { onScreen = true }
         .onDisappear { onScreen = false }
+    }
+
+    private func legacy(screen: CGSize, here: CGRect) -> some View {
+        AliciaPresence(isActive: isActive && onScreen,
+                           previewsReduceMotion: previewsReduceMotion,
+                           field: store.presenceField)
+                .frame(width: screen.width * 1.45, height: screen.height * 1.45)
+                .position(x: screen.width * 0.5 - here.minX, y: screen.height * 0.5 - here.minY)
+                .opacity(opacity)
     }
 }

@@ -109,6 +109,8 @@ enum SpeechStatus: Equatable {
 /// Swap `MockAliciaService` for a real URLSession-backed implementation and
 /// the whole app is "networked" without touching any view.
 protocol AliciaService {
+    func livePresence() async -> LivePresenceFact?
+    func reportPresence(_ event: PresenceEvent) async -> Bool
     func intelligenceMode() async -> IntelligenceModeState?
     func setIntelligenceMode(_ mode: String) async -> IntelligenceModeState?
     func askBody(_ text: String) async -> BodyAnswer?
@@ -256,6 +258,8 @@ protocol AliciaService {
 }
 
 extension AliciaService {
+    func livePresence() async -> LivePresenceFact? { nil }
+    func reportPresence(_ event: PresenceEvent) async -> Bool { false }
     func probeConnection() async -> Bool { false }
     func intelligenceMode() async -> IntelligenceModeState? {
 #if DEBUG

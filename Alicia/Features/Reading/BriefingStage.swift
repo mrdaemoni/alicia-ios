@@ -42,7 +42,7 @@ struct BriefingStage: View {
         ZStack {
             Theme.backdrop.ignoresSafeArea()
             Theme.timeTint.ignoresSafeArea()
-            if store.presenceField.enabled {
+            if store.presenceField.enabled || LivePresenceClient.shared.enabled {
                 PresenceLayer(isActive: scenePhase == .active, opacity: 0.72)
             } else {
                 GeometryReader { geo in
