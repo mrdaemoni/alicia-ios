@@ -217,10 +217,8 @@ struct RitualCaptureView: View {
                     // Recording is an action: a mono word in an outline. The
                     // done state keeps the same shape and says so in words.
                     Button(done ? "Recorded · undo" : "Log it") {
-                        var event = BodyEvent(kind: "ritual")
-                        event.ritual = ritual.0; event.completed = !done
                         saving = true
-                        Task { await store.bodyStore.capture(event); saving = false }
+                        Task { await store.bodyStore.toggleRitual(ritual.0); saving = false }
                     }
                     .buttonStyle(.inkSecondaryCompact).disabled(saving)
                     .accessibilityIdentifier("body.ritual." + ritual.0)
