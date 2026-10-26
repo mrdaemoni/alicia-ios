@@ -147,6 +147,18 @@ final class HomeConversationUITests: XCTestCase {
   XCTAssertFalse(app.buttons["composer.microphone"].exists,"the retired short-remark mic is back")
  }
 
+ /// A current episode must not take over a spoken Body turn (from #48's
+ /// testTalkFromBodyKeepsBodyAsItsSubject; the button is still WALK on main).
+ func testWalkFromBodyKeepsBodyAsItsSubject() {
+  let app=launch("body")
+  XCTAssertFalse(app.staticTexts["episode.talkAnywhere"].exists,"Body names the episode as its walk subject")
+  app.buttons["composer.walk"].tap()
+  XCTAssertTrue(app.descendants(matching:.any)["listening.presence"].waitForExistence(timeout:15))
+  let subject=app.descendants(matching:.any)["listening.subject"]
+  XCTAssertTrue(subject.label.contains("BODY"),"spoken turn lost Body context: \(subject.label)")
+  capture("body-walk-keeps-body-context",app)
+ }
+
  /// "the aura evidence is stale" — the sentence he reads must say how old it
  /// is and what would fix it, and must still show no measurement.
  func testARefusedBridgeExplainsItselfAndShowsNoNumbers() {

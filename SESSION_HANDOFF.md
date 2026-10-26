@@ -1,13 +1,16 @@
-## Current release — October 25, 2026
+## Current release — October 26, 2026
 
-iOS `main` is `1c14936` (PR #57), tagged v43 (Oct 24) and shipped as
-TestFlight **1.0 (53)**. That merge brought the whole TestFlight 43–53 lineage
-into `main`. The backend it pairs with is production `1e8b40c`
+The latest TestFlight build is still **1.0 (53)**, from `1c14936` (PR #57,
+tagged v43, Oct 24). That merge brought the whole TestFlight 43–53 lineage
+into `main`. Since then `main` has moved to `410d19f`, with #50 and #60
+merged on 2026-10-26. No TestFlight build carries either yet, so none of that
+code is on the phone. The backend it pairs with is production `1e8b40c`
 (alicia#110) on the Mac Studio. Exact Apple and deployment receipts are in
 each shared task's RELEASE.md under
 `/Users/alicia/Documents/Alicia-development/tasks/`. The sections after this
-one are dated history, and the entries labelled "candidate" there have since
-shipped as listed here.
+one are dated history. The entries labelled "candidate" there have since
+shipped as listed here, except the October 25 entry: that one is in `main`
+but not yet in a build.
 
 | Build | What it added | Record |
 |---|---|---|
@@ -36,18 +39,37 @@ Dialogue is a shared action through the band above the tab bar.
 - **No Telegram.** Alicia's outbound Telegram has been off since 2026-09-18,
   so the 12:30 question described below no longer exists.
 
-**In `main`, not on the phone:** iOS #50 (`b4fd6f4`, merged 2026-10-26), a
-widget tap undoes the last one. No TestFlight build carries it yet.
+**In `main` since 2026-10-26, not on the phone:**
+- iOS #50 (`b4fd6f4`): a widget tap undoes the last one.
+- iOS #60 (`410d19f`, the dated entry below) brought in three pieces:
+  - A2-045's exact `243ab83` (a typed answer to one of her asks carries its
+    section) and `05c030a` (a section walk resumes after a pause or tab
+    change);
+  - #48's episode guard (a Body, Mind or Alicia walk stays about that
+    section).
+
+No TestFlight build carries these yet.
 
 **Reviewed, not in `main`:**
-- iOS #48, contextual TALK (the TF42 branch build only).
+- The rest of iOS #48: the real input field and TALK/keyboard layout on every
+  section, and the unconditional dark widget plate. That work is unreleased
+  and needs a deliberate re-port.
 - iOS #54, the phone half of the walk-delivery repair. It is contained in iOS
   #59, which is not yet approved or merged.
-- A2-045's `243ab83` and `05c030a`, which shipped only on the TF22/23 branch
-  builds. They are contained in iOS #60, which is approved but not yet
-  merged.
 
 `CLAUDE.md` "Current state" has the file-level detail.
+
+## October 25 — A2-045 and the Body walk guard reach main (candidate; merged 2026-10-26 as `410d19f`, not yet in a TestFlight build)
+
+Branch `claude/cl-20261025-ios-unmerged-landing` on main `1c14936`
+(CL-20261025-ios-unmerged-landing). It merges the two reviewed A2-045 commits
+that shipped only in TestFlight 22/23. A typed answer to one of her asks now
+posts its section (`243ab83`), and a section walk resumes after a pause or tab
+change instead of failing to start the microphone (`05c030a`). It also ports
+#48's episode guard (`7b6d116`): WALK on Body, Mind or Alicia stays about that
+section when an episode is current, so a Body walk stays private. The rest of
+#48, #50 and #54 are not included. The voice-archive XCTest harness builds on
+main again. No version tag, release or device result is claimed here.
 
 ## October 18 — reply latency and composer delivery repair (shipped as TestFlight 50)
 
@@ -133,6 +155,14 @@ is v39. Release status belongs to the paired pull requests and Apple receipt,
 not this handoff entry: backend PR #72 and app PR #35. The backend must deploy
 first. See
 `/Users/alicia/alicia/docs/JEV_IMPULSE_JUDGE.md`.
+
+## A2-045 recording resume follow-up
+
+A section walk can resume after a pause even when its current time/place differs. VoiceArchive keeps the original capture receipt and still rejects a different section or episode. A generated-audio regression failed before the fix; exact tests and release receipts live in the shared A2-045 task. This is a follow-up to build22, not a claim that build22 includes it.
+
+## A2-045 integration — section context through proactive replies
+
+The paired backend validates and retains the originating section on chat and voice. This iOS follow-up extends the same packet to typed proactive replies; current UI, widgets and listening visuals remain at the build-21 baseline. Named place packets remain compatible. See the shared A2-045 task record for review and actual release status; this note is not a release receipt.
 
 ## A2-043 — mind and body (released 2026-09-13 as TestFlight 18)
 
