@@ -434,6 +434,13 @@ final class AppStore {
     /// what it is *about* changes, and `walkSurface` is what carries that to
     /// the backend.
     func openWalk(probe: String = "", surface: SurfaceContext? = nil) {
+        // A section that does not display the chosen episode is authoritative.
+        // Without this, WALK from Body became an episode walk whenever an
+        // episode was current, and a Body walk stopped being private.
+        if let surface, surface.episode_id.isEmpty {
+            openSurfaceWalk(surface, probe: probe)
+            return
+        }
         guard let episode = episodeDay?.episode else {
             guard let surface else {
                 episodeError = "Play an episode in Studio to begin."
@@ -1525,7 +1532,7 @@ final class AppStore {
             isStreaming = true
             Task {
                 defer { isStreaming = false }
-                let reply = await service.reply(proactiveID: askID, text: clean, recordingID: recordingID, episodeID: episodeID)
+                let reply = await service.reply(proactiveID: askID, text: clean, recordingID: recordingID, episodeID: episodeID, surfaceContext: surfaceContext)
                 if let reply, !reply.isEmpty {
                     if answeringAskID == askID { cancelAnswering() }
                     messages.append(Message(sender: .alicia, text: reply))

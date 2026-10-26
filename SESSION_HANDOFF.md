@@ -1,3 +1,15 @@
+## October 25 — A2-045 and the Body walk guard reach main (candidate)
+
+Branch `claude/cl-20261025-ios-unmerged-landing` on main `1c14936`
+(CL-20261025-ios-unmerged-landing). It merges the two reviewed A2-045 commits
+that shipped only in TestFlight 22/23. A typed answer to one of her asks now
+posts its section (`243ab83`), and a section walk resumes after a pause or tab
+change instead of failing to start the microphone (`05c030a`). It also ports
+#48's episode guard (`7b6d116`): WALK on Body, Mind or Alicia stays about that
+section when an episode is current, so a Body walk stays private. The rest of
+#48, #50 and #54 are not included. The voice-archive XCTest harness builds on
+main again. No version tag, release or device result is claimed here.
+
 ## October 18 — reply latency and composer delivery repair
 
 Candidate branch `codex/chat-delivery-20261018`, based on the actual TestFlight
@@ -82,6 +94,14 @@ is v39. Release status belongs to the paired pull requests and Apple receipt,
 not this handoff entry: backend PR #72 and app PR #35. The backend must deploy
 first. See
 `/Users/alicia/alicia/docs/JEV_IMPULSE_JUDGE.md`.
+
+## A2-045 recording resume follow-up
+
+A section walk can resume after a pause even when its current time/place differs. VoiceArchive keeps the original capture receipt and still rejects a different section or episode. A generated-audio regression failed before the fix; exact tests and release receipts live in the shared A2-045 task. This is a follow-up to build22, not a claim that build22 includes it.
+
+## A2-045 integration — section context through proactive replies
+
+The paired backend validates and retains the originating section on chat and voice. This iOS follow-up extends the same packet to typed proactive replies; current UI, widgets and listening visuals remain at the build-21 baseline. Named place packets remain compatible. See the shared A2-045 task record for review and actual release status; this note is not a release receipt.
 
 ## A2-043 — mind and body integration candidate
 
