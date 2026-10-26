@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 root=Path(__file__).resolve().parents[1]
 work=Path(tempfile.mkdtemp(prefix='alicia-voice-tests-'))
 project=work/'Alicia.xcodeproj';shutil.copytree(root/'Alicia.xcodeproj',project)
-for name in ['Alicia','AliciaWidgets']:(work/name).symlink_to(root/name,target_is_directory=True)
+for name in ['Alicia','AliciaWidgets','Shared']:(work/name).symlink_to(root/name,target_is_directory=True)
 for source in root.glob('*.plist'):(work/source.name).symlink_to(source)
 p=json.loads(subprocess.check_output(['plutil','-convert','json','-o','-',str(project/'project.pbxproj')]))
 o=p['objects'];r=o[p['rootObject']]
@@ -36,6 +36,7 @@ tree.write(scheme,encoding='utf-8',xml_declaration=True)
 folder=work/'VoiceEvidenceTests';folder.mkdir()
 (folder/'VoiceEnrichment.swift').symlink_to(root/'Alicia/Core/VoiceEnrichment.swift')
 (folder/'VoiceEvidence.swift').symlink_to(root/'Alicia/Core/VoiceEvidence.swift')
+(folder/'SurfaceContext.swift').symlink_to(root/'Alicia/Core/SurfaceContext.swift')
 (folder/'VoiceProcessing.swift').symlink_to(root/'Alicia/Core/VoiceProcessing.swift')
 context_source=(root/'Alicia/Core/Collaboration.swift').read_text().split('struct WorkDialogueContext:',1)[1].split('enum CollaborationReturnPreferences',1)[0]
 (folder/'WorkDialogueContext.swift').write_text('import Foundation\nstruct WorkDialogueContext:'+context_source)
@@ -143,6 +144,23 @@ final class VoiceEvidenceTests:XCTestCase {
   XCTAssertEqual(restored.id,id)
   XCTAssertEqual(restored.segments.count,original.segments.count)
   XCTAssertTrue(restored.transcripts.isEmpty)
+ }
+ @MainActor func testSectionWalkResumeKeepsOriginalTimeAndPlace() throws {
+  let a=archive(),id=UUID().uuidString
+  var initial=context(id)
+  initial.surface_context=SurfaceContext(section:"mind",captured_at:"2026-09-19T08:00:00Z",place:["locality":"Palo Alto"])
+  let first=try a.begin(id:id,context:initial,review:VoiceReview(destination:"walk"))
+  first.append(buffer());a.addSegments(first.drain(close:true).segments,to:id)
+  var later=initial
+  later.surface_context?.captured_at="2026-09-19T08:10:00Z"
+  later.surface_context?.place=["locality":"Seattle"]
+  let resumed=try a.begin(id:id,context:later,review:VoiceReview(destination:"walk"))
+  resumed.append(buffer());a.addSegments(resumed.drain(close:true).segments,to:id)
+  XCTAssertEqual(a.recording(id)?.context.surface_context,initial.surface_context)
+  XCTAssertEqual(a.recording(id)?.segments.count,2)
+  var other=later;other.surface_context?.section="studio"
+  XCTAssertThrowsError(try a.begin(id:id,context:other,review:VoiceReview(destination:"walk")))
+  XCTAssertTrue(a.finalize(id))
  }
  @MainActor func testMacPauseDoesNotSealAndCompleteOrderedManifestSurvivesRestart()throws {
   let a=archive(),id=UUID().uuidString

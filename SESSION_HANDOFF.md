@@ -83,6 +83,14 @@ not this handoff entry: backend PR #72 and app PR #35. The backend must deploy
 first. See
 `/Users/alicia/alicia/docs/JEV_IMPULSE_JUDGE.md`.
 
+## A2-045 recording resume follow-up
+
+A section walk can resume after a pause even when its current time/place differs. VoiceArchive keeps the original capture receipt and still rejects a different section or episode. A generated-audio regression failed before the fix; exact tests and release receipts live in the shared A2-045 task. This is a follow-up to build22, not a claim that build22 includes it.
+
+## A2-045 integration — section context through proactive replies
+
+The paired backend validates and retains the originating section on chat and voice. This iOS follow-up extends the same packet to typed proactive replies; current UI, widgets and listening visuals remain at the build-21 baseline. Named place packets remain compatible. See the shared A2-045 task record for review and actual release status; this note is not a release receipt.
+
 ## A2-043 — mind and body integration candidate
 
 Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action. Body is private Mac/phone evidence and explicit wellness goals. Daily rituals widget saves offline and syncs when Alicia opens. Drawing is removed from Studio navigation; files remain. No release is claimed; shared A2-043 evidence owns status.

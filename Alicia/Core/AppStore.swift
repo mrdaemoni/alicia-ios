@@ -1525,7 +1525,7 @@ final class AppStore {
             isStreaming = true
             Task {
                 defer { isStreaming = false }
-                let reply = await service.reply(proactiveID: askID, text: clean, recordingID: recordingID, episodeID: episodeID)
+                let reply = await service.reply(proactiveID: askID, text: clean, recordingID: recordingID, episodeID: episodeID, surfaceContext: surfaceContext)
                 if let reply, !reply.isEmpty {
                     if answeringAskID == askID { cancelAnswering() }
                     messages.append(Message(sender: .alicia, text: reply))
