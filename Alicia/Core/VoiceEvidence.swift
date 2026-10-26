@@ -204,9 +204,14 @@ struct VoiceRecording: Codable, Identifiable {
     /// showed the next of four more — while Sessions said "none waiting on you".
     /// The backend's walk_autosend.is_misfire applies the same rule.
     var isMisfire: Bool {
+        guard stage != .sent else { return false }
         let reviewed = review?.text ?? ""
         let words = reviewed.isEmpty ? transcription?.draft?.text ?? latestWords : reviewed
-        return stage != .sent && words.split(whereSeparator: \.isWhitespace).count < 8
+        let count = words.split(whereSeparator: \.isWhitespace).count
+        // Until the Mac has written words, a long recording is a walk still on
+        // its way, not a press of the button, and Clear all deletes originals.
+        if reviewed.isEmpty, transcription?.draft == nil { return duration < 20 && count < 8 }
+        return count < 8
     }
 
     var latestWords: String {

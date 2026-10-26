@@ -357,6 +357,14 @@ final class VoiceEvidenceTests:XCTestCase {
   let restored=try JSONDecoder().decode(VoiceSubmission.self,from:JSONSerialization.data(withJSONObject:object))
   XCTAssertEqual(restored,original);XCTAssertNil(restored.body["surface"])
  }
+ @MainActor func testLongWalkWithoutMacWordsIsNotAMisfire() {
+  let id=UUID().uuidString
+  var record=VoiceRecording(id:id,context:context(id))
+  record.segments=[VoiceSegment(id:UUID().uuidString,sha256:"fixture",started_at:"2026-10-26T08:00:00.000Z",ended_at:"2026-10-26T08:10:00.000Z",bytes:1,duration:600,sample_rate:48000,channels:1,uploaded:true)]
+  XCTAssertFalse(record.isMisfire,"an untranscribed ten-minute walk would be offered to Clear all")
+  record.segments[0].duration=3
+  XCTAssertTrue(record.isMisfire)
+ }
  @MainActor func testShortMacThoughtIsNotHiddenAsMisfire()async throws {
   let a=archive(),id=UUID().uuidString,_=try await ready(a,id:id,destination:"walk",section:"us")
   a.editReview(id,text:"Clarity needs the right orientation before I can act.")
