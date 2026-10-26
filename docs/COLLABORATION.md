@@ -4,7 +4,9 @@ The collaboration sheet is shared by the five-tab app. Us and
 Alicia show up to three active goals and the current connection or agreement even when no
 morning episode has played. Dialogue and Context enrichment open the same work.
 The source baseline is 55798db; release evidence belongs to the shared A2-010
-RELEASE.md. A compiled candidate is not a shipped TestFlight build.
+RELEASE.md. Released September 7, 2026 with backend PR #23 and TestFlight 1.0
+(11); A2-011's concurrent goals followed in TestFlight 1.0 (12). Both are in
+iOS main.
 
 Goals are Hector's explicit words, with a desired outcome, reason, state and
 Less / Normal / More attention. Alicia proposes connections with captured source
@@ -69,7 +71,9 @@ its exact goal/connection/agreement identity. It does not allocate daily slots.
 Local quiet hours are 9am–7pm. New shared revisions invalidate an older local
 schedule; an ordinary chat does not cancel an agreement. Stop cancels on this
 phone immediately, persists locally, and queues the server setting. It does not
-cancel goals. Telegram returns have their own explicit setting.
+cancel goals. Telegram returns have their own explicit setting, but Alicia's
+outbound Telegram has been off on the Mac since September 18, 2026, so no
+Telegram return is sent.
 An existing local Stop from the earlier ThoughtReturn feature migrates once,
 including when background sync runs first. A deliberate new Allow clears it.
 Older scheduler snapshots are ignored. Once the collaboration payload has been

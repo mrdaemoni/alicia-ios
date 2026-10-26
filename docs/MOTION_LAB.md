@@ -26,6 +26,9 @@ Repeatable DEBUG captures can also pass
 `--presence-attention=0...1`, `--presence-reduce-motion`, and
 `--presence-audit`. These inspection seams are not product settings.
 
+The live presence review room is a separate DEBUG entry:
+`--motion-lab --live-presence-lab` (see `LIVE_PRESENCE.md`).
+
 ## Review an experiment
 
 - Compare all six voices at the same ATTENTION value. Each voice uses a
@@ -69,5 +72,5 @@ An experiment moves into Alicia only after:
 5. The device build is inspected on Pandaiux.
 
 When promoted, reuse the design-system component, add only the production
-state mapping and placement, bump `AppVersion.tag`, run the normal ship loop,
+state mapping and placement, bump `AppVersion.baseTag`, run the normal ship loop,
 then commit and push.

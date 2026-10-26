@@ -1,4 +1,65 @@
-## October 25 — A2-045 and the Body walk guard reach main (candidate)
+## Current release — October 26, 2026
+
+The latest TestFlight build is still **1.0 (53)**, from `1c14936` (PR #57,
+tagged v43, Oct 24). That merge brought the whole TestFlight 43–53 lineage
+into `main`. Since then `main` has moved to `410d19f`, with #50 and #60
+merged on 2026-10-26. No TestFlight build carries either yet, so none of that
+code is on the phone. The backend it pairs with is production `1e8b40c`
+(alicia#110) on the Mac Studio. Exact Apple and deployment receipts are in
+each shared task's RELEASE.md under
+`/Users/alicia/Documents/Alicia-development/tasks/`. The sections after this
+one are dated history. The entries labelled "candidate" there have since
+shipped as listed here, except the October 25 entry: that one is in `main`
+but not yet in a build.
+
+| Build | What it added | Record |
+|---|---|---|
+| 33 | walk audio keeps uploading after lock and while closed | CL-20260926-walk-sync |
+| 34 | Finished together: goals closed from his words | CL-20260926-goal-closure |
+| 39 / 40 | the particle field as her awareness; one continuous field; her listening room | CL-20260926-presence, CL-20260927-presence-home |
+| 41 | the readable ritual widget; latest tap shown as local or synced | CL-20260929-device-feedback |
+| 43 / 45 / 46 | health and performance repairs, story playlist, briefing feedback, typed-send recovery, the watchdog-freeze fix | health-performance-20261004 |
+| 47 / 48 / 49 | steerable briefing (Higher · Lower · Again), faded commands, the full-screen briefing room | CL-20261015-steerable-briefing |
+| 50 | reply latency and composer delivery repair (below) | backend #103 |
+| 51 | connection recovery (`docs/CONNECTION_RECOVERY.md`) | connection-recovery-20261024 |
+| 52 | live presence (`docs/LIVE_PRESENCE.md`) | CL-20261024-live-presence |
+| 53 | the steering study's weekly note card on Us | CL-20261023-study-note-card |
+
+Builds 52 and 53 are available in TestFlight; their phone installation was
+not confirmed in the release records.
+
+**The app today.** The tabs are Us · Mind · Body · Alicia · Studio, and
+Dialogue is a shared action through the band above the tab bar.
+- **Walks.** A walk keeps uploading after lock, is transcribed in English on
+  the Mac, and sends itself at eight words or more. Dialogue voice keeps its
+  explicit reviewed Send.
+- **Morning briefing.** It plays in its own room and can be steered while it
+  plays. The steering study runs Oct 18 – Nov 14, and from Oct 31 a weekly
+  note card appears on Us.
+- **No Telegram.** Alicia's outbound Telegram has been off since 2026-09-18,
+  so the 12:30 question described below no longer exists.
+
+**In `main` since 2026-10-26, not on the phone:**
+- iOS #50 (`b4fd6f4`): a widget tap undoes the last one.
+- iOS #60 (`410d19f`, the dated entry below) brought in three pieces:
+  - A2-045's exact `243ab83` (a typed answer to one of her asks carries its
+    section) and `05c030a` (a section walk resumes after a pause or tab
+    change);
+  - #48's episode guard (a Body, Mind or Alicia walk stays about that
+    section).
+
+No TestFlight build carries these yet.
+
+**Reviewed, not in `main`:**
+- The rest of iOS #48: the real input field and TALK/keyboard layout on every
+  section, and the unconditional dark widget plate. That work is unreleased
+  and needs a deliberate re-port.
+- iOS #54, the phone half of the walk-delivery repair. It is contained in iOS
+  #59, which is not yet approved or merged.
+
+`CLAUDE.md` "Current state" has the file-level detail.
+
+## October 25 — A2-045 and the Body walk guard reach main (candidate; merged 2026-10-26 as `410d19f`, not yet in a TestFlight build)
 
 Branch `claude/cl-20261025-ios-unmerged-landing` on main `1c14936`
 (CL-20261025-ios-unmerged-landing). It merges the two reviewed A2-045 commits
@@ -10,7 +71,7 @@ section when an episode is current, so a Body walk stays private. The rest of
 #48, #50 and #54 are not included. The voice-archive XCTest harness builds on
 main again. No version tag, release or device result is claimed here.
 
-## October 18 — reply latency and composer delivery repair
+## October 18 — reply latency and composer delivery repair (shipped as TestFlight 50)
 
 Candidate branch `codex/chat-delivery-20261018`, based on the actual TestFlight
 49 source `71ce1d8`. Early matching Mac receipts clear only the submitted
@@ -20,7 +81,7 @@ words remain in the protected outbox until completion. No briefing room, study
 arm, steering behavior or experimental particle-field changes are included.
 Release and device acceptance must be verified separately.
 
-## October 16 — steerable morning briefing candidate (CL-20261015-steerable-briefing)
+## October 16 — steerable morning briefing (CL-20261015-steerable-briefing; shipped as TestFlight 47–49)
 
 The morning briefing can be steered while it plays: Higher · Lower · Again in
 the reading bar and immersive reader (ink small caps), one interpretation
@@ -103,9 +164,9 @@ A section walk can resume after a pause even when its current time/place differs
 
 The paired backend validates and retains the originating section on chat and voice. This iOS follow-up extends the same packet to typed proactive replies; current UI, widgets and listening visuals remain at the build-21 baseline. Named place packets remain compatible. See the shared A2-045 task record for review and actual release status; this note is not a release receipt.
 
-## A2-043 — mind and body integration candidate
+## A2-043 — mind and body (released 2026-09-13 as TestFlight 18)
 
-Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action. Body is private Mac/phone evidence and explicit wellness goals. Daily rituals widget saves offline and syncs when Alicia opens. Drawing is removed from Studio navigation; files remain. No release is claimed; shared A2-043 evidence owns status.
+Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action. Body is private Mac/phone evidence and explicit wellness goals. Daily rituals widget saves offline and syncs when Alicia opens. Drawing is removed from Studio navigation; files remain. Shared A2-043/A2-044 evidence owns the release record.
 
 ## A2-037 — natural immersive reading and voice interpretation review
 
@@ -223,9 +284,11 @@ separate task branches/worktrees, exchange committed diffs, and follow each
 repository's AGENTS rules. No competing open PRs existed at the start of this
 documentation reconciliation; verify again before future work.
 
-## The current app
+## The app as of September 5 (historical; see "Current release" at the top)
 
-`RootView` has five tabs: **Us · Dialogue · Alicia · Studio · Knowledge**.
+At the time, `RootView` had five tabs: **Us · Dialogue · Alicia · Studio ·
+Knowledge**. Today they are Us · Mind · Body · Alicia · Studio, with Dialogue a
+shared action.
 `HomeView` mounts `EpisodeHomeView`; `MindView` mounts `EpisodeMindView`. Both
 current episode views are implemented in `Features/Home/EpisodeDayView.swift`.
 Older orbit, card and voice-gallery implementations remain unmounted.
@@ -263,8 +326,10 @@ No claim of real microphone correctness comes from mocked save tests.
 
 ## Messaging and learning
 
-Telegram offers at most one optional 12:30 episode question before Hector has
-responded, with no new generation at send time. Morning/evening broadcasts,
+On September 5, Telegram offered at most one optional 12:30 episode question
+before Hector had responded, with no new generation at send time. That sender
+has been paused since September 7, and Alicia's outbound Telegram has been off
+since September 18. Morning/evening broadcasts,
 random discoveries/drawings, scorecards, surveys and portrait pushes are paused.
 Background work remains. Requested conversation, email digest, committed
 practices, unpack probes and service notices are separate.
@@ -327,7 +392,8 @@ the dependent app. The v38 record above is historical; see the shared A2-006
 The sheet reveals saved public response metadata and supplied context, never a
 private reasoning transcript. Feedback belongs to an exact response/reading/
 source set/lens/length. Optional Qwen/Claude comparison starts from frozen input and
-runs only on a deliberate tap. Qwen is on the Mac mini, not the phone. It is a
+runs only on a deliberate tap. Qwen is on the Mac (the Mac Studio since
+October 7), not the phone. It is a
 contextual preference with visible providers, separate from blind Labs trials.
 A decisive choice, optional reason and explicit permission can enter a pending-review
 export; saving feedback does not train or replace any model.

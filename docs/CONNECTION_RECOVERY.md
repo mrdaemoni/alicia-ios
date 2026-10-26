@@ -1,4 +1,9 @@
-# Connection recovery candidate — October 24, 2026
+# Connection recovery — October 24, 2026
+
+Released as TestFlight 1.0 (51) on October 24, 2026, from source `e4546df`
+(PR #55, stacked on PR #53). PR #55 stayed a draft; its code reached iOS main
+through PR #57 (`1c14936`) and is in builds 52 and 53. There was no backend
+change. Recovery after a real failure on the phone is not yet confirmed.
 
 The banner's automatic retry previously read `modeState`, whose raw request
 returned idle/zero on failure without reporting connection status. A successful
@@ -32,12 +37,13 @@ retries, settings races, retained content and caller cancellation. It sends no
 production request or POST. Existing startup, conversation delivery, context and
 briefing harnesses remain relevant compatibility checks.
 
-Base: PR53 source `c2f16abb2f2b398adfc289f128f9afd275a61c80`, recorded TestFlight50
-source and paired-phone installed build50. Canonical main is older and is not
-silently substituted. PR49 and the separate study-note candidate overlap core
-files and require serial integration; PR54 voice changes are outside this diff.
+Base at review: PR53 source `c2f16abb2f2b398adfc289f128f9afd275a61c80`, recorded TestFlight50
+source and paired-phone installed build50. Canonical main was older then and was not
+silently substituted. PR49 and the separate study-note candidate overlapped core
+files and needed serial integration, which PR #57 did. PR54's voice changes are
+outside this diff and are still not in main.
 
-This is an unshipped candidate. Separate approval is required for any merge or
-TestFlight release. Installed-phone recovery is not established by simulator or
+It shipped as build 51 with Hector's separate approval; the release status is
+at the top of this page. Installed-phone recovery is not established by simulator or
 fixture checks. Device-specific past HTTP failure details are not inferred from
 the client retry defect; no credentials, overrides or network settings are changed.

@@ -1,15 +1,17 @@
 # Voice capture, revisions and save feedback
 
-## A2-016 candidate — Mac transcription
+## A2-016 — Mac transcription (TestFlight 1.0 (15), September 9, 2026)
 
 New recordings use capture-only mode. Speech recognition permission and live
 on-device text are no longer prerequisites. The phone keeps the original CAF
 segments and their capture order. Finish seals those exact parts; pause,
 interruption and backgrounding leave an unfinished recording. The Mac produces
-a separate draft for explicit review/send. See [MAC_VOICE_PROCESSING.md](MAC_VOICE_PROCESSING.md).
+a separate draft. A Dialogue recording waits for review and Send; since
+September 20, 2026 a walk is sent by the Mac once its draft is ready. See
+[MAC_VOICE_PROCESSING.md](MAC_VOICE_PROCESSING.md).
 
-The following sections describe the shipped build14 baseline and its history.
-The A2-016 branch has not been uploaded to TestFlight by this implementation task.
+The following sections describe the build 14 baseline before A2-016 and its
+history. A2-016 shipped in TestFlight 1.0 (15) and is in iOS main.
 
 ## September 8 field audit — A2-014
 

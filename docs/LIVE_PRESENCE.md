@@ -1,4 +1,11 @@
-# Live presence candidate
+# Live presence
+
+Released. TestFlight 1.0 (52) from source `6954a4e` (PR #56, v42) became
+available on October 24, 2026 (Pacific), after the backend's
+`/api/presence/live` (backend PR #109) and the Nest display went live the same
+evening. PR #57 then brought this code into iOS main (`1c14936`, v43), which
+shipped as TestFlight 1.0 (53). Official installation of build 52 or 53 on the
+phone is not yet confirmed.
 
 This release connects the four recovered mathematical fields to
 observed listening, reply preparation and playback, with an attributed emotional
@@ -9,7 +16,7 @@ opened by enabling the renderer or entering the lab.
 ## Review entry points
 
 `--motion-lab --live-presence-lab` opens the live review room. Its switch enables
-the candidate for this DEBUG session; the usual phone recording/playback flows
+the live renderer for this DEBUG session; the usual phone recording/playback flows
 supply facts. The backend companion must expose `/api/presence/live`. The regular app enables
 this path by default with the live service. Mock fallback stays inert. The lab
 and synthetic controls remain DEBUG-only. `--live-presence-preview` forces the
@@ -50,7 +57,7 @@ tunes posture. Every transition retains point identity, integrates phase during
 speed changes, and blends all active families. Both renderers use 2,400 fixed
 samples and a 30 FPS ceiling. Reduce Motion uses fixed phases with zero meter
 motion; inactive/offscreen views pause. No camera, facial analysis, phone motion
-sensor or Nest microphone is integrated by this candidate.
+sensor or Nest microphone is integrated by this release.
 
 ## Evidence and promotion
 
@@ -61,8 +68,8 @@ geometry, checks expiration, interrupted transition continuity, deterministic
 Reduce Motion, finite/bounded point counts and the shared JavaScript equation
 fixtures in `docs/live-presence-equations.json`.
 
-The iPhone 17 simulator build and fixture screens are checked. The shipping
-baseline is released build 51 (`e4546df`), preserving the study room, steering
+The iPhone 17 simulator build and fixture screens are checked. Build 52 was
+built on released build 51 (`e4546df`), preserving the study room, steering
 controls and recent delivery/connection repairs. The companion
 room renderer has authenticated proxy tests and a 1024x600 headless Chrome
 fixture run, including connection failure and settled Reduce Motion. These are
@@ -74,8 +81,9 @@ visual interface change as a possible influence on study outcomes; the hypothese
 arms, control rules and prior data are preserved. Independent committed review
 and physical acceptance remain distinct from simulator tests and Apple availability.
 The task RELEASE.md records actual backend/Nest activation, Apple build and phone
-installation times. The phone branch build includes the already released study
-and connection repairs; it does not promote those open branches into main.
+installation times. Build 52 was a branch build that included the already
+released study and connection repairs. PR #57 later merged that whole lineage,
+with the study-note card, into main.
 Rollback is the prior released app build and prior display commit; the backend
 channel is additive and process-local. Disabling the DEBUG switch remains a lab
 comparison tool, not a new product setting.
