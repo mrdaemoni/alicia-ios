@@ -1,7 +1,9 @@
-## Current state — October 25, 2026 (read this first)
+## Current state — October 26, 2026 (read this first)
 
-iOS `main` is `1c14936`, tagged **v43 (Oct 24)** and shipped as TestFlight
-**1.0 (53)**. It pairs with backend production `1e8b40c`, which has run on the
+The latest TestFlight build is **1.0 (53)**, from `1c14936`, tagged **v43
+(Oct 24)**. iOS `main` has since moved to `410d19f` (#50 and #60, merged
+2026-10-26). No TestFlight build carries those yet; see the next-to-last item.
+It pairs with backend production `1e8b40c`, which has run on the
 Mac Studio since 2026-10-07 (the mini is kept as the rollback). Feature notes
 follow this block and also close the file, where the newest ones are
 (steering, the study note, presence). Stable architecture starts at
@@ -32,21 +34,24 @@ follow this block and also close the file, where the newest ones are
 - **Network.** Since backend #102, the iOS API on :8766 accepts only loopback
   and tailnet clients. The phone reaches it over Tailscale, not a home-Wi-Fi
   address.
-- **In `main` since 2026-10-26, but in no TestFlight build yet:** iOS #50
-  (`b4fd6f4`), a second widget tap undoes the first. The phone still has the
-  set-only widget. Being in `main` is not phone state.
+- **In `main` since 2026-10-26, but in no TestFlight build yet.** The phone
+  still behaves as TF53 until a build ships, so being in `main` is not phone
+  state.
+  - iOS #50 (`b4fd6f4`): a second widget tap undoes the first.
+  - iOS #60 (`410d19f`):
+    - A2-045's exact `243ab83`: `reply()` now posts `surface_context`.
+    - A2-045's exact `05c030a`: `VoiceArchive.begin` resumes a section walk
+      when only time or place changed, and still refuses a different section
+      or episode.
+    - #48's episode guard: a Body, Mind or Alicia walk stays about that
+      section.
 - **Reviewed, but not in `main`:**
-  - iOS #48 (contextual TALK on every section, shipped only as the TF42 branch
-    build).
+  - The rest of iOS #48: the real input field, TALK/keyboard layout on every
+    section, and the unconditional dark widget plate. It shipped only as the
+    TF42 branch build, and is unreleased pending a deliberate re-port.
   - iOS #54 (the phone half of the walk-delivery repair). Its exact head is
-    inside iOS #59, which passes its tests but is not yet approved or merged.
-  - A2-045's two iOS commits, which shipped only on the TF22/23 branch builds.
-    Their exact heads are inside iOS #60, which Codex has approved but not yet
-    merged:
-    - `243ab83` (section context on proactive replies): main's `reply()`
-      posts no `surface_context`.
-    - `05c030a` (resume a section walk after a tab change): `begin` in
-      `Core/VoiceEvidence.swift` still compares contexts strictly.
+    inside iOS #59, which passes its tests but is not yet approved or
+    merged.
 
 ## CL-20260926-goal-closure — Finished together
 

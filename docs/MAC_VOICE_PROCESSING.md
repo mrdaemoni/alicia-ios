@@ -45,7 +45,7 @@ iOS's schedule, never after a force-quit); the Mac continues once all sealed
 parts arrive. Physical capture, recognition accuracy and phone lock/reconnect
 remain device checks, not simulator claims.
 
-**Not in iOS main.** Three reviewed changes to this flow have not reached main:
+**Not in iOS main, or in main but not on the phone.**
 - PR #54, the phone half of the October 23 walk-delivery repair: freeze a
   section walk's section into its submission across retries, let a Mac
   delivery link close a stale rejected send, and drop the redundant Send. Its
@@ -53,10 +53,9 @@ remain device checks, not simulator claims.
   backend half (PR #106) is live.
 - A2-045's `243ab83` (send the section packet with a proactive answer) and
   `05c030a` (resume a section walk after a tab change without replacing its
-  original context). Both shipped only in the branch builds 1.0 (22) and (23),
-  and both are contained in PR #60, which is approved but not yet merged.
-  Main's `reply` posts no `surface_context`, and `VoiceArchive.begin` still
-  requires an identical section context to resume a recording.
+  original context). They shipped only in the branch builds 1.0 (22) and (23).
+  They have been in `main` since PR #60 merged on 2026-10-26 (`410d19f`), but
+  no TestFlight build carries them yet.
 
 ## Service contract
 
