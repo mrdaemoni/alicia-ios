@@ -247,5 +247,6 @@ struct AliciaWidget: Widget {
 struct AliciaWidgets: WidgetBundle {
     var body: some Widget {
         AliciaWidget()
+        RitualWidget()
     }
 }

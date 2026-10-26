@@ -76,7 +76,8 @@ struct CollectionDetailView: View {
                 }
                 .padding(.horizontal, 2)
 
-                ForEach(collection.tracks) { track in
+                ForEach(Array(collection.tracks.enumerated()), id: \.element.id) { index, track in
+                    if index > 0 { InkRule(opacity: 0.6) }
                     VStack(spacing: 0) {
                         NavigationLink(value: track) {
                             TrackRow(track: track,
@@ -84,7 +85,7 @@ struct CollectionDetailView: View {
                                      isPlaying: store.isPlaying
                                         && store.nowPlaying?.id == track.id)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.inkLink)
                         // Episodes queue exactly like syntheses do — the
                         // audio already exists, so it plays the instant it
                         // lands in a playlist.
@@ -93,7 +94,6 @@ struct CollectionDetailView: View {
                             AddEpisodeToPlaylistLine(track: track)
                         }
                         .padding(.trailing, 10)
-                        .padding(.bottom, 6)
                     }
                 }
             }
@@ -124,18 +124,8 @@ struct AddEpisodeToPlaylistLine: View {
     }
 
     var body: some View {
-        Button { picking = true } label: {
-            VStack(spacing: 2) {
-                Text(queued ? "QUEUED" : "LISTEN LATER")
-                    .font(.system(size: 9, design: .monospaced).weight(.bold))
-                    .tracking(1.4)
-                    .foregroundStyle(queued ? Theme.mint : Theme.inkSoft)
-                InkUnderline(color: queued ? Theme.mint : Theme.inkSoft,
-                             seed: track.title.inkSeed, lineWidth: 1.0)
-                    .frame(width: queued ? 42 : 66, height: 4)
-            }
-        }
-        .buttonStyle(.plain)
+        Button(queued ? "Queued" : "Listen later") { picking = true }
+            .buttonStyle(.inkQuiet)
         .sheet(isPresented: $picking) {
             AddEpisodeSheet(track: track)
         }
@@ -167,10 +157,7 @@ struct AddEpisodeSheet: View {
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
 
-                    Text("ADD TO")
-                        .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                        .tracking(1.8)
-                        .foregroundStyle(Theme.inkSoft)
+                    InkKicker(text: "Add to")
 
                     if store.playlists.isEmpty {
                         Text("No playlists yet — name one below and this episode becomes its first piece.")
@@ -201,38 +188,27 @@ struct AddEpisodeSheet: View {
                         .disabled(working)
                     }
 
-                    Theme.stroke.frame(height: 0.7).padding(.vertical, 4)
-                    Text("OR START A NEW ONE")
-                        .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                        .tracking(1.8)
-                        .foregroundStyle(Theme.inkSoft)
-                    HStack(spacing: 10) {
-                        TextField("Name it — Drive, Walk, Sunday…", text: $newName)
-                            .font(.system(size: 15, design: .serif))
-                            .textFieldStyle(.plain)
-                            .submitLabel(.done)
-                            .onSubmit { create() }
-                        Button(action: create) { InkSubmitArrow(size: 24) }
+                    InkSection(kicker: "Or start a new one") {
+                        HStack(spacing: 10) {
+                            TextField("Name it — Drive, Walk, Sunday…", text: $newName)
+                                .submitLabel(.done)
+                                .onSubmit { create() }
+                                .inkField()
+                            Button(action: create) {
+                                InkSubmitArrow(size: 24).frame(minWidth: 44, minHeight: 44)
+                            }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Create playlist")
                             .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty
                                       || working)
+                        }
                     }
-                    Theme.stroke.frame(height: 0.7)
                 }
                 .padding(24)
             }
-            .sectionBackground()
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    InkTitleLine(text: "Listen later", size: 16)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(Theme.accent)
-                }
-            }
+            // Studio's room, the same ground as AddToPlaylistSheet.
+            .presenceBackground(.studio, store: store)
+            .inkSheetPage("Listen later")
         }
         .presentationBackground(Theme.paper)
         .presentationDetents([.medium, .large])

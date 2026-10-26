@@ -26,82 +26,44 @@ struct StudioView: View {
         }
     }
 
-    @State private var drawing = false
 
     var body: some View {
+        @Bindable var store = store
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    ZStack {
-                        SectionHeader(title: drawing ? "Canvas" : "Studio",
-                                      kicker: drawing ? "drawn together"
-                                                      : "everything worth listening to")
-                        HStack {
-                            Spacer()
-                            // Canvas lives inside Studio now — the pencil
-                            // toggles between listening and drawing with her.
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    drawing.toggle()
-                                }
-                            } label: {
-                                // A word with her underline, not a widget
-                                // glyph (v22).
-                                VStack(spacing: 2) {
-                                    Text(drawing ? "LISTEN" : "DRAW")
-                                        .font(.system(size: 10, design: .monospaced).weight(.bold))
-                                        .tracking(1.6)
-                                        .foregroundStyle(Theme.ink)
-                                    InkUnderline(seed: drawing ? 3 : 5, lineWidth: 1.1)
-                                        .frame(width: 30, height: 4)
-                                }
-                            }
-                            .accessibilityLabel(drawing ? "Back to Studio" : "Draw with me")
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 14)
-                    }
-                    if drawing {
-                        CanvasBody()
-                            .frame(minHeight: 560)
-                    }
-                    if !drawing {
+                    SectionHeader(title: "Studio", kicker: "everything worth listening to")
+                    Group {
+                    NextEpisodeInvitation()
                     // ── Her queues, above the podcast ────────────────────
                     // Studio is no longer only "Memories of My Future Self":
                     // it's where listening lives, and the queues he built
-                    // himself come first.
+                    // himself come first. Each group is one section; the
+                    // podcast's identity sits inside its own seasons section
+                    // instead of floating between two kickers.
                     if !store.playlists.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("YOUR PLAYLISTS")
-                                .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                                .tracking(2.0)
-                                .foregroundStyle(Theme.inkSoft)
-                                .padding(.leading, 2)
-                            ForEach(store.playlists) { playlist in
+                        InkSection(kicker: "Your playlists", rule: false, spacing: 4) {
+                            ForEach(Array(store.playlists.enumerated()), id: \.element.id) { index, playlist in
+                                if index > 0 { InkRule(opacity: 0.6) }
                                 NavigationLink(value: playlist) {
                                     PlaylistRow(playlist: playlist)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.inkLink)
                             }
                         }
-                        .padding(.bottom, 6)
-                        Theme.stroke.frame(height: 0.7)
                     }
 
-                    playlistHeader
                     // v35: each season is a row you open, not eighty rows to
                     // scroll past. Named runs come first.
-                    Text("SEASONS")
-                        .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                        .tracking(2.0)
-                        .foregroundStyle(Theme.inkSoft)
-                        .padding(.top, 6)
-                        .padding(.leading, 2)
-                    ForEach(collections) { collection in
-                        NavigationLink(value: collection) {
-                            CollectionRow(collection: collection)
+                    InkSection(kicker: "Seasons", rule: !store.playlists.isEmpty, spacing: 4) {
+                        playlistHeader.padding(.bottom, 10)
+                        ForEach(Array(collections.enumerated()), id: \.element.id) { index, collection in
+                            if index > 0 { InkRule(opacity: 0.6) }
+                            NavigationLink(value: collection) {
+                                CollectionRow(collection: collection)
+                            }
+                            .buttonStyle(.inkLink)
                         }
-                        .buttonStyle(.plain)
                     }
                     }
                 }
@@ -110,11 +72,19 @@ struct StudioView: View {
             .navigationDestination(for: Track.self) { track in
                 EpisodeDetailView(track: track)
             }
+            .navigationDestination(item: $store.workEpisode) { track in
+                EpisodeDetailView(track: track, playOnArrival: false)
+            }
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlistID: playlist.id)
             }
             .navigationDestination(for: PodcastCollection.self) { collection in
                 CollectionDetailView(collection: collection)
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { store.morningPlaylistID != nil },
+                set: { if !$0 { store.morningPlaylistID = nil } })) {
+                if let id = store.morningPlaylistID { PlaylistDetailView(playlistID: id) }
             }
             .refreshable { await store.load() }
             .task { await store.loadPlaylists() }
@@ -160,11 +130,13 @@ struct StudioView: View {
 struct EpisodeDetailView: View {
     @Environment(AppStore.self) private var store
     let track: Track
+    var playOnArrival = false
     @State private var notes: AttributedString?
     /// The shownotes as they arrived — the reader speaks the markdown, not
     /// the restyled AttributedString.
     @State private var notesMarkdown = ""
     @State private var loading = true
+    @State private var choseOnArrival = false
 
     /// Inline-markdown rendering keeps `#`/`-`/`>` markers literal — restyle
     /// them line-by-line (headings → bold, bullets → dots, quotes → “).
@@ -215,21 +187,43 @@ struct EpisodeDetailView: View {
                             InkTitle(text: track.title, size: 21)
                         }
                         Spacer()
-                        Button { store.togglePlay() } label: {
+                            Button {
+                                if store.nowPlaying?.id == track.id { store.togglePlay() }
+                                else { store.play(track) }
+                            } label: {
                             InkPlayPause(
                                 playing: store.isPlaying && store.nowPlaying?.id == track.id,
                                 size: 42,
                                 seed: (track.label ?? track.title).inkSeed,
                                 ringed: true)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(store.isPlaying && store.nowPlaying?.id == track.id ? "Pause episode" : "Play episode")
                     }
                     .padding(14)
                 }
+                EpisodeReadAlongButton(track: track)
                 StippleIllustration(seed: (track.label ?? "x").count * 7 + track.episode,
                                     dots: 500, animated: true)
                     .frame(height: 44)
                     .frame(maxWidth: .infinity)
 
+                let relatedGoalIDs = Set((store.collaboration.state?.results ?? []).filter {
+                    $0.evidence.contains { $0.episode_id == track.label }
+                }.compactMap(\.goal_id) + (store.collaboration.state?.connections ?? []).filter {
+                    $0.evidence.contains { $0.episode_id == track.label }
+                }.map(\.goal_id))
+                ForEach((store.collaboration.state?.goals ?? []).filter { relatedGoalIDs.contains($0.id) }) { goal in
+                    // Goes to the goal in Together: her chevron, not a tinted
+                    // system button.
+                    Button {
+                        store.collaboration.route = CollaborationRoute(goalID: goal.id)
+                    } label: {
+                        InkLinkLabel(title: "Explore with our goal", detail: goal.title)
+                    }
+                    .buttonStyle(.inkLink)
+                    .accessibilityIdentifier("workReview.studioGoal." + goal.id)
+                }
                 if loading {
                     ProgressView("Fetching shownotes…")
                         .frame(maxWidth: .infinity)
@@ -275,7 +269,10 @@ struct EpisodeDetailView: View {
             }
         }
         .task {
-            store.play(track)   // no-ops if this episode is already playing
+            if !choseOnArrival {
+                choseOnArrival = true
+                if playOnArrival { store.play(track) }
+            }
             let md = await store.episodeNotes(for: track)
             notesMarkdown = md
             notes = md.isEmpty ? nil : Self.render(md)
@@ -329,6 +326,8 @@ struct TrackRow: View {
             Text(track.duration.asClock)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(Theme.inkSoft)
+            // Opens the episode page.
+            InkChevron(pointing: .right, size: 12, color: Theme.inkSoft, seed: track.title.inkSeed)
         }
         .padding(10)
         .background(isCurrent ? Theme.card : .clear, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -366,21 +365,30 @@ struct PlayerBar: View {
                     Button { store.cycleRate() } label: {
                         Text(rateLabel)
                             .font(.caption.weight(.bold).monospacedDigit())
+                            .foregroundStyle(Theme.ink)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 4)
                             .background(Theme.card, in: Capsule())
                             .overlay(Capsule().strokeBorder(Theme.stroke))
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Speed " + rateLabel)
                     Button { store.skip(-15) } label: {
                         InkSkip(forward: false, size: 27, seed: 3)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back 15 seconds")
                     Button { store.togglePlay() } label: {
                         InkPlayPause(playing: store.isPlaying, size: 30,
                                      seed: 17)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(store.isPlaying ? "Pause" : "Play")
                     Button { store.skip(15) } label: {
                         InkSkip(forward: true, size: 27, seed: 7)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Forward 15 seconds")
                 }
                 .foregroundStyle(.primary)
 

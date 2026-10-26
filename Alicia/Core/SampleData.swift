@@ -10,6 +10,68 @@ enum SampleData {
     /// Sample orbit — shape only, so the repo stays runnable for anyone who
     /// clones it. Live mode never seeds these (v30: backend-down shows an
     /// honest empty state, not invented conversation).
+    static let contextGraph = ContextGraph(
+        generatedAt: "2026-09-19T18:00:00+00:00",
+        nodes: [
+            ContextNode(id: "ctx-000000000001", kind: "project", title: "The Boy — the film", status: "stated",
+                        summary: "Animation in his own hand; n33 is the only drawing that does not move.",
+                        body: "Animation in his own hand; n33 is the only drawing that does not move, and that is the grammar.",
+                        updated: "2026-09-18", importance: 8, needs_review: false, themes: ["quality"], links: ["Authors/Josh Waitzkin"],
+                        related: ["ctx-000000000002"], receipts: [.init(source: "interactions:ios", ref: "m613", observed_at: "2026-09-18T20:00:00+00:00", excerpt: "I'm cutting the film against the mix")],
+                        worth_hits: 2, worth_misses: 0, superseded_by: "", why: ["fresh"]),
+            ContextNode(id: "ctx-000000000002", kind: "tension", title: "Depth vs legibility", status: "inferred",
+                        summary: "Depth in the making against legibility for others, unresolved.", body: "Depth in the making against legibility for others, unresolved.",
+                        updated: "2026-09-10", importance: 7, needs_review: true, themes: ["depth"], links: [], related: ["ctx-000000000001"], receipts: [],
+                        worth_hits: 0, worth_misses: 0, superseded_by: "", why: []),
+            ContextNode(id: "ctx-000000000003", kind: "situation", title: "Granada until Friday", status: "stated",
+                        summary: "In Granada until Friday.", body: "In Granada until Friday.", updated: "2026-09-17", importance: 5, needs_review: false,
+                        themes: [], links: [], related: [], receipts: [.init(source: "interactions:ios", ref: "m620", observed_at: "2026-09-17T09:00:00+00:00", excerpt: "I am in Granada until Friday")],
+                        worth_hits: 0, worth_misses: 0, superseded_by: "", why: []),
+        ],
+        core: [], notice: "stated is Hector's; inferred is Alicia's reading and unconfirmed until he keeps or corrects it.", needsReview: 1, total: 3)
+
+    static let contextArrangement = ContextArrangement(
+        generatedAt: "2026-09-19T18:00:00+00:00", status: "ready", reason: "",
+        notice: "Each item names the node it bears on and the line it was drawn from. A question is the episode's, a finding is a reading of the body data, your words are yours. Nothing here is agreement.",
+        date: "2026-09-19", episodeID: "S16E08", refused: false,
+        groups: [
+            .init(node: .init(id: "ctx-000000000001", kind: "project", title: "The Boy — the film", status: "stated",
+                              summary: "Animation in his own hand; n33 is the only drawing that does not move.", updated: "2026-09-18", needs_review: false),
+                  items: [
+                    .init(kind: "question", title: "Is the film cut against the mix a decision you make in every frame?",
+                          why: "the episode asks this near your project — shared: film, mix", ref: "p1", score: 0.8,
+                          node_id: "ctx-000000000001", node_title: "The Boy — the film", node_kind: "project",
+                          evidence: .init(source: "episode:S16E08", ref: "p1", excerpt: "cutting the film against the mix, animation in his own hand"), date: "2026-09-19"),
+                    .init(kind: "thinker", title: "Josh Waitzkin", why: "Josh Waitzkin — linked from your project “The Boy — the film”.", ref: "m613", score: 1.2,
+                          node_id: "ctx-000000000001", node_title: "The Boy — the film", node_kind: "project",
+                          evidence: .init(source: "interactions:ios", ref: "m613", excerpt: "I'm cutting the film against the mix"), date: ""),
+                  ], arranged: true),
+            .init(node: .init(id: "ctx-000000000002", kind: "tension", title: "Depth vs legibility", status: "inferred",
+                              summary: "Depth in the making against legibility for others, unresolved.", updated: "2026-09-10", needs_review: true),
+                  items: [
+                    .init(kind: "finding", title: "He asked whether his morning routine is ornamentation; the three days he stopped it answered on sleep and resting heart rate.",
+                          why: "a mind/body reading that touches your tension — shared: making, others", ref: "finding-2026-09-19-1", score: 0.9,
+                          node_id: "ctx-000000000002", node_title: "Depth vs legibility", node_kind: "tension",
+                          evidence: .init(source: "Alicia/Bridge/mind_body_bridge.md", ref: "finding-2026-09-19-1", excerpt: "He asked whether his morning routine is ornamentation"), date: "2026-09-19"),
+                  ], arranged: true),
+            .init(node: .init(id: "ctx-000000000003", kind: "situation", title: "Granada until Friday", status: "stated",
+                              summary: "In Granada until Friday.", updated: "2026-09-17", needs_review: false),
+                  items: [
+                    .init(kind: "place", title: "Granada · the old town", why: "where you are today, and this situation is about here", ref: "place-2026-09-19", score: 0.9,
+                          node_id: "ctx-000000000003", node_title: "Granada until Friday", node_kind: "situation",
+                          evidence: .init(source: "app_events:place", ref: "place-2026-09-19", excerpt: "Granada · the old town"), date: "2026-09-19"),
+                  ], arranged: true),
+        ], arrangedCount: 4)
+
+    static let contextElevation = ContextElevation(
+        generatedAt: "2026-09-19T18:00:00+00:00", status: "ready", reason: "",
+        notice: "Each item names the node and the line it was drawn from. Selection is not listening; a link is not agreement.",
+        refused: false,
+        items: [.init(kind: "thinker", title: "Josh Waitzkin", why: "Josh Waitzkin — linked from your project “The Boy — the film”.", score: 1.2,
+                      node_id: "ctx-000000000001", node_title: "The Boy — the film", node_kind: "project",
+                      evidence: .init(source: "interactions:ios", ref: "m613", excerpt: "I'm cutting the film against the mix"), episode_id: "")],
+        episodeID: "S16E07")
+
     static let sharedContext = SharedContext(
         nodes: [
             .init(id: "t_sample1", label: "the wind-boy story", salience: 1.0,

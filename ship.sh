@@ -70,6 +70,17 @@ source "$CONFIG"
 : "${ASC_ISSUER_ID:?missing ASC_ISSUER_ID in App Store Connect config}"
 : "${ASC_TEAM_ID:?missing ASC_TEAM_ID in App Store Connect config}"
 
+# Use the same unattended credential for provisioning and distribution signing
+# as for upload. A cached Xcode account can expire while altool still works.
+ASC_KEY_PATH="$APPSTORE_DIR/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+[ -r "$ASC_KEY_PATH" ] \
+  || die "missing or unreadable App Store Connect private key"
+XCODE_AUTH=(
+  -authenticationKeyPath "$ASC_KEY_PATH"
+  -authenticationKeyID "$ASC_KEY_ID"
+  -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+)
+
 # Shipping uncommitted source would create a binary no branch can reproduce.
 # Secrets.plist is ignored and therefore does not make this check dirty.
 [ -z "$(git status --porcelain)" ] \
@@ -232,6 +243,7 @@ echo "==> shipping ${BASE_TAG} · ${BRANCH} @ ${COMMIT} as ${VERSION} (${BUILD})
 echo "==> archiving…"
 xcodebuild -scheme Alicia -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" archive -allowProvisioningUpdates -quiet \
+  "${XCODE_AUTH[@]}" \
   CURRENT_PROJECT_VERSION="$BUILD" \
   ALICIA_BUILD_BRANCH="$BRANCH" \
   ALICIA_BUILD_COMMIT="$COMMIT"
@@ -254,7 +266,7 @@ PLIST
 echo "==> exporting…"
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$EXPORT" \
   -exportOptionsPlist "$WORK/ExportOptions.plist" \
-  -allowProvisioningUpdates -quiet
+  -allowProvisioningUpdates -quiet "${XCODE_AUTH[@]}"
 
 # Inspect the exact bytes that would be uploaded. These guards catch a source
 # plist that was not bundled, a lost build override or branch identity, and a

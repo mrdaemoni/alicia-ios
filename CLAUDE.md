@@ -1,3 +1,236 @@
+## CL-20260926-goal-closure — Finished together
+
+Hector closed two goals on a walk ("We close those two goals … so I can start
+finding a new goal") and asked for the finished work to stay reachable. The
+backend now hears that and freezes a record (`skills/goal_closure.py`). Here:
+`Core/GoalClosure.swift` (summaries, proposals, the record), and
+`Talk/FinishedTogetherView.swift`: `FinishedTogetherRoom` (every finished goal),
+`FinishedGoalView` (how he closed it, her labelled reading, where the work
+landed, his words along the way with originals, the steps, sources, what was
+left open with "Start a goal from this", Reopen), `CloseGoalView` (close from
+the app in his words) and `GoalClosureNotices` (her acknowledgement and "did
+you mean to close this?"), mounted in `CollaborationSummary` and at the top of
+Together. A goal with a record leaves the Together cards. Fixture:
+`--collaboration-preview --finished-goals-preview` plus `--open-together`,
+`--open-finished` or `--open-finished-record` (invented text; this repo is public).
+
+## CL-20260926-walk-sync — walk audio keeps moving when the phone locks
+
+Hector: "make sure that it runs in the background, even if the app is closed."
+The archive synced only in the foreground, and every file was `.complete`
+data protection, which iOS makes unreadable ~10 s after lock. A walk ends with
+the phone pocketed, so the tail segments and the seal waited on the phone until
+the next open (the 9/19 walk: 82 minutes).
+
+`Core/BackgroundVoiceSync.swift`: on every background transition it holds a
+`beginBackgroundTask` until the archive is drained; anything still pending
+submits a network-requiring `BGProcessingTask` (`com.alicia.app.voicesync`,
+`processing` background mode) that re-arms itself until
+`VoiceArchive.hasPendingSync` is false; the notification refresh drains it
+too. Walk/Dialogue files are now `completeUntilFirstUserAuthentication`
+(migrated at archive open); private Body audio keeps the strict class and
+never syncs. A swipe-up force-quit still stops everything until the next open.
+
+## A2-060 — a link means she has it
+
+**The state machine was reading the wrong signal.** `VoiceRecording.stage` only
+consulted `submission`, the receipt the PHONE writes when the phone sends.
+Since the Mac started sending on its own (A2-057), ten walks that had genuinely
+arrived kept reading "Sending to Alicia" forever, because the phone was
+watching for a receipt it would never write. `stage` now returns `.sent` when
+`links` is non-empty — a link is what the backend writes when words are
+attached to the episode and the conversation, whoever sent them.
+
+**`readyForYou` no longer means "you".** Its words are done and on their way;
+it groups with the in-flight states. `Stage.needsYou` is now exactly
+`.needsAttention` — `saved` came off it because leaving a walk seals it
+(A2-059) and the Mac sends it. One meaning everywhere: nothing happens to this
+unless he acts.
+
+**Opening a past session shows it.** It used to hand unfinished ones back to
+`WalkReflectionView`, whose `.task` starts recording when there is no
+finalization — so tapping an eleven-day-old walk began appending today's audio
+to it. That read as "it opened the wrong recording" and was worse than it read.
+
+Every stage detail now answers one question — do I need to do anything — and
+for all but `needsAttention` the answer is no.
+
+Evidence: `--mac-sent-preview` reproduces the exact archive shape (link, no
+submission) and `test_sessions_ui.py` fails if it reads as anything but arrived.
+
+## A2-059 — the Sessions list scrolls, and a walk seals itself
+
+**The scroll bug was mine.** A2-058 hung a `DragGesture` on every row to get a
+swipe; it ate the vertical drag. `WorkSessionsView` is a `List` now — scrolling
+and `swipeActions` both come from the platform, nothing competes. Proved by
+`scripts/test_sessions_ui.py` against `--sessions-preview`, a fixture with
+enough rows to actually scroll (the old 2-row fixture could not show the bug).
+
+**"NEEDS YOU 13" was thirteen accidents.** Every real walk had reached her;
+the thirteen were 1-15 second stubs, empty or Whisper hallucinations
+("Thanks for watching!"). Misfires are their own group, last, named for what
+they are, with one tap to clear all. The Alicia-tab count ignores them too.
+
+**Leaving a walk seals it.** Closing without FINISH left the recording
+unfinalized, so the Mac never transcribed it and auto-send never saw it — a
+walk he walked away from silently never happened. `pause()` now finalizes any
+recording over 20 seconds. Under that it does not, because sealing a
+one-second press queues the Mac to transcribe silence.
+
+**The connection banner heals itself.** While it is up, and only while it is
+up, the app re-probes every ten seconds; the first success clears it.
+
+## A2-058 — Sessions after walks send themselves
+
+`VoiceRecording.Stage.readyForYou` no longer counts as `needsYou`. Since the
+Mac auto-sends (backend A2-057), a ready transcript goes on its own within two
+minutes; listing it as needing him is the lie that let five walks sit unsent for
+eleven days. It reads "Sending to Alicia", and the WAITING group became NEEDS
+YOU — the short list of things that genuinely stalled.
+
+Rows in `WorkSessionsView` swipe left to discard, with resistance past the
+threshold so a scroll flick cannot throw a recording away, and a VoiceOver
+action for the same thing. It deletes the **audio**; a reflection already sent
+keeps its words, because deleting a recording is not a way to unsay something.
+
+## A2-056 — a lost route retries instead of accusing her
+
+Reads through `LiveAliciaService.fetchOne` attempt three times over ~2.4s
+(400ms, then 2s) before reporting `.unreachable`. A 401/403 never retries —
+the same token will be rejected three times — and a decode failure never
+retries either, because she answered and the shape disagreed. `ConnectionState`
+gained `.reaching`, drawn in ink rather than rose: still trying is not bad news.
+A success always outranks a concurrent failure, so one slow call finishing late
+cannot put the banner back over a screen already full of her.
+
+Why: on 2026-09-18 the phone left the Wi-Fi, Tailscale fell from a direct route
+to a relay (34ms → 400ms), and the single request lost to that transition left
+"she's unreachable" on screen until Hector pulled to refresh.
+
+Evidence: `scripts/test_reconnect_ui.py`, driven against a dead endpoint
+through the UserDefaults override, so the app runs live and every read fails.
+
+## A2-055 — the polish pass from the first device build
+
+First real evidence from Pandaiux (TestFlight 19), and five things it showed.
+
+**The band is one height everywhere.** It used to grow a two-line preview of
+her last reply, so it was short in Body and tall in Mind and Studio — and on
+the phone that reply was a fragment of an internal instruction set in her
+voice, parked across the bottom of every screen. `composer.lastReply` is gone.
+
+**Every screen is a room.** `PlaylistDetailView` and `VoiceRecordingsView` were
+flat bone paper with no tint and no field; they now carry Studio's and Mind's
+respectively. `VoiceProcessingView` forces `.buttonStyle(.plain)` and ink — its
+controls were all system-blue links, which broke the one hard rule the app has
+on the screen he sees most after speaking.
+
+**The Us title opens `OurArcView` again** — what she's holding about him now,
+then every day since she began, with a key happening and where he was beside
+the date. The endpoints never stopped working; the surface had been unmounted
+with the old orbit. Days before the phone reported a place show none.
+
+## A2-052 — she walks through every room
+
+Body carries `.presenceBackground(.body, store:)` like every other section, so
+the time-of-day tint and her body behind the page are continuous across the
+five tabs. `ListeningStage` is composed the same way — backdrop, `Theme.timeTint`,
+the oversized field, `PaperGrain` — at 0.42 rather than 0.30, because there she
+is the subject. The walk's listening phase is the only phase without the padded
+paper ground, so the room reaches every edge while its controls stay in the
+safe area.
+
+`PlaceTracker` resolves a **named place**: locality, sub-locality and a point of
+interest when there is one. Still no coordinate. Home is Palo Alto, office is
+Seattle, stated by Hector. Fine-grained updates run only while the app is in the
+foreground; significant-change monitoring continues either way.
+
+## A2-050 — where he is
+
+`Core/PlaceTracker.swift` gives Alicia a **place, not a position**: significant-
+change monitoring, on-device reverse geocoding, and only a locality, region and
+`home | office | travelling` ever published. Coordinates never leave the class.
+`NSLocationWhenInUseUsageDescription` explains that in his words, and the
+permission is requested from `PlaceAwareness` on the Alicia tab — where the
+prompt arrives attached to a reason and he can read back exactly what she is
+told. A refused permission is an ordinary state; everything else works.
+
+The place travels two ways: one `place` presence event when the city changes,
+and inside `SurfaceContext`, so a reflection recorded in Seattle is filed as one.
+
+## A2-047 — the home screen Hector actually uses
+
+Hector's build-18 field report, built on Codex's preserved A2-045 composer.
+
+**The conversation is a layer, not a place.** `ConversationComposer` is a
+permanent band directly above `EditorialTabBar`, on the same ink ground; it
+never takes the keyboard and nothing collapses for it any more. Tapping it
+raises `ConversationSheet` over the current section, carrying that section's
+name and its own per-section draft; closing it returns him to the page he was
+on. `TalkView` (Dialogue) still exists and keeps shared history.
+
+**The microphone is the page.** `ListeningRoom` and the shared `ListeningStage`
+put `AliciaPresence` full-bleed behind his own words in large serif, in the
+voice of the section he spoke from. "Talk about this episode" opens the same
+room through `WalkReflectionView`, whose lifecycle is unchanged: original audio
+kept, Mac transcript, explicit review before anything is sent. Both paths ask
+for speech authorization so live text can be read back, falling back to
+microphone-only and saying so.
+
+**A reflection has one address.** `VoiceRecording.stage` is the single
+vocabulary — Saved / Your Mac is writing it / Waiting for you to read / Sending
+/ Alicia has it / Needs your attention — used by the band, the recordings list
+and `VoiceProcessingView`. Anything waiting on him surfaces on the band from
+wherever he is.
+
+**Body says what is wrong.** A refused bridge now reports `last_built`,
+`last_measurement` and `stale_days`, and `BodyOverview.refusal` states them;
+no measurement block is drawn for a bridge the backend did not accept. The
+bridge itself is rebuilt by a scheduled task on the Mac (backend A2-046).
+
+Evidence: `scripts/test_home_conversation_ui.py`.
+
+## A2-043 — mind and body integration candidate
+
+Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action through the persistent bottom band. The band names the active section, keeps separate durable drafts and freezes that section into every send. Voice opens the full-screen shared particle field and states whether the microphone is opening, listening or paused. Body is private Mac/phone evidence and explicit wellness goals. The Daily rituals widget saves offline, shows the latest tap's local/synced state and keeps tinted white labels on a dark contrast plate. Drawing is removed from Studio navigation; files remain. Release status belongs to the current shared task record.
+
+## A2-037 — natural immersive reading and voice interpretation review
+
+Current branch adds [IMMERSIVE_READING.md](docs/IMMERSIVE_READING.md): shared
+natural narration with exact text and measured cues, an honest unavailable/retry
+state, next episode from observed playback in Us/Studio, and A2-036's reviewable
+voice findings. Device read-aloud is removed. Podcast read-along uses a labelled
+machine transcript from the original audio, never shownotes as a script. Backend
+A2-036/A2-038 deploy first; task RELEASE.md owns actual shipping status.
+
+## CL-20260919-context-arrangement — the day arranged around his nodes
+
+"In the middle of" now renders `GET /api/context_graph/arrangement`: under each
+node line, the items that bear on it today — question · thinker · passage ·
+goal · finding · your words · place — as `ArrangedItemLine`s with their why.
+The separate "For where you are" strip is gone; its items sit under their
+nodes. The room opens with "Arranged today"; a node shows "Around this today"
+with the evidence line and source. When the arrangement is not ready the plain
+node lines show and nothing waits. Fixtures under the same preview flags.
+
+## CL-20260918-context-graph-behaviours — "In the middle of"
+
+Us gains one section between the mind/body overview and the goals summary:
+two to three lines of Hector's context graph (`WhereYouAreSection`), each with
+its mark — `STATED · PROJECT`, `UNCONFIRMED READING · TENSION` — and a hand-drawn
+underline seeded by the node id. The kicker opens `ContextGraphRoom` (the whole
+graph grouped by kind, unconfirmed readings first, the day's elevation with its
+reason when it refused); a node opens `ContextNodeView` with body, receipts,
+vault links, related nodes and the three acts — **Keep**, **Correct** (his
+words, becomes stated), **Let go** (asked once) — as `ContextGraphMutation`s
+kept verbatim on the phone until confirmed, one receipt id per unchanged
+payload. Under the episode's questions, `ForWhereYouAreSection` renders what
+was elevated and names the node it came from; nothing renders when nothing
+cleared the threshold. The Alicia tab links into the same room next to "About
+you"; a reply's inspector lists the nodes it drew on ("DREW ON YOUR CONTEXT").
+The kicker is not "Where you are" — that name belongs to place awareness.
+`--episode-day-preview` (or any `--context-graph-*` flag) serves fixtures.
+
 # CLAUDE.md — Alicia iOS
 
 Current task coordination: `/Users/alicia/alicia/docs/COLLABORATION.md` and
@@ -10,8 +243,11 @@ for Codex–Opus coordination, worktrees, file ownership, review handoffs, Git,
 and the Motion Lab promotion gate.
 
 Read `SESSION_HANDOFF.md` for the current release and known limits. This file
-carries stable architecture. Current product: **v38 (2026-09-05)**, the
-Alicia 2.0 episode/day experience. Full cross-repository context is in
+carries stable architecture. The current product is the Alicia 2.0 episode/day
+experience; this branch adds A2-037 immersive natural reading on released source
+f6b3f81 / TestFlight 16, including shared work review and Mac voice processing.
+Read `docs/IMMERSIVE_READING.md` and `docs/WORK_REVIEW.md`;
+the shared task RELEASE.md records actual deployment and upload. Full cross-repository context is in
 `/Users/alicia/alicia/docs/ALICIA_2_0.md`; feature detail is in `docs/EPISODE_DAY.md`.
 Us and Alicia use the actually played episode and explicit human responses.
 The older orbit/cards and archetype gallery are unmounted.
@@ -25,34 +261,41 @@ relationship, three touchpoints). Target **iOS 17.0**, Swift 5.9+, the installed
 dependencies**. Runs live against the backend on a real iPhone; falls back to
 mock data so the repo stays runnable for anyone who clones it.
 
-## The five tabs
+## The five tabs and shared conversation
 
-Defined in `Alicia/App/RootView.swift` as `enum AppSection` → `TabView`
-(kept at five so iOS never folds tabs into "More"):
+`AppSection.tabs` in `Alicia/App/RootView.swift` defines the five visible tabs.
+The internal `.knowledge` case is labelled Mind; `.mind` is labelled Alicia.
+Dialogue retains `.dialogue` for existing routes, rendered outside the five-tab
+view and opened through the shared conversation affordance.
 
-1. **Us** (`EpisodeHomeView`) — the episode actually played today, two or three
-   precise questions with inspectable passages, and a large **Walk with this**
-   action. Questions carry This helps / Go deeper / Missed me. Connection and
-   dated history remain available. The old orbit/cards are unmounted.
-2. **Dialogue** (`TalkView`) — the real shared conversation restored from
-   `/api/history`, a small current-episode header, dictation, optional voice
-   replies, and Think aloud. The backend uses the same retrieval/model/tool
-   routing boundary as Telegram. Proactive feed items do not seed the transcript.
-3. **Alicia** (`EpisodeMindView`) — her tentative reading, Hector's words,
-   corrections, and explicit learnings. He can correct her and keep something
-   in his own words. A prior rejected reading remains labelled while updating.
-4. **Studio** (`StudioView`) — the podcast and playlist library, shownotes,
-   playback, scrubbing, skips, and rate controls. AppStore reports actual
-   continuous playback; file downloads establish no listening evidence.
-5. **Knowledge** (`KnowledgeView`) — the passive synthesis/notes library and
-   existing pins. Studio and Knowledge retain their library roles.
+1. **Us** (`EpisodeHomeView`) — morning briefing, current episode and grounded
+   probes, Together work, and the mind/body overview with private reflection.
+2. **Mind** (`KnowledgeView`) — knowledge, syntheses, thinkers and existing pins.
+3. **Body** (`BodyView`) — explicit wellness goals and progress criteria,
+   daily ritual capture, dated Oura observations/history and private report
+   reading. Its optional answer runs on the Mac's local model.
+4. **Alicia** (`EpisodeMindView`) — her tentative reading, Hector's words,
+   corrections, explicit learnings and existing archetype traces.
+5. **Studio** (`StudioView`) — episodes, morning playlist and consumption
+   artifacts with the shared immersive reader. Drawing is no longer mounted.
+   Actual continuous playback remains distinct from selection or download.
 
-`WalkReflectionView` is a dedicated full-screen dictation surface. It pauses
-playback, shows the words as they arrive, persists a local draft, and saves with
-an idempotent receipt before clearing. On-device dictation pauses when the app
-leaves the foreground. Automatic screen sleep is disabled while this view is visible and active,
-including paused editing, and the prior idle setting is restored on exit.
-There is no claim of lock-screen or background recording.
+**Dialogue** (`TalkView`) keeps shared history, reviewed voice input and goal
+passage context. Mind goal work continues through the existing cloud pipeline;
+private Body records do not enter it. See `docs/MIND_BODY.md` for the private
+API and offline WidgetKit capture contract.
+
+`WalkReflectionView` is a dedicated full-screen recording and review surface. It
+pauses playback and retains original microphone audio. Pause or leaving the
+foreground keeps an unfinished recording; Finish seals its complete ordered
+manifest. Foreground sync uploads the audio, and the Mac prepares a separate
+machine transcript. Hector reviews and edits it, then explicitly sends those
+words with a durable receipt. The same review is reachable from Dialogue and
+Recordings. Legacy Apple Speech code remains for existing compatibility paths;
+new Mac-mode capture needs microphone permission only. Automatic screen sleep is
+disabled while the walk is visible and active, including paused editing, and the
+prior idle setting is restored on exit. No background recording is promised;
+upload continues after lock and while closed (CL-20260926-walk-sync). See `docs/MAC_VOICE_PROCESSING.md` for recovery and provenance.
 
 ## Architecture
 
@@ -63,7 +306,7 @@ Alicia/
   Core/           Models · AliciaService (protocol + mock) · LiveAliciaService
                   · Config · AppStore · SpeechTranscriber · ProactiveNotifier
                   · SampleData
-  Features/       Home · Talk · Mind · Studio · Canvas · Health
+  Features/       Home · Talk · Mind · Body · Knowledge · Studio · Health (Canvas retained, unmounted)
   Assets.xcassets AppIcon · AccentColor · Art* (Hector's drawings)
 ```
 
@@ -99,28 +342,54 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 
 | Endpoint | For |
 |---|---|
-| `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds a voice-note URL |
+| `GET /api/chat_receipt` | Recover the durable result for an existing chat request without resending it. |
+| `GET /api/morning_briefing/receipt` | Inspect a briefing segment receipt bound to the played snapshot. |
+| `POST /api/morning_briefing/feedback` | Save explicit feedback for the bound briefing section. |
+| `POST /api/morning_briefing/steer` | Request a bounded change of altitude for a briefing segment. |
+| `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds tap-to-play media. Reviewed Mac voice adds `client_request_id`, `recording_id`, machine source IDs and captured `episode_id`. |
+| `GET /api/chat_receipt?request_id=<UUID>` | Read-only typed-send outcome. Recovery never resubmits the original model/tool action; the protected phone outbox retains its frozen words/context until acknowledgment. Private Body/health and reviewed voice retain their separate receipts. |
+| `GET /api/body` · `POST /api/body` | Private overview and explicit wellness/ritual receipts |
+| `GET /api/body/source` · `POST /api/body/ask` | Exact private report passages and optional local health answer |
 | `GET /api/thoughts` · `/api/tracks` · `/api/gallery` · `/api/health` | tab data |
 | `GET /api/proactive?limit=` | retained proactive feed and best-effort local notifications; never seeds Dialogue history |
 | `POST /api/react` | emoji reactions, by `message_id` or `proactive_id` |
-| `POST /api/reply` | reply to a proactive message (lands in capture/history/memory) |
+| `POST /api/reply` | reply to a proactive message; reviewed Mac voice adds the same receipt/source IDs and retains original `proactive_id` and `episode_id`, without requesting new reply audio |
 | `GET /api/greeting` | legacy greeting endpoint; not loaded by the current Us screen |
 | `GET /api/context` · `/api/context/<id>` | retained orbit/receipt API; old Us orbit is unmounted |
+| `GET /api/context_graph?q=&kind=` · `GET /api/context_graph/<id>` · `POST /api/context_graph` | Hector's context graph — his situation as typed, ranked nodes (stated is his, inferred is unconfirmed); node body + receipts + related; acts `confirm` / `correct` / `retire` / `propose` / `worth`, and `translate` (text → the one node it bears on). Rendered on Us as "In the middle of" (`ContextGraphViews.swift`) |
+| `GET /api/context_graph/arrangement` | The day arranged around his active nodes: per node, the episode's questions, elevated items, mind/body findings, his place and his own words that bear on it, each with the line it was drawn from; `status` preparing/ready/refreshing. Rendered under each node of "In the middle of" (CL-20260919-context-arrangement) |
+| `GET /api/context_graph/elevate` · `GET /api/context_graph/translate?title=` | What Us elevates for his situation (thinkers, passages, goals with the line each was drawn from; `status` preparing/ready/refreshing) and a vault note translated into the one node it bears on |
+| `GET /api/context_graph/arrangement` | What today bears on each active context node: episode questions, validated elevation, mind/body findings, wellness goals, place, and his own words; incompatible episode/day groups are withheld while refreshing |
+| `GET /api/presence` | Her current motion-driving awareness: deterministic local signals plus an optional rate-limited Jev reading; the app ignores timestamp-only refreshes |
+| `GET /api/presence/live` | Live presence: expiring activity facts plus attributed awareness; no text or audio |
+| `POST /api/presence/live` | Live presence: bounded ephemeral capture/playback reports; Body excluded |
+| `GET/POST /api/intelligence` | Global model-spend boundary shown at the top of Us: `local_first` makes Qwen the ordinary lane, keeps compatible heavy work on the signed-in Claude desktop subscription, and refuses paid Anthropic, OpenAI and general Gemini model APIs. Jev, Gemini full-audio enrichment and Gemini natural voice remain narrow paid exceptions; switching back to `balanced` is explicitly confirmed |
 | `GET /api/home` | retained home/library context; no longer the Us framing source |
 | `GET /api/timeline` | every lived day since she began (Timeline sheet) |
 | `GET /api/featured` · `/api/syntheses` · `/api/quote` | the day's synthesis, the shelf, the rotating quote |
-| `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Knowledge tab + her archetype balance |
+| `GET /api/knowing` · `/api/thinkers` · `/api/archetypes` | Mind library + her archetype balance |
 | `POST /api/speak` | render arbitrary text in her voice (read-aloud fallback when nothing is cached) |
 | `POST /api/pin` · `/api/card_feedback` | hold a card on the home screen; 👍/👎 on a card |
 | `POST /api/events` | **presence telemetry** — batch `{events:[{kind, ref, ms, meta}]}`. Kinds: `app_open`, `screen_view`, `section_dwell`, `episode_play`, `episode_progress`, `episode_finish`, `card_view`. This is the one endpoint that reports what he *did* rather than what he deliberately tapped; without it a day spent listening reads to her as silence. Fire-and-forget — never block UI on it, and batch on background/foreground transitions. Episode playback now comes from the player via `/api/episode_day`; an audio GET is not listening evidence. |
 | `GET /api/reflections` | her morning/evening self-reflections, text + a playable reading when rendered |
 | `GET /api/mind` | on-demand reading of the current episode, corrections and explicit keeps; Sunday push paused. Current Us/Alicia use `/api/episode_day`. Missing evidence can correctly return `has_note: false`. |
-| `GET/POST /api/mode` | walk/drive state; finish accepts `text`, `episode_id`, `request_id` and acknowledges durable save |
+| `GET/POST /api/mode` | walk/drive state; finish accepts `text`, `episode_id`, `request_id` and acknowledges durable save. Reviewed Mac voice also supplies `recording_id`, `transcription_request_id`, `transcript_id`. |
+| `GET/POST /api/voice_evidence` | raw voice metadata/versions; additive `finalize` with an ordered expected segment manifest and explicit `retry_transcription`; GET includes separate optional `transcription.draft` |
+| `PUT/GET /api/voice_evidence/audio/<recording>/<segment>` | exact original CAF upload/replay, checked by byte count and SHA-256 |
+| `GET /api/voice_submission?request_id=<UUID>` | durable Dialogue/proactive voice send status; only definite404 permits reposting the identical pending request |
 | `GET /api/episode_day?day=YYYY-MM-DD` | current or historical frame, probes, reactions, corrections, explicit keeps |
 | `POST /api/episode_day` | playing/progress/finished observations; reaction, feedback, correction, learning, refresh actions |
-| `GET /api/history` | last 120 actual shared conversation turns with stable receipts; no proactive feed |
+| `GET/POST /api/episode_reading` | original podcast read-along: GET returns cached machine transcript and measured word cues; explicit POST prepares the complete catalog episode locally on the Mac. No listening evidence or model call from GET. |
+| `GET /api/history` | last 120 actual shared conversation turns with stable receipts and optional reply_id; no proactive feed |
+| `GET /api/context_enrichment` | current working picture and captured reply context; optional reply_id; item_id opens captured source |
+| `POST /api/context_enrichment` | UUID-receipted attention priority, correction, explicit note or follow-up setting |
+| `GET /api/dialogue_review?reply_id=<UUID>` | public context for one saved reply; read-only |
+| `POST /api/dialogue_review` | explicit feedback, requested opposite-model comparison, or contextual preference; UUID receipt |
+| `GET /api/goal_closure?closure_id=` | a finished goal's frozen record: goal, his closing words and whole input, her labelled reflection and next-goal seeds, his words along the way, steps, final artifact, sources, open questions. `GET /api/collaboration` adds `closures` / `closure_proposals`; POST actions `close_goal`, `reopen_goal`, `closure_decision` |
 | `GET /api/episode/<label>` | shownotes markdown |
 | `POST /api/speak` · `GET /api/speech/<name>` | read-aloud: her voice rendered in ramped chunks (`skills/reading_voice.py`), returned as an ordered chunk list — `ready` / `streaming` / `rendering`, never blocking |
+| `GET /api/morning_briefing` (`segments[]`, `steering`) · `POST /api/morning_briefing/steer` · `POST /api/morning_briefing/receipt` · `GET /api/morning_briefing/audio/<id>/<file>.m4a` | the steerable morning briefing (CL-20261015-steerable-briefing): per-segment L+1/L0/L−1 variants with ledger-tagged sentences and measured cues; Higher · Lower · Again returns a deterministic interpretation; the phone posts opportunity, consequence and session-end receipts. Landed / Didn't land goes to `POST /api/morning_briefing/feedback` with the heard path. Study records, never training. See `docs/STEERABLE_BRIEFING.md` |
+| `GET /api/study_note` · `POST /api/study_note` | the steering study's weekly note (CL-20261023-study-note-card): whether Us shows the card today (a study week's last day, or the next day if that note is missing; same in both arms; no note text), and saving the template's answers verbatim with a UUID receipt to the study's own notes, which Alicia never reads |
 | `GET /api/playlists` · `POST /api/playlist` | Studio's listening queues (create/rename/delete/add/remove/reorder); adding also renders that piece's audio so a queue is warm before he drives |
 | `POST /api/cocreate` (base64 PNG + size + anchor, 120 s timeout) | canvas co-creation: she draws from where the pencil stopped, returns an overlay layer + caption |
 | `POST /api/complement` (base64 PNG, 120 s timeout) | drawing reply w/ vision — superseded by cocreate in the UI; `requestComplement` is currently unused |
@@ -153,8 +422,13 @@ ATS: root `Info.plist` allows plain HTTP (backend is private-network only).
   `BGAppRefreshTask` (`com.alicia.app.refresh`) polls `/api/proactive` and
   posts **local** notifications for unseen messages. iOS controls the timing,
   so it's best-effort. Seen-tracking is shared with the foreground load path.
-- **Voice input** (`Core/SpeechTranscriber.swift`) — on-device SFSpeech
-  dictation straight into the Dialogue composer.
+- **Voice input** (`Core/SpeechTranscriber.swift`, `Core/VoiceEvidence.swift`,
+  `Core/VoiceProcessing.swift`) — new Walk/Dialogue input captures original audio
+  without starting Apple Speech. The Mac transcribes the finalized recording;
+  `Talk/VoiceProcessingView.swift` offers durable review, Done editing and explicit
+  Send. The independently typed Dialogue draft remains unchanged. Apple Speech
+  recognition is retained as legacy code, not the new capture requirement.
+  `docs/MAC_VOICE_PROCESSING.md` documents offline recovery and the exact receipts.
 
 ## How to build / run
 
@@ -201,3 +475,93 @@ branch automatically through `ship.sh`. Current base: **v38 (2026-09-05)**. Test
 - `docs/RESEARCH.md` (library research from the scaffold session) is
   historical — the zero-dependency approach won; consult it only if a real
   need for a chat/markdown/image library appears.
+
+
+## A2-006: brief Dialogue with inspection
+
+This branch adds `Core/DialogueReview.swift` and `Talk/DialogueReviewView.swift`.
+**Behind this reply** opens from the short message or its long-press menu. It
+shows a saved public reading, lens and supplied context, with granular feedback
+and optional labelled comparison; only unchanged-input pairs qualify for training review. `ChatEvent.details` and history `reply_id`
+keep the inspection bound to the exact reply. View requests go through AppStore
+and AliciaService. Legacy replies keep their original text but have no invented
+context. See `docs/DIALOGUE_REVIEW.md` for draft/retry and training boundaries.
+The preceding v38 / 1.0 (5) entry is historical. Exact branch build and Apple
+processing status are recorded in the shared A2-006 `RELEASE.md` receipt.
+
+
+## A2-007 — context enrichment candidate
+
+Dialogue owns its inspector sheet outside LazyVStack rows; each text field has a
+separate focus identity. `ContextEnrichmentView` uses AppStore/AliciaService for
+frozen context, tentative personal readings, source drill-in and durable edits.
+`ListeningPresence` reuses the selected home motion tied to actual microphone
+state. `ThoughtReturnNotifier` schedules the backend's optional prepared return
+with one local-day reservation, quiet hours and immediate stop/cancellation.
+No APNs, training, new Telegram stream or new animation family. Feature contract:
+`/Users/alicia/alicia/docs/CONTEXT_ENRICHMENT.md`. Release evidence belongs to
+`/Users/alicia/Documents/Alicia-development/tasks/A2-007/RELEASE.md`.
+
+## Original voice archive (A2-009)
+
+`Core/VoiceEvidence.swift` owns original CAF files, capture metadata, text versions,
+and the durable upload/deletion outbox. New Mac-mode recordings also retain capture
+order, an immutable final manifest, separate machine draft, authored review and
+send receipts. Backgrounding or closing pauses recording without finalizing it.
+The legacy Apple Speech mode can restart recognition while the raw sink continues;
+new Mac capture does not run that recognizer or depend on its permission.
+`Talk/VoiceRecordingsView.swift` offers replay, corrections, context and deletion.
+AppStore/AliciaService use GET/POST `/api/voice_evidence` and PUT/GET
+`/api/voice_evidence/audio/<recording>/<segment>`. The original stays on phone and
+private Mac until explicit deletion; no automatic training. Mac processing uses
+the paired backend's local transcription worker. The new machine draft never
+replaces the original or becomes a human statement until explicit reviewed Send.
+See `docs/MAC_VOICE_PROCESSING.md` for the additive service contract and limits.
+
+## A2-010 — collaborative partner
+
+Read docs/COLLABORATION.md. Core/Collaboration.swift owns the shared goals,
+connections, agreements, outcomes and exact pending receipts. CollaborationView
+is reached through compact Us/Alicia summaries, Dialogue and Context enrichment;
+there is no sixth tab. CollaborationNotifier consumes the shared backend's
+purposeful return and preserves its exact navigation target. Its policy has no
+daily reservation and supersedes the old ThoughtReturn policy when supported.
+The new state uses AliciaService GET/POST /api/collaboration and bounded source
+reads; views do not issue HTTP. --collaboration-preview is mock-only.
+
+Morning exercise briefing: `GET /api/morning_briefing` (read-only dated snapshot)
+and `GET /api/morning_briefing/audio/<id>.m4a` (authenticated Range audio).
+See docs/MORNING_BRIEFING.md. It never selects a podcast episode or manufactures listening evidence.
+
+October 4 health repairs: `POST /api/morning_briefing/feedback` stores explicit script-scoped Useful/Missed feedback and exact optional words with idempotent receipts. `GET /api/stories/<allowlisted-id>.m4a` serves completed Scaleofus original scored audio with Range support; the normal Studio playlist/player carries Book One v17 and Count Love v15. `/api/health` exposes actual briefing/voice/goal availability and sparse-feedback uncertainty. Goal work reviews queue independently by result/section and saved drafts resume explicitly. No on-device speech fallback or inferred listening/learning is introduced.
+
+## CL-20261015-steerable-briefing — steering the briefing while it plays
+
+`Core/BriefingSteering.swift` (payload models and the pure `BriefingPlanner`,
+which mirrors the backend's interpretation rules), `Core/BriefingSteeringController.swift`
+(session, stretches, outbox, verified audio cache, remote-command mapping) and
+`Features/Reading/BriefingSteerControls.swift` add Higher · Lower · Again to the
+morning briefing. `SpeechReader` plays a path of clipped pieces and changes only
+what follows the sounding piece (`replaceFuture`). The arm comes from the
+payload; Landed / Didn't land is bound to the heard path; pause is never a
+signal. Fixture: `--morning-briefing-steer-preview` (invented text). See
+`docs/STEERABLE_BRIEFING.md`.
+
+
+## CL-20261023-study-note-card — the study's weekly note on Us
+
+`Core/StudyNote.swift` (status, draft with its receipt, protected per-week draft
+files, response mapping) and `Features/Home/StudyNoteCard.swift`.
+- **The card.** A quiet line sits at the top of Us only when
+  `GET /api/study_note` says so: a study week's last day, or the next day if
+  that week's note is missing. It reads "Week N note · two minutes, your own
+  words".
+- **The sheet.** It opens the template's six prompts plus "Mornings I played
+  it", and blank is valid. Every keystroke is kept on the phone.
+- **Saving.** SAVE posts the words verbatim with a UUID receipt. A retry of the
+  same words reuses it; changed words get a new one. Only a confirmed save
+  clears the draft. The card then reads "Week N note saved" for the rest of
+  the day.
+- **Fixture:** `--study-note-preview` (`--study-note-fail-once` for the retry
+  path). Logic is in `scripts/test_study_note.py`, UI in
+  `scripts/test_study_note_ui.py`.

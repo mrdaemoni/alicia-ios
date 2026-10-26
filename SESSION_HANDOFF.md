@@ -1,10 +1,211 @@
-# Session handoff — Alicia 2.0, iOS v38
+## October 25 — A2-045 and the Body walk guard reach main (candidate)
 
-Current product baseline: September 5, 2026. Read `AGENTS.md` first, then this
+Branch `claude/cl-20261025-ios-unmerged-landing` on main `1c14936`
+(CL-20261025-ios-unmerged-landing). It merges the two reviewed A2-045 commits
+that shipped only in TestFlight 22/23. A typed answer to one of her asks now
+posts its section (`243ab83`), and a section walk resumes after a pause or tab
+change instead of failing to start the microphone (`05c030a`). It also ports
+#48's episode guard (`7b6d116`): WALK on Body, Mind or Alicia stays about that
+section when an episode is current, so a Body walk stays private. The rest of
+#48, #50 and #54 are not included. The voice-archive XCTest harness builds on
+main again. No version tag, release or device result is claimed here.
+
+## October 18 — reply latency and composer delivery repair
+
+Candidate branch `codex/chat-delivery-20261018`, based on the actual TestFlight
+49 source `71ce1d8`. Early matching Mac receipts clear only the submitted
+section draft; completed history reconciles old sends after disconnect/relaunch.
+Backend bounds advisory recall and coalesces overlapping diagnostics. Original
+words remain in the protected outbox until completion. No briefing room, study
+arm, steering behavior or experimental particle-field changes are included.
+Release and device acceptance must be verified separately.
+
+## October 16 — steerable morning briefing candidate (CL-20261015-steerable-briefing)
+
+The morning briefing can be steered while it plays: Higher · Lower · Again in
+the reading bar and immersive reader (ink small caps), one interpretation
+line, a prerendered spoken cue, Landed / Didn't land at the end, the after-arm
+replay, and a headphone next/previous setting (off by default). Playback is
+segment-aware: only what follows the sounding piece changes, at a sentence
+boundary, with a short fade. See `docs/STEERABLE_BRIEFING.md`.
+
+This branch is stacked on PR #49 (`codex/health-performance-20261004`,
+TestFlight 46). The paired backend PR mrdaemoni/alicia#98 must deploy first.
+Older backends and unsegmented days play the single track exactly as before.
+
+Checks: `scripts/test_briefing_steering.py` (46),
+`scripts/test_morning_integration.py`, `scripts/test_startup_latency.py`, an
+iPhone 17 simulator build, and `scripts/test_briefing_steering_ui.py`. That last
+one has 10 tests, including two that observe real seams with
+`--steer-live-audio`. No TestFlight, AppVersion bump or phone result is
+claimed. The shared task folder owns release evidence and screenshots.
+
+## October 12 — watchdog freeze, startup and receipt recovery candidate
+
+The actual build-45 phone crash is a 10-second scene-update watchdog. Matching
+symbols resolve to BodyStore.events sorting through BodyCapture.before/instant,
+then MindBodyOverview.recorded/status. ISO parsers now reuse a bounded cache;
+sorts parse once per event and ritual status uses one event list. Startup's slow
+diagnostic read publishes separately from the conversation and library.
+
+A typed send now retains its original immutable packet on this phone. After a
+connection drop, it checks the authenticated saved receipt and replaces partial
+output with a matching completed reply. An explicit retry reuses its local row
+and its original identity, never a changed context or a second user bubble.
+Public receipts exclude private Body requests. The paired backend
+`codex/messaging-latency-20261012` must release first. No model/cost policy change,
+training or synthetic production conversation is part of this patch. Existing
+capture bytes and chronological/local-day behavior stay intact.
+
+Tests: `scripts/test_chat_delivery.py`, `scripts/test_body_sort_performance.py`
+and `scripts/test_startup_latency.py`. Current deployment, Apple processing and
+physical-phone evidence belong to the shared task's RELEASE.md.
+
+## October 9 — passage attachment and send recovery candidate
+
+The phone screenshot showed Studio carrying an old PURPOSE passage. A server
+validation rejection then appeared as Alicia's response while the sheet said
+Sent and cleared Hector's words. The ordinary room composer now clears the
+active passage; only Discuss this attaches one explicitly. Typed delivery
+notices retain rejected/uncertain drafts and no longer appear as authored
+responses. Sent waits for acknowledgment. Reply links keep their original
+passage. See `docs/WORK_REVIEW.md` and `scripts/test_chat_delivery.py`.
+
+This continues PR #49 from TestFlight build 43. Release/phone acceptance belongs
+to the task receipt in
+`/Users/alicia/Documents/Alicia-development/tasks/health-performance-20261004/`.
+No backend validation bypass, model change, training or synthetic production
+conversation is part of the patch.
+
+## September 19 — blind Jev impulse study in Aves
+
+This paired backend/app release adds an auditable private study surface under
+Together → When Alicia returns. It shows whether the pinned Jev shadow observer
+is active and its aggregate observation/failure/label counts. A per-item Jev
+expression, confidence, stance and typed answers are absent from the server
+payload until Hector saves separate usefulness and stance labels. The confirmed
+response then reveals the exact trace bound by its state hash.
+
+Labels use the existing collaboration journal and durable mobile outbox; an
+uncertain save retries the identical receipt. Collaboration candidates and later
+circulation sends are deduplicated into one study unit. Jev remains shadow-only:
+it cannot create, suppress, delay, rewrite, notify or interrupt. App version tag
+is v39. Release status belongs to the paired pull requests and Apple receipt,
+not this handoff entry: backend PR #72 and app PR #35. The backend must deploy
+first. See
+`/Users/alicia/alicia/docs/JEV_IMPULSE_JUDGE.md`.
+
+## A2-045 recording resume follow-up
+
+A section walk can resume after a pause even when its current time/place differs. VoiceArchive keeps the original capture receipt and still rejects a different section or episode. A generated-audio regression failed before the fix; exact tests and release receipts live in the shared A2-045 task. This is a follow-up to build22, not a claim that build22 includes it.
+
+## A2-045 integration — section context through proactive replies
+
+The paired backend validates and retains the originating section on chat and voice. This iOS follow-up extends the same packet to typed proactive replies; current UI, widgets and listening visuals remain at the build-21 baseline. Named place packets remain compatible. See the shared A2-045 task record for review and actual release status; this note is not a release receipt.
+
+## A2-043 — mind and body integration candidate
+
+Read [MIND_BODY.md](docs/MIND_BODY.md). Five visible tabs: Us, Mind, Body, Alicia, Studio; Dialogue is a shared action. Body is private Mac/phone evidence and explicit wellness goals. Daily rituals widget saves offline and syncs when Alicia opens. Drawing is removed from Studio navigation; files remain. No release is claimed; shared A2-043 evidence owns status.
+
+## A2-037 — natural immersive reading and voice interpretation review
+
+Current branch adds [IMMERSIVE_READING.md](docs/IMMERSIVE_READING.md): shared
+natural narration with exact text and measured cues, an honest unavailable/retry
+state, next episode from observed playback in Us/Studio, and A2-036's reviewable
+voice findings. Device read-aloud is removed. Podcast read-along uses a labelled
+machine transcript from the original audio, never shownotes as a script. Backend
+A2-036/A2-038 deploy first; task RELEASE.md owns actual shipping status.
+
+## September 10 — A2-033 shared work review (implementation)
+
+Current task: `/Users/alicia/Documents/Alicia-development/tasks/A2-033/` and paired backend A2-032. Read `docs/WORK_REVIEW.md`. Goal tabs and honest review/outcome progress, exact section feedback and inline answer/edit drafts, top connection actions, explicit Dialogue passage context, and Studio/goal links share the existing collaboration transport. Base is latest released207279e/TestFlight15; this entry alone is not release evidence. Preserve original generated text and Hector's distinct words, immutable offline saves, and explicit outcome authority. Release status and Apple receipts belong in the shared task RELEASE.md after verification.
+
+Earlier candidate and release entries below are historical. Use the shared A2-033 RELEASE.md for current release evidence.
+
+# A2-016 candidate — review a Mac transcript before sending
+
+This branch builds on TestFlight build14 source8d2a764. New Walk and Dialogue
+recordings capture the microphone independently of Speech permission. Finish
+seals a durable ordered manifest, uploads the retained CAF files, and asks the
+Mac to prepare a separate machine draft. Pausing or leaving the app does not
+finish the recording. No historical recording is automatically transcribed.
+
+Walk, Dialogue and Recordings share a review surface. Edits survive restarts and
+late results. Send freezes the exact words, original episode/question/proactive
+target and machine source IDs. Dialogue and proactive replies recover through
+`/api/voice_submission`; only an explicit404 permits reposting an identical
+request after a lost response. Failed or uncertain effects are never automatically
+repeated. Existing typed chat and independent typed drafts remain available.
+
+This is an unshipped candidate. It requires the paired A2-016 backend before
+TestFlight promotion. See docs/MAC_VOICE_PROCESSING.md for the API, tests and
+remaining physical-device checks. Root owns review, integration and release.
+
+# A2-014 — preserve revised speech without duplicated clauses
+
+This candidate builds on TestFlight 1.0 (13), source 30e91c20. September 8's two
+recordings survived in full: 18.4 seconds and 202.2 seconds, 23 retained segments.
+Submitted text contained duplicated recognition clauses and uncertain words.
+The transcript buffer now replaces a provisional hypothesis whose timings are
+unresolved instead of preserving it as an earlier completed phrase. Independently
+timed earlier speech and genuinely repeated later speech remain intact.
+
+Thirty-five buffer, audio-queue and lifecycle checks pass, including 10 new
+revision regressions; iPhone 17 simulator compilation passes. The exact device
+callback sequence was not logged, so the reproduced duplication mechanism is
+not claimed as a captured device trace. Raw audio and submitted historical text
+remain unchanged. Local ASR recovery is an unconfirmed draft.
+
+Read docs/VOICE_CAPTURE.md and the shared A2-014 HANDOFF.md/RELEASE.md for exact
+source and Apple receipts. The paired backend rejects malformed local replies,
+preserves voice provenance, retrieves separately for each goal and exposes the
+morning briefing actually supplied to a new reply. Those are separate releases.
+Unattended Opus specialists remain a proposed next task, not activated here.
+
+# A2-013 — morning briefing and long voice capture (history)
+
+Current work builds on TestFlight 1.0 (12), source3932615. Us places the dated
+morning briefing above shared goals and the selected episode. Its full reading,
+sources and measured audio remain available; Studio opens the same playlist and
+stable record identity. Service refresh is read-only and audio uses the configured
+private media route. It neither chooses an episode nor manufactures listening.
+
+Walk and Dialogue show microphone state, actual input route, elapsed audio and
+level. A saved confirmation distinguishes words received by Alicia from audio
+retained locally and upload progress. Review/correction preserves the original.
+The full Sept7 recording survived (333.3seconds,35segments); only13 transcript
+characters reached the backend. Full local ASR recovery remains unconfirmed.
+
+Read docs/MORNING_BRIEFING.md, docs/VOICE_CAPTURE.md and shared A2-013 HANDOFF.md/
+RELEASE.md for source, checks and Apple receipts. Prior sections below are history.
+
+The integrated candidate passed a generic iOS build, 25 speech buffer/lifecycle
+checks, 13 raw-audio archive checks, 10 walk save cases, 4 actual voice UI flows,
+8 shared morning playback checks and 20 media loading/retry checks. Morning
+component checks also covered 5 UI flows. Simulator fixtures do not validate
+physical microphone accuracy. Internal reviews cover the exact source commits
+in A2-013 evidence; Claude's own review remains separate.
+
+# Session handoff — Alicia 2.0
+
+Current task: A2-011 concurrent goals, stacked on build 11 source 712cd62.
+Us and Alicia expose three active goal rows, their total count and a direct Add
+goal action; Together keeps all goals and moves Add goal above existing details.
+There is no three-goal storage cap. The paired backend corrects compact local
+context so at least three active goals survive alongside corrections/agreements.
+Read docs/COLLABORATION.md and the shared A2-011 HANDOFF.md/RELEASE.md for current
+commit and TestFlight receipts. The A2-010 records below are the earlier release.
+
+Current task: A2-010 collaborative Alicia, September 7, 2026. This candidate
+builds on A2-009 source 55798db. Read docs/COLLABORATION.md for the current iOS
+implementation; Apple release status is recorded only in the shared A2-010
+RELEASE.md. Historical release sections below are retained as history.
+
+Earlier product baseline: September 5, 2026. Read `AGENTS.md` first, then this
 file and `CLAUDE.md`. The complete cross-repository handoff is
 `/Users/alicia/alicia/docs/ALICIA_2_0.md`.
 
-## What is released
+## September 5 release baseline (historical)
 
 - iOS PR #6, merge `9b353f5`, implements episode/day focus and the foreground
   walk/reflection screen's keep-awake behavior.
@@ -29,12 +230,12 @@ documentation reconciliation; verify again before future work.
 current episode views are implemented in `Features/Home/EpisodeDayView.swift`.
 Older orbit, card and voice-gallery implementations remain unmounted.
 
-- **Us:** the exact played episode, two or three probes with source passages,
+- **Us:** shared goal/current connection, then the exact played episode and two or three probes with source passages,
   This helps / Go deeper / Missed me on the exact question, and Walk with this.
 - **Dialogue:** actual persisted conversation from `/api/history`, a small
   episode header, dictation, optional voice replies, and Think aloud. A proactive
   feed does not seed the transcript.
-- **Alicia:** tentative understanding, Hector's words, corrections and explicit
+- **Alicia:** shared goals and agreements, tentative understanding, Hector's words, corrections and explicit
   keeps. His correction is evidence; a generated interpretation is not his belief.
 - **Studio / Knowledge:** the podcast, playlist, synthesis and thinker libraries
   remain available. Studio retains its canvas tools.
@@ -113,3 +314,95 @@ help/catalog text changes, its backend PR owns the targeted restart.
 Earlier app and handoff history remains in `docs/history/SESSION_HANDOFF-before-alicia-2.md`.
 Do not restore the old orbit, voice gallery, daily broadcast arc or weekly survey
 as a fix for missing UI or a retired assertion.
+
+
+## A2-006 — brief Dialogue and quick feedback
+
+`codex/dialogue-insight` adds brief Dialogue and **Behind this reply** (button or
+long press). The paired backend branch uses that same name in `alicia`.
+`docs/DIALOGUE_REVIEW.md` is the feature contract. Backend must deploy before
+the dependent app. The v38 record above is historical; see the shared A2-006
+`RELEASE.md` for the exact branch build and Apple processing evidence.
+
+The sheet reveals saved public response metadata and supplied context, never a
+private reasoning transcript. Feedback belongs to an exact response/reading/
+source set/lens/length. Optional Qwen/Claude comparison starts from frozen input and
+runs only on a deliberate tap. Qwen is on the Mac mini, not the phone. It is a
+contextual preference with visible providers, separate from blind Labs trials.
+A decisive choice, optional reason and explicit permission can enter a pending-review
+export; saving feedback does not train or replace any model.
+
+Pending mutations are persisted with immutable payload and UUID until confirmed;
+retries cannot turn edited words into the same request. No automatic comparison
+on expansion. Older replies have no invented saved context. The existing quiet
+schedule, episode/day signals and explicit vault keeps remain separate.
+
+Fixtures use `--dialogue-review-preview`, `--dialogue-review-sheet-preview`, and
+optionally `--dialogue-review-comparison-preview`; any dialogue-review preview
+flag forces MockAliciaService in DEBUG. All preview text is fixture content;
+no production feedback, presence, model generation or vault writes occur.
+
+### A2-006 feedback refinement
+
+Every captured reply has provider tabs and answer-specific Helpful / Okay /
+Missed me, with optional tone/depth/length and text feedback. Preferences save
+in one tap; reason chips and free text follow optionally. Adapted tool-free
+alternatives are labelled and excluded from training. Only unchanged-input
+pairs expose explicit training review permission. Current evidence and Apple
+release receipt live in `/Users/alicia/Documents/Alicia-development/tasks/A2-006/`.
+
+## A2-008 — episode continuity
+
+Built on shipped cc05703 (TestFlight 7), not canonical main. AppStore chooses a
+shared topic on explicit episode play; a durable selected receipt shares its
+local-day identity with the backend. RootView's quiet Talk about this episode
+bar is a hard VStack sibling in every tab. Studio playback controls remain in
+Studio. Automatic advancement does not choose a topic. Us/Alicia headings
+separate choice from observed playback. Dialogue waits for choice sync, while
+walks save their explicit episode identity. Snapshot revisions reject old HTTP
+results. Local drafts are kept per episode; an uncertain save stays immutable.
+Finish during live dictation first exposes editable words, then Save & reflect.
+
+Feature contract: backend docs/EPISODE_DAY.md. Actual audit/release evidence:
+`/Users/alicia/Documents/Alicia-development/tasks/A2-008/`. Tests use inert
+Swift harnesses and mock-only XCUITest; no production inputs are manufactured.
+
+## A2-009 — retain original iOS voice
+
+Walk and Dialogue now retain original CAF microphone segments in a protected,
+file-backed VoiceArchive, independently of live speech recognition. Raw files,
+capture time/timezone/episode/frame/question context, original on-device text,
+submitted words and explicit corrections remain distinguishable. Closed audio
+segments retry to the private Mac by UUID/checksum; empty recognition still keeps
+valid audio. Recordings opens from Dialogue or the paused walk, with original
+playback, text versions, exact message links, nearby messages and Delete audio.
+Deletion keeps a tombstone and text/context; an offline Mac deletion remains
+visibly pending. No raw-audio cloud provider or automatic training was added.
+
+The implementation is stacked on TestFlight 1.0 (9), source 0de4440. Its own
+release status is `/Users/alicia/Documents/Alicia-development/tasks/A2-009/RELEASE.md`.
+Backend behavior: `docs/VOICE_CAPTURE.md` in the paired backend worktree.
+Physical microphone/headset completeness remains a device check, separate from
+simulator file/buffer/UI evidence. Earlier missing recordings cannot be recovered.
+
+## A2-010 — shared focus across episodes
+
+Us and Alicia now show a compact shared goal/current connection independently of
+playback. Dialogue and Context enrichment open the same collaboration review.
+Explicit edits distinguish use, clarification, commitment, reported outcomes and
+change of course. Source and original voice drill-down reuse existing surfaces;
+long reviews offer explicitly labelled local read-aloud. Shared state uses a
+monotonic revision and durable exact mutation receipts; drafts retain the entity
+revision they originally edited.
+Alicia's internal research can also appear directly under a saved goal, labelled
+prepared work. It does not create a human agreement or report an achieved outcome.
+
+Purposeful local returns supersede the earlier daily-slot ThoughtReturn policy
+when the collaboration API is available. Quiet hours and immediate Stop remain;
+unrelated conversation does not cancel an agreement. Notification targets open
+the exact connection/agreement. The backend owns candidate relevance and work;
+iOS neither generates a result nor claims a scheduled notification was delivered.
+
+No release, live input, microphone call, model request or send is part of the iOS
+fixture checks. docs/COLLABORATION.md and shared A2-010 evidence describe the
+current candidate. Preserve the existing voice archive and comparison consent.

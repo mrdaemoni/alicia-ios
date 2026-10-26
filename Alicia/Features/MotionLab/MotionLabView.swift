@@ -14,6 +14,7 @@ struct MotionLabView: View {
     @State private var showsConstruction = false
     @State private var previewsReduceMotion = false
     @State private var auditReport: String?
+    @State private var showsLivePresence = false
     private let runsAuditOnLaunch: Bool
 
     init() {
@@ -102,7 +103,9 @@ struct MotionLabView: View {
             }
             .task {
                 if runsAuditOnLaunch { runAudit() }
+                if ProcessInfo.processInfo.arguments.contains("--live-presence-lab") { showsLivePresence = true }
             }
+            .fullScreenCover(isPresented: $showsLivePresence) { LivePresenceLab() }
         }
     }
 
@@ -113,6 +116,7 @@ struct MotionLabView: View {
                     .font(.system(size: 10, design: .monospaced).weight(.semibold))
                     .tracking(1.5)
                 Spacer()
+                Button("LIVE") { showsLivePresence = true }.labButton()
                 Button(isPlaying ? "PAUSE" : "PLAY") { isPlaying.toggle() }
                     .labButton()
                 Button("RESET") { reset() }

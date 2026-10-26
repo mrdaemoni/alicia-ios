@@ -39,6 +39,7 @@ struct ListenLine: View {
     var label: String = "LISTEN"
     var tint: Color = Theme.accent
 
+    @State private var showReader = false
     private var isCurrent: Bool { store.reader.current?.id == item.id }
     private var isReading: Bool { isCurrent && store.reader.isSpeaking }
     private var isPreparing: Bool { isCurrent && store.reader.isPreparing }
@@ -47,7 +48,8 @@ struct ListenLine: View {
     /// pre-rendered, so the word has to admit that rather than sit there
     /// looking like a tap that missed.
     private var word: String {
-        if isPreparing { return "WARMING UP" }
+        if isCurrent && store.reader.failure != nil { return "RETRY VOICE" }
+        if isPreparing { return "PREPARING" }
         if isReading { return "READING" }
         if isCurrent { return "PAUSED" }
         return label
@@ -56,6 +58,7 @@ struct ListenLine: View {
     var body: some View {
         Button {
             store.readAloud(item)
+            showReader = true
         } label: {
             HStack(spacing: 6) {
                 if isReading {
@@ -76,6 +79,7 @@ struct ListenLine: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isReading ? "Pause reading" : "Read this to me")
+        .sheet(isPresented: $showReader) { ImmersiveReadingView() }
     }
 }
 
@@ -116,36 +120,34 @@ struct HeldSynthesisCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("HELD SYNTHESIS")
-                        .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                        .tracking(1.6)
-                        .foregroundStyle(Theme.inkSoft)
-                    Spacer()
-                    SynthesisPin(syn: syn, size: 20)
-                }
-                Text(syn.title.strippedEmojis)
-                    .font(.system(.headline, design: .serif))
-                    .foregroundStyle(Theme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(syn.excerpt.strippedEmojis)
-                    .font(.system(.footnote, design: .serif))
-                    .foregroundStyle(Theme.ink.opacity(0.75))
-                    .lineLimit(3)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { reading = true }
             HStack {
-                Text("READ")
-                    .font(.system(size: 10, design: .monospaced).weight(.semibold))
-                    .tracking(1.4)
-                    .underline()
-                    .foregroundStyle(Theme.accent)
-                    .onTapGesture { reading = true }
+                InkKicker(text: "Held synthesis")
                 Spacer()
-                ListenLine(item: syn.readable)
+                SynthesisPin(syn: syn, size: 20)
             }
+            // The title and excerpt open the whole synthesis — a Button, so
+            // it carries the button trait instead of being a tappable text.
+            Button { reading = true } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(syn.title.strippedEmojis)
+                        .font(.system(.headline, design: .serif))
+                        .foregroundStyle(Theme.ink)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(syn.excerpt.strippedEmojis)
+                        .font(.system(.footnote, design: .serif))
+                        .foregroundStyle(Theme.ink.opacity(0.75))
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.inkLink)
+            ListenLine(item: syn.readable)
+            InkRule(opacity: 0.6)
+            Button { reading = true } label: { InkLinkLabel(title: "Read", small: true) }
+                .buttonStyle(.inkLink)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 14, radius: 20)
@@ -161,23 +163,23 @@ struct HeldSynthesisCard: View {
 /// player in: one slab, one edge, no floating card.
 struct ReadingBar: View {
     @Environment(AppStore.self) private var store
+    @State private var showReader = false
 
     private var rateLabel: String {
         store.reader.rate == 1.0 ? "1×" :
         store.reader.rate == 1.5 ? "1.5×" : "2×"
     }
 
-    /// What she's doing, said plainly. The stand-in is never dressed up as
-    /// her — if you're hearing the phone, the bar tells you so.
+    /// Preparation and failures stay visible even within a playlist.
     private var status: String {
         let reader = store.reader
+        if reader.failure != nil { return "VOICE UNAVAILABLE · RETRY" }
         // In a queue, where-am-I matters more than which-engine — that's the
         // line he reads at a red light.
         if let name = reader.playlistName, reader.queueItems.count > 1 {
             let place = "\(name.uppercased()) · \(reader.queuePosition + 1)/\(reader.queueItems.count)"
             return reader.isPreparing ? place + " · WARMING UP" : place
         }
-        if reader.voice == .device { return "STAND-IN VOICE · SHE'S OFFLINE" }
         if reader.isPreparing { return "HER VOICE · WARMING UP" }
         if reader.isStreaming { return "HER VOICE · STILL ARRIVING" }
         return "HER VOICE"
@@ -186,27 +188,47 @@ struct ReadingBar: View {
     var body: some View {
         let reader = store.reader
         if let item = reader.current {
+            // The morning briefing opens as a room with no text (BriefingStage).
+            let briefing = (item.stableID ?? "").hasPrefix("morning:")
             VStack(spacing: 7) {
                 HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title.strippedEmojis.isEmpty
-                             ? "A reading" : item.title.strippedEmojis)
-                            .font(.system(size: 13, design: .serif).weight(.semibold))
-                            .lineLimit(1)
-                            .foregroundStyle(Theme.paper)
-                        HStack(spacing: 5) {
-                            if reader.isPreparing {
-                                // Her own mark, breathing, instead of a
-                                // system spinner.
-                                InkSpark(size: 9, color: Theme.paper.opacity(0.7),
-                                         seed: 7)
+                    // The title block opens the reader: a real Button (it was
+                    // a tap gesture on text), with READ ALONG in its label so
+                    // the UI test and VoiceOver both find it.
+                    Button { if briefing { store.showBriefingStage = true } else { showReader = true } } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title.strippedEmojis.isEmpty
+                                 ? "A reading" : item.title.strippedEmojis)
+                                .font(.system(size: 13, design: .serif).weight(.semibold))
+                                .lineLimit(1)
+                                .foregroundStyle(Theme.paper)
+                            HStack(spacing: 5) {
+                                if reader.isPreparing {
+                                    // Her own mark, breathing, instead of a
+                                    // system spinner.
+                                    InkSpark(size: 9, color: Theme.paper.opacity(0.7),
+                                             seed: 7)
+                                }
+                                Text(status)
+                                    .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                                    .tracking(1.5)
+                                    .foregroundStyle(Theme.paper.opacity(0.6))
                             }
-                            Text(status)
-                                .font(.system(size: 9, design: .monospaced).weight(.semibold))
-                                .tracking(1.5)
-                                .foregroundStyle(Theme.paper.opacity(0.6))
+                            HStack(spacing: 4) {
+                                Text(briefing ? "FULL SCREEN" : "READ ALONG")
+                                    .font(.system(size: 9, design: .monospaced).weight(.semibold))
+                                    .tracking(1.2).foregroundStyle(Theme.paper.opacity(0.85))
+                                InkChevron(pointing: .right, size: 9, color: Theme.paper.opacity(0.7), seed: 61)
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityIdentifier("reading.open")
+                    .accessibilityHint(briefing ? "Open the full-screen briefing" : "Open immersive reading")
                     Spacer(minLength: 4)
                     Button { reader.cycleRate() } label: {
                         Text(rateLabel)
@@ -262,6 +284,10 @@ struct ReadingBar: View {
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(Theme.paper.opacity(0.55))
                 }
+                // The steerable briefing: Higher · Lower · Again, its one-line
+                // interpretation and, at the end, Landed / Didn't land. While the
+                // full-screen room is up the controls live there, never twice.
+                if !store.showBriefingStage { BriefingSteeringPanel(onInk: true) }
             }
             .padding(.horizontal, 18)
             .padding(.top, 12)
@@ -275,6 +301,7 @@ struct ReadingBar: View {
                     Theme.paper.opacity(0.13).frame(height: 0.7)
                 }
             }
+            .sheet(isPresented: $showReader) { ImmersiveReadingView() }
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }

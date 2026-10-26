@@ -1,0 +1,233 @@
+import SwiftUI
+
+/// Every spoken session, and exactly where each one is.
+///
+/// Two corrections from Hector using it on 2026-09-20.
+///
+/// **It would not scroll.** A2-058 hung a `DragGesture` on every row to get a
+/// swipe, and that gesture ate the vertical drag the ScrollView needed. The
+/// rows are a `List` now: scrolling and `swipeActions` both come from the
+/// platform, and nothing competes for the gesture.
+///
+/// **"NEEDS YOU 13" was thirteen accidents.** Every real walk had been sent —
+/// verified against the Mac — and the thirteen were one-to-fifteen second
+/// stubs from pressing the button by mistake. Presenting those as things that
+/// need him is how a working pipeline reads as a broken one. They now have
+/// their own group, last, named for what they are, with one tap to clear all
+/// of them.
+struct WorkSessionsView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var opened: AppStore.ReviewedRecording?
+    @State private var confirmingSweep = false
+
+    private enum Group: String, CaseIterable, Identifiable {
+        case needsYou = "NEEDS YOU"
+        case working = "ON YOUR MAC"
+        case done = "ALICIA HAS THEM"
+        case misfire = "NOTHING WAS SAID"
+        var id: String { rawValue }
+
+        var blurb: String {
+            switch self {
+            case .needsYou: "These stopped. Everything else needs nothing from you."
+            case .working:  "On their way to her by themselves. Nothing to do."
+            case .done:     "She has these. The recordings stay here."
+            case .misfire:  "A second or two — the button, not a thought. Safe to clear."
+            }
+        }
+    }
+
+    /// Private Body originals never appear here. They are not work sessions and
+    /// they never leave the phone on their own.
+    private var sessions: [VoiceRecording] {
+        store.voiceArchive.recordings
+            .filter { !$0.deleted && !$0.isPrivateBody }
+            .sorted { voiceDate($0.context.started_at) > voiceDate($1.context.started_at) }
+    }
+
+    /// A misfire is short AND has no words. A short recording that did produce
+    /// a transcript is a real short thought and stays where it belongs.
+    private func isMisfire(_ record: VoiceRecording) -> Bool { record.isMisfire }
+
+    private func group(for record: VoiceRecording) -> Group {
+        if isMisfire(record) { return .misfire }
+        switch record.stage {
+        case .sent:
+            return .done
+        // `readyForYou` is a misnomer inherited from when review was a gate:
+        // its words are DONE and on their way to her by themselves. It belongs
+        // with the other in-flight states, not in the group that means "you
+        // have to act". Putting it under NEEDS YOU is what showed Hector
+        // twelve things needing him when the true number was one.
+        case .readyForYou, .transcribing, .sending, .capturing, .saved:
+            return .working
+        case .needsAttention, .removed:
+            return .needsYou
+        }
+    }
+
+    private var misfires: [VoiceRecording] { sessions.filter { group(for: $0) == .misfire } }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                header
+                ForEach(Group.allCases) { group in
+                    let rows = sessions.filter { self.group(for: $0) == group }
+                    if !rows.isEmpty {
+                        Section {
+                            ForEach(rows) { record in
+                                row(record, urgent: group == .needsYou)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button("Delete", role: .destructive) { discard(record) }
+                                    }
+                            }
+                        } header: {
+                            sectionHead(group, count: rows.count)
+                        }
+                    }
+                }
+                footer
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .presenceBackground(.mind, store: store)
+            .foregroundStyle(Theme.ink)
+            .toolbar(.hidden, for: .navigationBar)
+            .task { await store.refreshVoiceArchive() }
+            .refreshable { await store.refreshVoiceArchive() }
+            .sheet(item: $opened) { target in
+                VoiceRecordingsView(recordingID: target.id)
+            }
+            .confirmationDialog("Clear \(misfires.count) empty recording(s)?",
+                                isPresented: $confirmingSweep, titleVisibility: .visible) {
+                Button("Clear them", role: .destructive) { misfires.forEach(discard) }
+                Button("Keep them", role: .cancel) { }
+            } message: {
+                Text("These are a second or two each with no words in them. Their audio is deleted; nothing you sent to Alicia is affected.")
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 3) {
+                InkTitleLine(text: "Sessions", size: 27)
+                InkKicker(text: "What you said, and where it is")
+            }
+            Spacer()
+            InkCloseButton { dismiss() }
+                .accessibilityIdentifier("sessions.close")
+        }
+        .padding(.vertical, 8)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private func sectionHead(_ group: Group, count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 8) {
+                InkKicker(text: group.rawValue, color: Theme.ink)
+                Text("\(count)")
+                    .font(InkType.kicker)
+                    .foregroundStyle(Theme.inkSoft)
+                Spacer(minLength: 0)
+                if group == .misfire {
+                    // Removes: seal red, in the header's trailing slot.
+                    Button("Clear all") { confirmingSweep = true }
+                        .buttonStyle(.inkDestructiveCompact)
+                        .accessibilityIdentifier("sessions.clearMisfires")
+                }
+            }
+            .frame(minHeight: 28)
+            Text(group.blurb).font(.caption).foregroundStyle(Theme.inkSoft)
+        }
+        .textCase(nil)
+        .foregroundStyle(Theme.ink)
+        .padding(.top, 14).padding(.bottom, 2)
+        // Match the rows' own inset; a header flush to the screen edge while
+        // every row is indented reads as a rendering fault.
+        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+    }
+
+    @ViewBuilder private var footer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            InkNotice(text: store.voiceArchive.lastError, kind: .error)
+            Button(store.voiceArchive.processing || store.voiceArchive.syncing
+                   ? "Checking your Mac…" : "Check your Mac") {
+                Task { await store.refreshVoiceArchive() }
+            }
+            .buttonStyle(.inkQuiet)
+            .disabled(store.voiceArchive.processing || store.voiceArchive.syncing)
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private func row(_ record: VoiceRecording, urgent: Bool) -> some View {
+        Button { open(record) } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(subject(record))
+                        .font(.system(size: 18, design: .serif))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(record.stage.label.uppercased())
+                        .font(.system(size: 9, design: .monospaced)).tracking(1)
+                        .foregroundStyle(urgent ? Theme.ink : Theme.inkSoft)
+                    Text(record.stage.detail)
+                        .font(.caption).foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(voiceDateLabel(record.context) + " · " + length(record))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                // Opens the recording: her chevron, like every other way in.
+                InkChevron(pointing: .right, size: 14, color: Theme.inkSoft, seed: record.id.inkSeed)
+            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.inkLink)
+        .listRowBackground(Color.clear)
+        .accessibilityIdentifier("sessions.row")
+        .accessibilityLabel(subject(record) + ", " + record.stage.label + ". " + record.stage.detail)
+    }
+
+    /// What it was about: the episode when there was one, otherwise the section
+    /// he spoke from. Never "a recording" when the app knows better.
+    private func subject(_ record: VoiceRecording) -> String {
+        let episode = record.context.episode_id
+        if !episode.isEmpty {
+            let title = record.context.episode_title.strippedEmojis
+            return title.isEmpty || title == episode ? episode : episode + " · " + title
+        }
+        if let surface = record.context.surface_context?.title, !surface.isEmpty {
+            return "From " + surface
+        }
+        return "A spoken thought"
+    }
+
+    private func length(_ record: VoiceRecording) -> String {
+        let whole = Int(record.duration)
+        return whole <= 0 ? "no audio yet" : "\(whole / 60)m \(whole % 60)s"
+    }
+
+    /// Deletes the audio. A reflection already sent keeps its words — deleting
+    /// a recording is not a way to unsay something.
+    private func discard(_ record: VoiceRecording) {
+        Task { await store.deleteOriginalVoice(record.id) }
+    }
+
+    /// Opening a past session SHOWS it. It never reopens the walk.
+    ///
+    /// It used to hand unfinished ones back to `WalkReflectionView`, whose
+    /// `.task` starts recording when a recording has no finalization — so
+    /// tapping a walk from eleven days ago began appending today's audio to
+    /// it. That reads as "it opened the wrong recording" and is worse than it
+    /// reads: it edits an original he cannot get back.
+    private func open(_ record: VoiceRecording) {
+        opened = AppStore.ReviewedRecording(id: record.id)
+    }
+}

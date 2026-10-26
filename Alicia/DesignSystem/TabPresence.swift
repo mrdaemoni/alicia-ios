@@ -30,6 +30,7 @@ enum TabPresence {
         case .mind:      .beatrice
         case .studio:    .muse
         case .knowledge: .ariadne
+        case .body: .psyche
         }
     }
 
@@ -49,7 +50,7 @@ enum TabPresence {
             // Warming up her voice is the most literal "thinking" the app has.
             if store.reader.isPreparing { return .thinking }
             return (store.isPlaying || store.reader.isSpeaking) ? .listening : .resting
-        case .us, .mind, .knowledge:
+        case .us, .mind, .knowledge, .body:
             return .listening
         }
     }
@@ -80,6 +81,8 @@ enum TabPresence {
             value += min(0.20, Double(store.thoughts.count) * 0.04)
         case .studio:
             if store.isPlaying || store.reader.isSpeaking { value += 0.20 }
+        case .body:
+            break
         case .knowledge:
             // A loaded shelf is a full room.
             value += min(0.20, Double(store.syntheses.count) * 0.02)
@@ -119,22 +122,96 @@ extension View {
                 // opacity keeps it beneath the words rather than level with
                 // them. The mathematics is untouched: same body, seen from
                 // much closer.
+                if store.presenceField.enabled || usesLivePresence {
+                    // Animates while this surface is on screen — a tab root or a
+                    // page pushed from any tab — and rests under the walk cover.
+                    PresenceLayer(isActive: !store.showWalk && !store.showBriefingStage, opacity: 0.55)
+                } else {
                 GeometryReader { geo in
                     AliciaPresence(
                         voice: TabPresence.voice(for: section),
                         state: TabPresence.state(for: section, store: store),
                         attention: TabPresence.attention(for: section, store: store),
-                        isActive: store.selectedSection == section
+                        isActive: store.selectedSection == section,
+                        previewsReduceMotion: previewsCollaborationStillness
                     )
-                    .frame(width: geo.size.width * 1.9,
-                           height: geo.size.height * 1.9)
-                    .position(x: geo.size.width * 0.5,
-                              y: geo.size.height * 0.46)
+                    .frame(width: geo.size.width * 1.9, height: geo.size.height * 1.9)
+                    .position(x: geo.size.width * 0.5, y: geo.size.height * 0.46)
                     .opacity(0.30)   // family weight is normalised inside AliciaPresence
+                }
                 }
                 PaperGrain()
             }
             .ignoresSafeArea()
         }
+    }
+
+    private var previewsCollaborationStillness: Bool {
+#if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        return args.contains("--collaboration-preview") && args.contains("--collaboration-reduce-motion-preview")
+#else
+        return false
+#endif
+    }
+
+    private var usesLivePresence: Bool {
+        LivePresenceClient.shared.enabled
+    }
+}
+
+/// Her body, placed against the glass rather than against whatever container
+/// draws it. A tab, a pushed page, a sheet and the walk all put her centre at
+/// the centre of the screen at the same size, and all read the same frame of
+/// the one `PresenceField` — so moving between them never moves her.
+struct PresenceLayer: View {
+    @Environment(AppStore.self) private var store
+    /// Allowed to animate at all (false under the walk cover).
+    var isActive: Bool
+    var opacity: Double
+    /// Whether this surface is actually showing. Appear/disappear follow tab
+    /// switches and navigation pushes, so a page pushed onto Us that draws a
+    /// Studio background still moves: activity no longer depends on which tab
+    /// is selected (Codex review of #45 — the Us → playlist route froze her).
+    @State private var onScreen = false
+
+    private var previewsReduceMotion: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--reduce-motion-preview")
+#else
+        false
+#endif
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let here = geo.frame(in: .global)
+            let screen = store.presenceField.screen == .zero ? here.size : store.presenceField.screen
+            if LivePresenceClient.shared.enabled {
+                RelationalPresence(motion: LivePresenceClient.shared.motion,
+                                   isActive: isActive && onScreen,
+                                   previewReduction: previewsReduceMotion,
+                                   playbackLevel: { LivePresenceClient.shared.currentPlaybackLevel })
+                    .frame(width: screen.width, height: screen.height)
+                    .position(x: screen.width * 0.5 - here.minX, y: screen.height * 0.5 - here.minY)
+                    .opacity(opacity)
+            } else {
+                legacy(screen: screen, here: here)
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onAppear { onScreen = true }
+        .onDisappear { onScreen = false }
+    }
+
+    private func legacy(screen: CGSize, here: CGRect) -> some View {
+        AliciaPresence(isActive: isActive && onScreen,
+                           previewsReduceMotion: previewsReduceMotion,
+                           field: store.presenceField)
+                .frame(width: screen.width * 1.45, height: screen.height * 1.45)
+                .position(x: screen.width * 0.5 - here.minX, y: screen.height * 0.5 - here.minY)
+                .opacity(opacity)
     }
 }

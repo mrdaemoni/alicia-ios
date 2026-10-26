@@ -11,6 +11,7 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.alicia.app.refresh</string>
+		<string>com.alicia.app.voicesync</string>
 	</array>
 	<!-- The Alicia backend speaks plain HTTP on a private network (home
 	     Wi-Fi / Tailscale tailnet, port 8766) — never the open internet.
@@ -31,13 +32,16 @@
 	     like "backend down". Tailscale doesn't need it, LAN does. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Alicia connects to her backend on your Mac Mini over your home network or tailnet.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>So Alicia knows where you are — home in Palo Alto, the office in Seattle, or travelling. She's told the place by name, never a coordinate.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Talk to Alicia — the mic in the composer dictates straight into your message.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Your voice is transcribed on-device so you can speak to Alicia instead of typing.</string>
 	<!-- Only the modes the app actually uses: background refresh polls her
 	     proactive-message feed for local notifications; audio keeps a
-	     podcast playing when backgrounded. Unused modes (voip,
+	     podcast playing when backgrounded; processing carries walk audio
+	     to the Mac while the app is closed (BackgroundVoiceSync). Unused modes (voip,
 	     push-to-talk, location, …) expect entitlements the personal
 	     provisioning profile doesn't carry — they can break device
 	     launches and would fail App Store review. -->
@@ -45,6 +49,16 @@
 	<array>
 		<string>fetch</string>
 		<string>audio</string>
+		<string>processing</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.myalicia.navigation</string>
+			<key>CFBundleURLSchemes</key>
+			<array><string>alicia</string></array>
+		</dict>
 	</array>
 </dict>
 </plist>

@@ -1,0 +1,206 @@
+import Foundation
+
+struct BriefingFeedbackMutation: Codable, Equatable {
+    var id, event_id, verdict, text, script_sha256: String
+    var body: [String: String] {
+        ["id": id, "event_id": event_id, "verdict": verdict, "text": text, "script_sha256": script_sha256]
+    }
+}
+struct BriefingFeedbackResult: Decodable {
+    var ok: Bool
+    var error: String?
+    static func decode(data: Data, status: Int) -> Self? {
+        guard status == 200 || status == 409,
+              let result = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+        if status == 409 {
+            guard !result.ok, let error = result.error, !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        }
+        return result
+    }
+}
+
+#if DEBUG
+@MainActor enum MorningBriefingPreview {
+    static var value: MorningBriefing = {
+        var item = MorningBriefing(id: "preview-briefing", day: Date.now.formatted(.iso8601.year().month().day()),
+            title: "Preview · Three quiet signals", text: "Preview text of a short briefing.",
+            status: "ready", playlist_id: "preview-briefing-playlist")
+        item.script_sha256 = "fixture-script-hash"
+        return item
+    }()
+    static func save(_ request: BriefingFeedbackMutation) -> BriefingFeedbackResult {
+        guard request.id == value.id, request.script_sha256 == value.script_sha256 else {
+            return .init(ok: false, error: "Preview script changed.")
+        }
+        value.feedback = .init(verdict: request.verdict, text: request.text)
+        return .init(ok: true, error: nil)
+    }
+}
+#endif
+
+/// A prepared reading, separate from a chosen episode or evidence of listening.
+/// GET /api/morning_briefing is read-only; opening this value does not generate audio.
+struct MorningBriefing: Codable, Equatable, Identifiable {
+    struct Speech: Codable, Equatable {
+        struct Chunk: Codable, Equatable {
+            var url: String
+            var duration: Double?
+            var text: String?
+            var cues: [NarrationCue]?
+            var timing_status: String?
+            var speech_backend: String?
+        }
+        var chunks: [Chunk]?
+        var spoken_text, timing_status, speech_backend: String?
+    }
+    var speech: Speech?
+    /// Authenticated URLs resolved by the service, never a view.
+    var speechChunks: [SpeechChunk] = []
+    struct Source: Codable, Equatable {
+        var id: String? = nil
+        var title: String? = nil
+        var path: String? = nil
+        var excerpt: String? = nil
+    }
+
+    var id: String = ""
+    var day: String = ""
+    var title: String = ""
+    var text: String = ""
+    var status: String = "unavailable"
+    var audio_url: String = ""
+    /// Actual rendered audio length in seconds, never an estimated reading time.
+    var duration: Double = 0
+    var playlist_id: String = ""
+    var error: String = ""
+    var sources: [Source] = []
+    var script_sha256: String = ""
+    struct Feedback: Codable, Equatable { var verdict: String; var text: String }
+    var feedback: Feedback?
+    /// CL-20261015-steerable-briefing: the same briefing as segments with up to
+    /// three validated altitudes each. Empty for older backends and on days
+    /// that fell back to a single track; then the legacy fields play as before.
+    var segments: [BriefingSegment] = []
+    var steering: BriefingSteeringInfo?
+
+    enum CodingKeys: String, CodingKey {
+        case id, day, title, text, status, audio_url, duration, playlist_id, error, sources, speech, script_sha256, feedback
+        case segments, steering
+    }
+
+    init(id: String = "", day: String = "", title: String = "", text: String = "",
+         status: String = "unavailable", audio_url: String = "", duration: Double = 0,
+         playlist_id: String = "", error: String = "", sources: [Source] = []) {
+        self.id = id
+        self.day = day
+        self.title = title
+        self.text = text
+        self.status = status
+        self.audio_url = audio_url
+        self.duration = duration
+        self.playlist_id = playlist_id
+        self.error = error
+        self.sources = sources
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        speech = try values.decodeIfPresent(Speech.self, forKey: .speech)
+        id = try values.decodeIfPresent(String.self, forKey: .id) ?? ""
+        day = try values.decodeIfPresent(String.self, forKey: .day) ?? ""
+        title = try values.decodeIfPresent(String.self, forKey: .title) ?? ""
+        text = try values.decodeIfPresent(String.self, forKey: .text) ?? ""
+        status = try values.decodeIfPresent(String.self, forKey: .status) ?? "unavailable"
+        audio_url = try values.decodeIfPresent(String.self, forKey: .audio_url) ?? ""
+        duration = try values.decodeIfPresent(Double.self, forKey: .duration) ?? 0
+        playlist_id = try values.decodeIfPresent(String.self, forKey: .playlist_id) ?? ""
+        error = try values.decodeIfPresent(String.self, forKey: .error) ?? ""
+        sources = try values.decodeIfPresent([Source].self, forKey: .sources) ?? []
+        script_sha256 = try values.decodeIfPresent(String.self, forKey: .script_sha256) ?? ""
+        feedback = try values.decodeIfPresent(Feedback.self, forKey: .feedback)
+        // A malformed steering payload never costs him the briefing itself.
+        segments = (try? values.decodeIfPresent([BriefingSegment].self, forKey: .segments)) ?? []
+        steering = try? values.decodeIfPresent(BriefingSteeringInfo.self, forKey: .steering)
+    }
+
+    var displayTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Your morning briefing" : title
+    }
+
+    var measuredSeconds: Int? {
+        guard duration.isFinite, duration > 0, let seconds = Int(exactly: duration.rounded()) else { return nil }
+        return max(1, seconds)
+    }
+
+    var durationLabel: String? {
+        guard let seconds = measuredSeconds else { return nil }
+        if seconds >= 3600 {
+            return "\(seconds / 3600):" + String(format: "%02d:%02d", (seconds % 3600) / 60, seconds % 60)
+        }
+        return "\(seconds / 60):" + String(format: "%02d", seconds % 60)
+    }
+
+    var spokenDuration: String? {
+        guard let seconds = measuredSeconds else { return nil }
+        let minutes = seconds / 60
+        let remainder = seconds % 60
+        var parts: [String] = []
+        if minutes > 0 { parts.append("\(minutes) \(minutes == 1 ? "minute" : "minutes")") }
+        if remainder > 0 { parts.append("\(remainder) \(remainder == 1 ? "second" : "seconds")") }
+        return parts.joined(separator: ", ")
+    }
+
+    var hasPlayableAudio: Bool {
+        guard status == "ready", !id.isEmpty, measuredSeconds != nil else { return false }
+        let path = audio_url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty, let components = URLComponents(string: path) else { return false }
+        if let scheme = components.scheme {
+            return ["http", "https"].contains(scheme.lowercased()) && !(components.host ?? "").isEmpty
+        }
+        // Private-backend media paths are normally relative to the configured service.
+        return components.host == nil && !components.path.isEmpty
+    }
+
+    var hasText: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var hasPlaylist: Bool { !playlist_id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var availabilityText: String {
+        if hasPlayableAudio { return "Ready to listen." }
+        if ["preparing", "draft", "rendering"].contains(status) { return "The audio is being prepared." }
+        if status == "scheduled" { return "Prepared each morning for your exercise, aiming for 6 a.m. Pacific." }
+        if status == "ready" { return "The audio isn't ready to play yet." }
+        return "The briefing isn't available right now."
+    }
+
+    enum DayRelation { case today, earlier, later, unknown }
+
+    func dayRelation(to now: Date, calendar: Calendar = .current) -> DayRelation {
+        guard let date = date(calendar: calendar) else { return .unknown }
+        switch calendar.compare(date, to: now, toGranularity: .day) {
+        case .orderedSame: return .today
+        case .orderedAscending: return .earlier
+        case .orderedDescending: return .later
+        }
+    }
+
+    func dateLabel(calendar: Calendar = .current, locale: Locale = .current) -> String {
+        guard let date = date(calendar: calendar) else { return "Date unavailable" }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = locale
+        formatter.dateStyle = .full
+        return formatter.string(from: date)
+    }
+
+    private func date(calendar: Calendar) -> Date? {
+        let parser = DateFormatter()
+        parser.calendar = Calendar(identifier: .gregorian)
+        parser.timeZone = calendar.timeZone
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.dateFormat = "yyyy-MM-dd"
+        parser.isLenient = false
+        guard let date = parser.date(from: day), parser.string(from: date) == day else { return nil }
+        return date
+    }
+}

@@ -9,13 +9,13 @@ struct EditorialTabBar: View {
     @Environment(AppStore.self) private var store
 
     var body: some View {
-        // Collapse by height (not by removing the view) — swapping to
-        // EmptyView glitched the safe-area inset and let the bar overlap
-        // the Dialogue composer on device.
+        // v39: the bar no longer collapses. It used to fold to zero height
+        // whenever the composer took focus, which is how Hector lost both the
+        // navigation and the way to reach her at the same moment — the two
+        // things most worth keeping on screen. Typing now happens in a sheet
+        // above this bar (ConversationSheet), so there is nothing left to
+        // make room for, and the bar simply owns the bottom edge always.
         bar
-            .frame(height: store.composerFocused ? 0 : nil)
-            .clipped()
-            .opacity(store.composerFocused ? 0 : 1)
     }
 
     /// Bottom safe-area height (home indicator) — the ink swallows it.
@@ -30,7 +30,7 @@ struct EditorialTabBar: View {
         // the space after DIALOGUE huge and STUDIO·KNOWLEDGE cramped —
         // words this different in length need optical spacing).
         HStack(spacing: 0) {
-            ForEach(Array(AppSection.allCases.enumerated()), id: \.element.id) { i, section in
+            ForEach(Array(AppSection.tabs.enumerated()), id: \.element.id) { i, section in
                 if i > 0 { Spacer(minLength: 8) }
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {

@@ -6,7 +6,7 @@ struct AliciaApp: App {
     /// mock otherwise — see AliciaConfig.
     @State private var store = AppStore(service: {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--episode-day-preview") { return MockAliciaService() }
+        if ProcessInfo.processInfo.arguments.contains("--live-presence-preview") || ProcessInfo.processInfo.arguments.contains("--live-presence-fixture") || ProcessInfo.processInfo.arguments.contains("--body-preview") || ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") || ProcessInfo.processInfo.arguments.contains("--collaboration-preview") || ProcessInfo.processInfo.arguments.contains("--voice-evidence-preview") || ProcessInfo.processInfo.arguments.contains("--episode-day-preview") || ProcessInfo.processInfo.arguments.contains("--episode-continuity-preview") || ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") || ProcessInfo.processInfo.arguments.contains("--study-note-preview") || ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--dialogue-review-") }) { return MockAliciaService() }
 #endif
         return AliciaConfig.makeService()
     }())
@@ -15,6 +15,7 @@ struct AliciaApp: App {
     init() {
         // Must happen before launch finishes.
         ProactiveNotifier.register()
+        BackgroundVoiceSync.register()
 
         // Ink-on-paper typography: navigation titles in serif to match the
         // hand-drawn sketchbook identity (body text gets .fontDesign(.serif)
@@ -41,8 +42,33 @@ struct AliciaApp: App {
         WindowGroup {
             Group {
 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--motion-lab") {
+                if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") && ProcessInfo.processInfo.arguments.contains("--briefing-stage-preview") {
+                    // The steering fixture already prepared the reader; no audio loads.
+                    BriefingStage()
+                } else if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") && ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") {
+                    // The steering fixture already prepared the reader; no audio loads.
+                    ImmersiveReadingView()
+                } else if ProcessInfo.processInfo.arguments.contains("--morning-briefing-steer-preview") && ProcessInfo.processInfo.arguments.contains("--reading-bar-preview") {
+                    VStack { Spacer(); ReadingBar() }.background(Theme.paper)
+                } else if ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") && ProcessInfo.processInfo.arguments.contains("--reading-bar-preview") {
+                    VStack { Spacer(); ReadingBar() }.background(Theme.paper)
+                        .task { store.reader.prepareReadingPreview() }
+                } else if ProcessInfo.processInfo.arguments.contains("--immersive-reading-preview") {
+                    ImmersiveReadingView(previewReduceMotion: ProcessInfo.processInfo.arguments.contains("--reading-reduce-motion"))
+                        .task {
+                        store.reader.prepareReadingPreview(unavailable: ProcessInfo.processInfo.arguments.contains("--reading-unavailable"))
+                    }
+                } else if ProcessInfo.processInfo.arguments.contains("--ritual-widget-preview") {
+                    // The home-screen widget draws from Shared, so the app can
+                    // render it. Both rendering modes at once: her underline
+                    // has to be dark on paper and light on the tinted plate,
+                    // and only seeing them together proves it inverts.
+                    RitualWidgetPreview()
+                } else if ProcessInfo.processInfo.arguments.contains("--motion-lab") {
                     MotionLabView()
+                } else if ProcessInfo.processInfo.arguments.contains("--dialogue-review-sheet-preview") {
+                    DialogueReviewView(message: Message(sender: .alicia, text: DialogueReview.preview.reply,
+                                                        replyID: DialogueReview.previewID))
                 } else {
                     RootView()
                 }
@@ -59,11 +85,34 @@ struct AliciaApp: App {
                 // Same shape as --motion-lab, and gone from Release.
                 .task {
                     let args = ProcessInfo.processInfo.arguments
+                    if args.contains("--reset-drafts") { store.composerDrafts.resetForTesting() }
+                    if args.contains("--body-stale-preview") { store.bodyStore.overview = BodyPreview.staleOverview }
+                    else if args.contains("--body-preview") { store.bodyStore.overview = BodyPreview.overview }
                     if args.contains("--episode-day-preview") && args.contains("--episode-walk-preview") {
                         store.episodeDay = EpisodeDay.preview
                         store.walkPrompt = "Where would choosing less give you room to go deeper?"
                         store.walkDraft = "Preview reflection: I keep returning to the difference between commitment and control. I want to give this idea a real test today."
                         store.openWalk(probe: "Where would choosing less give you room to go deeper?")
+                    }
+                    if let i = args.firstIndex(of: "--presence-stance"), args.index(after: i) < args.endIndex {
+                        // DEBUG: a reading as the backend would send it, to see each state.
+                        let stance = args[args.index(after: i)]
+                        let direction = ["ask": "toward_hector", "celebrate": "toward_hector", "offer": "toward_work",
+                                         "hold": "resting"][stance] ?? "inward"
+                        store.presenceField.receive(PresenceAwareness(
+                            energy: stance == "hold" ? 0.2 : 0.7, openness: stance == "offer" ? 0.35 : 0.8,
+                            coherence: stance == "celebrate" ? 0.55 : 0.8, direction: direction, stance: stance,
+                            attending_to: "Preview · " + stance, source: "jev+local", updated_at: ""))
+                    }
+                    if args.contains("--finished-goals-preview") {
+                        await store.collaboration.load()
+                        if args.contains("--open-finished-record") {
+                            store.collaboration.route = CollaborationRoute(finishedClosureID: CollaborationPreview.finishedID)
+                        } else if args.contains("--open-together") {
+                            store.collaboration.route = CollaborationRoute()
+                        } else if args.contains("--open-finished") {
+                            store.collaboration.route = CollaborationRoute(finishedClosureID: "")
+                        }
                     }
                     guard let flag = args.firstIndex(of: "--tab"),
                           args.index(after: flag) < args.endIndex,
@@ -82,7 +131,11 @@ struct AliciaApp: App {
                         ProactiveNotifier.schedule()
                     }
                 }
+                .onOpenURL { url in
+                    if url.scheme == "alicia", url.host == "body" { store.selectedSection = .body }
+                }
                 .onChange(of: scenePhase) { _, phase in
+                    LivePresenceClient.shared.sceneActive(phase == .active)
                     switch phase {
                     case .active:
                         // Presence: he is here. The tracker's dwell clock only
@@ -97,7 +150,12 @@ struct AliciaApp: App {
                         // its job.
                         ProactiveNotifier.clearBadge()
                         Task { await store.load() }
+                        Task { await store.bodyStore.refresh() }
                         store.startProactivePolling()
+                        // Fine-grained location only while he is actually in
+                        // the app. Significant-change monitoring keeps running
+                        // either way, so a flight still registers.
+                        PlaceTracker.shared.begin()
                     case .background:
                         // Close the open tab's dwell and push the batch before
                         // iOS suspends us — an unflushed buffer is lost.
@@ -106,7 +164,11 @@ struct AliciaApp: App {
                         // once at launch (the old behavior) meant iOS never
                         // had a fresh window and no notification ever fired.
                         store.stopProactivePolling()
+                        PlaceTracker.shared.pauseForegroundUpdates()
                         if !store.isMock { ProactiveNotifier.schedule() }
+                        // A walk ends with the phone locked: finish sending
+                        // its tail and seal, and keep going while closed.
+                        BackgroundVoiceSync.finishInBackground(store)
                     default:
                         break
                     }
