@@ -58,7 +58,7 @@ struct VoiceProcessingView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         if let error = record.processingError ?? record.transcription?.error { InkNotice(text: error, kind: .error) }
-                        if let error = record.submissionError { InkNotice(text: error, kind: .error) }
+                        if record.stage != .sent, let error = record.submissionError { InkNotice(text: error, kind: .error) }
                         InkNotice(text: store.voiceArchive.lastError, kind: .error)
                         // Recovery belongs to the state it recovers: retry is
                         // the stronger action, checking is quiet.
@@ -82,7 +82,9 @@ struct VoiceProcessingView: View {
                                     .accessibilityIdentifier("voice.doneEditing")
                             }
                         }) {
-                            Text("Check the words against your original recording. Alicia receives them only when you choose Send.")
+                            Text(record.review?.destination == "walk"
+                                 ? "The Mac transcript is separate from your original recording. Your delivery status appears above."
+                                 : "Check the words against your original recording. Alicia receives them only when you choose Send.")
                                 .font(InkType.meta).foregroundStyle(Theme.inkSoft)
                                 .fixedSize(horizontal: false, vertical: true)
                             if record.review?.destination == "proactive" {
@@ -97,7 +99,7 @@ struct VoiceProcessingView: View {
                             .focused($editing)
                             .scrollContentBackground(.hidden)
                             .inkField(minHeight: 180)
-                            .disabled(record.submission != nil || record.deleted)
+                            .disabled(record.submission != nil || record.deleted || record.stage == .sent)
                             .accessibilityLabel("Review Mac transcript").accessibilityIdentifier("voice.macDraft")
                             if draft.unicodeScalars.count > 60000 {
                                 InkNotice(text: "Please shorten this to 60,000 characters before sending. Your full draft is kept.", kind: .error)
@@ -107,7 +109,7 @@ struct VoiceProcessingView: View {
                                 Button("Keep these edits on phone") { store.voiceArchive.editReview(id, text: draft) }
                                     .buttonStyle(.inkSecondary)
                             }
-                            if record.submission == nil {
+                            if record.submission == nil, record.stage != .sent {
                                 Button(record.review?.destination == "walk" ? "SEND THESE WORDS & REFLECT" : "SEND THESE WORDS") {
                                     editing = false
                                     Task { await store.sendReviewedVoice(id) }
@@ -146,7 +148,7 @@ struct VoiceProcessingView: View {
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 while !Task.isCancelled {
-                    if needsProgress { await store.refreshVoiceArchive() }
+                    if needsProgress { await store.refreshVoiceArchive(recordingID: id) }
                     do { try await Task.sleep(for: .seconds(4)) } catch { return }
                 }
             }
@@ -166,7 +168,7 @@ struct VoiceProcessingView: View {
         let busy = store.voiceArchive.processing || store.voiceArchive.syncing
         return Button(busy ? "Checking…" : "Check your Mac") {
             Task {
-                if let check { await check() } else { await store.refreshVoiceArchive() }
+                if let check { await check() } else { await store.refreshVoiceArchive(recordingID: id) }
             }
         }
         .buttonStyle(.inkQuiet)
@@ -174,11 +176,7 @@ struct VoiceProcessingView: View {
     }
 
     private var needsProgress: Bool {
-        guard let record, !record.deleted, record.finalization != nil, record.processingRejected != true,
-              record.submissionRejected != true else { return false }
-        if record.pendingTranscriptionRetry != nil { return true }
-        if record.submission != nil { return !["completed", "failed", "outcome_unknown"].contains(record.submissionStatus?.state ?? "") }
-        return !["ready", "failed", "cancelled"].contains(record.transcription?.state ?? "")
+        record?.needsProgressRefresh == true
     }
 
     private func receiveDraft() {

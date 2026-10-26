@@ -108,7 +108,7 @@ struct VoiceRecordingDetail: View {
     /// The page's one check: the archive and this recording's detail. It was
     /// "SYNC" here and "CHECK MAC / SYNC" in the stage below — now one action.
     private func checkMac() async {
-        await store.refreshVoiceArchive(); details = await store.voiceDetail(id)
+        await store.refreshVoiceArchive(recordingID: id); details = await store.voiceDetail(id)
     }
 
     private var record: VoiceRecording? { store.voiceArchive.recording(id) }
@@ -117,7 +117,7 @@ struct VoiceRecordingDetail: View {
         page
             .presenceBackground(.mind, store: store)
             .scrollDismissesKeyboard(.interactively)
-            .task { await store.refreshVoiceArchive(); details = await store.voiceDetail(id) }
+            .task { await store.refreshVoiceArchive(recordingID: id); details = await store.voiceDetail(id) }
             .onDisappear { stopPlayback() }
             .onChange(of: scenePhase) { _, phase in if phase != .active { stopPlayback() } }
             .confirmationDialog("Delete the original audio from this phone and your Mac? The transcript and context will remain.",

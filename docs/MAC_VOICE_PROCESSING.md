@@ -1,5 +1,38 @@
 # Mac voice processing — A2-016 candidate
 
+## October 25 — delivery confirmation candidate
+
+An automatically submitted walk can finish transcription before its delivery link
+arrives. The open review now keeps refreshing that recording until the link
+arrives, then reads “Alicia has it.” A ready manual Dialogue draft or a walk below
+the backend's eight-word floor does not wait for an automatic send. Deleted,
+failed and uncertain submissions retain their existing stop conditions.
+
+The review and original-recording pages request the individual recording rather
+than loading the entire archive for each status check. Archive list refreshes
+still request the archive. A delivery link also blocks preparation of another
+phone submission. These changes include the pending section/copy/delivery guards
+from PR #54. They are an app candidate, with no backend or TestFlight release
+implied.
+
+## October 23 walk-delivery repair candidate
+
+A reviewed walk submission now freezes the original app section alongside its
+episode, question, words and machine-source receipts. A missing optional section
+still decodes from older pending submissions; the paired backend resolves it only
+from the immutable recording context. Explicit targets are never replaced.
+A delivered Mac link closes a pending or rejected phone send: it cannot reopen
+or resend, and the review surface hides the stale rejection notice. Walk review
+copy points to the delivery status rather than implying all walks require Send.
+
+Recordings with at least eight transcript words are not grouped as misfires just
+because they are short. Classification uses the reviewed or Mac text when present,
+then the on-device words. The paired backend removes the duration/character floor
+from its existing automatic walk delivery. Dialogue and private Body routing,
+recording finalization and uncertain-send rules are unchanged. Ordinary automatic
+walk delivery predates this repair; the explicit-send-only workflow below is
+historical. Release status and device acceptance remain separate from tests.
+
 New voice input follows capture → finish → upload → Mac transcription → review →
 explicit send. Capture-only mode asks for microphone permission, preserves the
 existing original-audio sink and meter, and does not start an Apple speech task.

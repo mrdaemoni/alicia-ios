@@ -89,12 +89,15 @@ struct VoiceSubmission: Codable, Equatable {
     var episodeID, prompt, proactiveID: String
     var voice: Bool
     var attempted = false
+    // Optional for pending requests written by earlier app versions.
+    var surface: String? = nil
     var body: [String: Any] {
         var result: [String: Any] = ["recording_id": recordingID, "transcription_request_id": transcriptionRequestID,
             "transcript_id": transcriptID, "text": text]
         if destination == "walk" {
             result["action"] = "end_walk"; result["request_id"] = requestID
             result["episode_id"] = episodeID; result["topic"] = prompt
+            if episodeID.isEmpty, let surface, !surface.isEmpty { result["surface"] = surface }
         } else {
             result["client_request_id"] = requestID; result["episode_id"] = episodeID
             if destination == "dialogue" { result["voice"] = voice }
