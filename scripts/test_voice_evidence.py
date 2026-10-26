@@ -38,6 +38,10 @@ folder=work/'VoiceEvidenceTests';folder.mkdir()
 (folder/'VoiceEvidence.swift').symlink_to(root/'Alicia/Core/VoiceEvidence.swift')
 (folder/'SurfaceContext.swift').symlink_to(root/'Alicia/Core/SurfaceContext.swift')
 (folder/'VoiceProcessing.swift').symlink_to(root/'Alicia/Core/VoiceProcessing.swift')
+# voiceTimestamp() reads BodyCapture's shared codec (472c3e1), and Message
+# carries a ChatDeliveryFailure (0720005); without both the target cannot build.
+(folder/'BodyCapture.swift').symlink_to(root/'Shared/BodyCapture.swift')
+(folder/'ChatDelivery.swift').symlink_to(root/'Alicia/Core/ChatDelivery.swift')
 context_source=(root/'Alicia/Core/Collaboration.swift').read_text().split('struct WorkDialogueContext:',1)[1].split('enum CollaborationReturnPreferences',1)[0]
 (folder/'WorkDialogueContext.swift').write_text('import Foundation\nstruct WorkDialogueContext:'+context_source)
 # Exercise the actual shared history mapper, with inert dependencies instead of AppStore.init/load.
@@ -160,6 +164,28 @@ final class VoiceEvidenceTests:XCTestCase {
   XCTAssertEqual(a.recording(id)?.segments.count,2)
   var other=later;other.surface_context?.section="studio"
   XCTAssertThrowsError(try a.begin(id:id,context:other,review:VoiceReview(destination:"walk")))
+  XCTAssertTrue(a.finalize(id))
+ }
+ // The context AppStore.startVoiceCapture builds for a walk opened from a
+ // section: no episode, no place, and a new voiceTimestamp() on every start.
+ // Under 20 s, pause() leaves the recording unsealed, so coming back to the
+ // same section reuses its ID. Main before this merge threw here.
+ @MainActor func testSectionWalkResumesWithAppStoreShapedContext() throws {
+  let a=archive(),id=UUID().uuidString,start=Date(timeIntervalSince1970:1_792_000_000)
+  func walk(_ section:String,_ at:Date)->VoiceContext {
+   var c=VoiceContext(session_id:id,source:"ios_walk",started_at:voiceTimestamp(at),timezone:"America/Los_Angeles",episode_id:"",episode_title:"",episode_basis:"",frame_id:"",question_presented:"",playback_position_ms:0,proactive_id:nil)
+   c.surface_context=SurfaceContext(section:section,captured_at:voiceTimestamp(at))
+   return c
+  }
+  let first=walk("mind",start)
+  let sink=try a.begin(id:id,context:first,review:VoiceReview(destination:"walk"))
+  sink.append(buffer());a.addSegments(sink.drain(close:true).segments,to:id)
+  XCTAssertNil(a.recording(id)?.finalization);XCTAssertLessThan(a.recording(id)!.duration,20)
+  let resumed=try a.begin(id:id,context:walk("mind",start.addingTimeInterval(600)),review:VoiceReview(destination:"walk"))
+  resumed.append(buffer());a.addSegments(resumed.drain(close:true).segments,to:id)
+  XCTAssertEqual(a.recording(id)?.context.surface_context,first.surface_context)
+  XCTAssertEqual(a.recording(id)?.segments.count,2)
+  XCTAssertThrowsError(try a.begin(id:id,context:walk("studio",start.addingTimeInterval(900)),review:VoiceReview(destination:"walk")))
   XCTAssertTrue(a.finalize(id))
  }
  @MainActor func testMacPauseDoesNotSealAndCompleteOrderedManifestSurvivesRestart()throws {
