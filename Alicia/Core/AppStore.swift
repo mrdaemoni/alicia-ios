@@ -434,6 +434,13 @@ final class AppStore {
     /// what it is *about* changes, and `walkSurface` is what carries that to
     /// the backend.
     func openWalk(probe: String = "", surface: SurfaceContext? = nil) {
+        // A section that does not display the chosen episode is authoritative.
+        // Without this, WALK from Body became an episode walk whenever an
+        // episode was current, and a Body walk stopped being private.
+        if let surface, surface.episode_id.isEmpty {
+            openSurfaceWalk(surface, probe: probe)
+            return
+        }
         guard let episode = episodeDay?.episode else {
             guard let surface else {
                 episodeError = "Play an episode in Studio to begin."

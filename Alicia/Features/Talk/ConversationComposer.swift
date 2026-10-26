@@ -32,7 +32,12 @@ struct ConversationComposer: View {
             .last(where: { $0.sender == .alicia && !$0.text.isEmpty })
     }
 
-    private var episode: EpisodeDay.Episode? { store.episodeDay?.episode }
+    /// An episode is part of the visible room only on Us and Studio. A chosen
+    /// episode must never silently turn a Body or Mind conversation into an
+    /// episode conversation.
+    private var episode: EpisodeDay.Episode? {
+        section.episode_id.isEmpty ? nil : store.episodeDay?.episode
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {

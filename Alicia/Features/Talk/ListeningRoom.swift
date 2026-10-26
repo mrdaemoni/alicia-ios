@@ -129,6 +129,7 @@ struct ListeningStage<Controls: View>: View {
             VStack(alignment: .leading, spacing: 6) {
                 InkKicker(text: kicker)
                     .lineLimit(1)
+                    .accessibilityIdentifier("listening.subject")
                 HStack(spacing: 10) {
                     // A drawn mark, not a level meter: it says "on" at a glance
                     // from across the room, which six tiny bars never did.
