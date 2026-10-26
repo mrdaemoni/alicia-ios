@@ -233,7 +233,7 @@ The kicker is not "Where you are" — that name belongs to place awareness.
 
 # CLAUDE.md — Alicia iOS
 
-Current task coordination: `/Users/alicia/alicia/docs/COLLABORATION.md` and
+Current task coordination: `/Users/alicia/alicia/docs/DEVELOPMENT_PROTOCOL.md` and
 `/Users/alicia/Documents/Alicia-development/README.md`. Read the assigned brief,
 claim its branch/worktree, and leave committed work plus test evidence in the
 shared task folder for Codex review. Register self-initiated work there too.

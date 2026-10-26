@@ -63,7 +63,7 @@ agreed.
 ## 3. Recommended Codex–Opus collaboration
 
 For Hector's current task delegation, Codex coordinates and reviews Claude's
-implementation. Follow `/Users/alicia/alicia/docs/COLLABORATION.md` and the shared
+implementation. Follow `/Users/alicia/alicia/docs/DEVELOPMENT_PROTOCOL.md` and the shared
 `/Users/alicia/Documents/Alicia-development/` board. Claim the task's worktree,
 branch and base before editing; hand off exact head SHAs and evidence. Run the
 backend's `scripts/work_board.py --remote` to read the review inbox. Either
