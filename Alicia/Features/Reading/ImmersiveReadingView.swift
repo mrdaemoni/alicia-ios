@@ -98,6 +98,7 @@ struct ImmersiveReadingView: View {
             } else if store.reader.isPreparing || store.reader.isLoadingMedia {
                 InkNotice(text: store.reader.isPreparing ? "Preparing her voice…" : "Loading recording…")
             }
+            BriefingSteeringPanel()
             // Transport in her hand, like the reading bar: back, play/pause,
             // forward, the rate, and — apart, in seal red — the one control
             // that ends the reading.

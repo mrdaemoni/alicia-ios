@@ -23,19 +23,21 @@ struct EpisodeHomeView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Us — open what she's holding and the whole arc")
                     .accessibilityIdentifier("us.openArc")
+                    // The study's weekly note, only on note days (CL-20261023-study-note-card).
+                    StudyNoteCard()
                     IntelligenceModeControl()
                     MorningBriefingView(briefing: store.morningBriefing,
                         playingBriefingID: store.playingMorningBriefingID,
                         loadingBriefingID: store.reader.isLoadingMedia ? store.currentMorningBriefingID : nil,
                         failedBriefingID: store.reader.failure != nil ? store.currentMorningBriefingID : nil,
                         playbackError: store.reader.failure,
-                        isRefreshing: store.morningBriefingRefreshing,
+                        isRefreshing: store.morningBriefingRefreshing || store.connectionRecovering,
                         onTogglePlayback: store.toggleMorningBriefing,
                         // Pushed inside Us, so BACK returns home. It used to switch
                         // to the Studio tab, where BACK could only reach Studio
                         // (build 35 on the phone, 2026-09-27).
                         onOpenPlaylist: { briefingPlaylistID = $0 },
-                        onRefresh: { Task { await store.refreshMorningBriefing() } })
+                        onRefresh: { Task { await store.reprobeConnection() } })
                     MindBodyOverview()
                     // Option A (CL-20260918-context-graph-behaviours): his situation,
                     // above the goals, opening into the room with the whole graph.
@@ -66,11 +68,11 @@ struct EpisodeHomeView: View {
                 .padding(22)
                 .padding(.bottom, 20)
             }
-            .task { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.bodyStore.refresh() }
+            .task { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.refreshStudyNote(); await store.bodyStore.refresh() }
             // The graph and its elevation load on their own task so a slow body
             // refresh never holds the section back.
             .task { await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
-            .refreshable { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.refreshEpisodeDay(); await store.bodyStore.refresh(); await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
+            .refreshable { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.refreshStudyNote(); await store.refreshEpisodeDay(); await store.bodyStore.refresh(); await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
             .presenceBackground(.us, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(item: $briefingPlaylistID) { PlaylistDetailView(playlistID: $0) }

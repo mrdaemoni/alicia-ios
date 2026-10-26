@@ -55,6 +55,7 @@ struct ConversationHistory: Decodable {
         var id, ts, role, content, source: String
         var reply_id: String?
         var recording_id: String?
+        var request_id: String?
     }
     var messages: [Turn]
 }

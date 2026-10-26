@@ -17,6 +17,24 @@ import Foundation
 /// Auth is a bearer token; media URLs (audio, drawings) carry it as a
 /// `?token=` query instead, because AVPlayer/AsyncImage can't set headers.
 struct LiveAliciaService: AliciaService {
+    func livePresence() async -> LivePresenceFact? {
+        var req = request("/api/presence/live")
+        req.timeoutInterval = 2.5
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        let started = ProcessInfo.processInfo.systemUptime
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              var value = try? JSONDecoder().decode(LivePresenceFact.self, from: data) else { return nil }
+        value.remainingMS = max(0, value.remainingMS-Int((ProcessInfo.processInfo.systemUptime-started)*1000))
+        return value
+    }
+    func reportPresence(_ event: PresenceEvent) async -> Bool {
+        guard let data = try? JSONEncoder().encode(event) else { return false }
+        var req = request("/api/presence/live", method: "POST", body: data)
+        req.timeoutInterval = 2.5
+        guard let (_, response) = try? await URLSession.shared.data(for: req) else { return false }
+        return (response as? HTTPURLResponse)?.statusCode == 200
+    }
     let baseURL: URL
     let token: String
 
@@ -130,9 +148,10 @@ struct LiveAliciaService: AliciaService {
                     if reportsConnection { ConnectionStatus.note(.unreachable) }
                     return nil
                 }
-                if reportsConnection { ConnectionStatus.note(.ok) }   // reachable + authorized
                 do {
-                    return try JSONDecoder().decode(D.self, from: data)
+                    let decoded = try JSONDecoder().decode(D.self, from: data)
+                    if reportsConnection { ConnectionStatus.note(.ok) }
+                    return decoded
                 } catch {
                     // Reached her and she answered; the shape disagreed. That
                     // is drift between this DTO and skills/ios_api.py, not a
@@ -397,10 +416,18 @@ struct LiveAliciaService: AliciaService {
                     chatRequest.timeoutInterval = 210
                     let (bytes, resp) = try await URLSession.shared.bytes(for: chatRequest)
                     guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-                        continuation.yield(.token(workContext != nil && (resp as? HTTPURLResponse)?.statusCode == 400
-                            ? "This passage could not be confirmed. Your message was not sent to a model. Open the current work in Together, then try again."
-                            : "(Alicia is unreachable right now — check the backend and your connection.)"))
-                        continuation.yield(.done(messageID: nil))
+                        if (resp as? HTTPURLResponse)?.statusCode == 202 {
+                            continuation.yield(await recoverChat(requestID, received: { continuation.yield(.accepted($0)) }))
+                            continuation.finish()
+                            return
+                        }
+                        var errorBody = Data()
+                        for try await byte in bytes {
+                            if errorBody.count >= 8192 { break }
+                            errorBody.append(byte)
+                        }
+                        continuation.yield(.failure(ChatDeliveryFailure.http(
+                            (resp as? HTTPURLResponse)?.statusCode ?? 0, body: errorBody)))
                         continuation.finish()
                         return
                     }
@@ -410,13 +437,19 @@ struct LiveAliciaService: AliciaService {
                               let data = line.dropFirst(6).data(using: .utf8),
                               let event = try? JSONDecoder().decode(WireEvent.self, from: data)
                         else { continue }
+                        if let accepted = event.accepted,
+                           UUID(uuidString: accepted) == UUID(uuidString: requestID) {
+                            continuation.yield(.accepted(accepted))
+                        }
                         if let t = event.t { continuation.yield(.token(t)) }
                         if let id = event.reply_id { continuation.yield(.details(id)) }
                         if let v = event.voice, let url = mediaURL(v) {
                             continuation.yield(.voice(url))
                         }
                         if let err = event.error, !err.isEmpty {
-                            continuation.yield(.token("\n(connection hiccup: \(err))"))
+                            continuation.yield(await recoverChat(requestID, received: { continuation.yield(.accepted($0)) }))
+                            finished = true
+                            break
                         }
                         if event.done == true {
                             continuation.yield(.done(messageID: event.message_id, healthTerminal: event.health != nil))
@@ -424,10 +457,9 @@ struct LiveAliciaService: AliciaService {
                             break
                         }
                     }
-                    if !finished { continuation.yield(.done(messageID: nil)) }
+                    if !finished { continuation.yield(await recoverChat(requestID, received: { continuation.yield(.accepted($0)) })) }
                 } catch {
-                    continuation.yield(.token("(Alicia is unreachable right now — check the backend and your connection.)"))
-                    continuation.yield(.done(messageID: nil))
+                    continuation.yield(await recoverChat(requestID, received: { continuation.yield(.accepted($0)) }))
                 }
                 continuation.finish()
             }
@@ -435,7 +467,36 @@ struct LiveAliciaService: AliciaService {
         }
     }
 
+    private func recoverChat(_ requestID: String, received: (String) -> Void) async -> ChatEvent {
+        guard UUID(uuidString: requestID) != nil else { return .failure(.interrupted) }
+        var pending = false
+        for attempt in 0..<10 {
+            if Task.isCancelled { break }
+            var check = request("/api/chat_receipt?request_id=" + requestID)
+            check.timeoutInterval = 3
+            guard let (data, response) = try? await URLSession.shared.data(for: check),
+                  (response as? HTTPURLResponse)?.statusCode == 200,
+                  let receipt = try? JSONDecoder().decode(ChatSendReceipt.self, from: data),
+                  UUID(uuidString: receipt.request_id) == UUID(uuidString: requestID) else {
+                // A second route change must not turn the first lost response
+                // into a permanent unknown. These are GETs, never send replays.
+                if attempt < 9 { try? await Task.sleep(for: .milliseconds(400)) }
+                continue
+            }
+            if receipt.confirms(requestID) { return .recovered(receipt) }
+            if ["pending", "uncertain"].contains(receipt.state) { received(requestID) }
+            if receipt.state == "rejected" {
+                return .failure(.init(message: "The reply did not finish. Your words remain in the composer.", definitelyRejected: true))
+            }
+            pending = receipt.state == "pending"
+            guard pending else { break }
+            if attempt < 9 { try? await Task.sleep(for: .seconds(1)) }
+        }
+        return .failure(pending ? .pending : .interrupted)
+    }
+
     private struct WireEvent: Decodable {
+        var accepted: String?
         var t: String?
         var voice: String?
         var done: Bool?
@@ -546,6 +607,11 @@ struct LiveAliciaService: AliciaService {
     }
 
     private struct ModeDTO: Decodable { var mode: String; var words: Int }
+
+    func probeConnection() async -> Bool {
+        let mode: ModeDTO? = await fetchOne("/api/mode")
+        return mode != nil
+    }
 
     func modeState() async -> (mode: String, words: Int) {
         do {
@@ -828,6 +894,15 @@ struct LiveAliciaService: AliciaService {
 
     // MARK: playlists
 
+    func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult? {
+        do {
+            let bytes = try JSONEncoder().encode(mutation)
+            let (data, response) = try await URLSession.shared.data(
+                for: request("/api/morning_briefing/feedback", method: "POST", body: bytes))
+            return BriefingFeedbackResult.decode(data: data, status: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        } catch { return nil }
+    }
+
     func morningBriefing() async -> MorningBriefing? {
         guard var briefing: MorningBriefing = await fetchOne("/api/morning_briefing") else { return nil }
         if !briefing.audio_url.isEmpty { briefing.audio_url = mediaURL(briefing.audio_url)?.absoluteString ?? "" }
@@ -837,7 +912,47 @@ struct LiveAliciaService: AliciaService {
                 cues: chunk.cues ?? [], timingStatus: chunk.timing_status ?? briefing.speech?.timing_status ?? "unavailable",
                 spokenText: briefing.speech?.spoken_text ?? "", speechBackend: chunk.speech_backend ?? briefing.speech?.speech_backend ?? "")
         }
+        // Variant and cue audio become authenticated media URLs here, never in a view.
+        for s in briefing.segments.indices {
+            for v in briefing.segments[s].variants.indices {
+                for c in briefing.segments[s].variants[v].chunks.indices {
+                    let path = briefing.segments[s].variants[v].chunks[c].url
+                    briefing.segments[s].variants[v].chunks[c].url = mediaURL(path)?.absoluteString ?? ""
+                }
+            }
+        }
+        if var steering = briefing.steering {
+            for (id, cue) in steering.cues { steering.cues[id]?.url = mediaURL(cue.url)?.absoluteString ?? "" }
+            briefing.steering = steering
+        }
         return briefing
+    }
+
+    func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult {
+        var req = request("/api/morning_briefing/" + endpoint.rawValue, method: "POST", body: body)
+        req.timeoutInterval = 10
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 200 { return .accepted(data) }
+            // 409 is the backend's definite "not recorded"; anything else may be transient.
+            return status == 409 || status == 400 ? .rejected(data) : .unreachable
+        } catch { return .unreachable }
+    }
+
+    // MARK: the study's weekly note (CL-20261023-study-note-card)
+
+    func studyNote() async -> StudyNoteStatus? {
+        await fetchOne("/api/study_note")
+    }
+
+    func saveStudyNote(_ body: Data) async -> StudyNoteSave {
+        var req = request("/api/study_note", method: "POST", body: body)
+        req.timeoutInterval = 15
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            return StudyNoteResponse.decode(status: (response as? HTTPURLResponse)?.statusCode ?? 0, data: data)
+        } catch { return .unreachable }
     }
 
     private struct PlaylistDTO: Decodable {

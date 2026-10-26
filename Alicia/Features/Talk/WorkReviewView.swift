@@ -173,7 +173,7 @@ private struct WorkReviewCard: View {
     private var shared: CollaborationStore { store.collaboration }
     private var goal: CollaborationState.Goal? { shared.state?.goal(for: result) }
     private var key: String { "work." + result.id + "." + section.id }
-    private var canEdit: Bool { available && shared.canEdit }
+    private var canEdit: Bool { available && shared.canReview(resultID: result.id, sectionID: section.id) }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
@@ -216,7 +216,7 @@ private struct WorkReviewCard: View {
                 if goal != nil {
                     Button { discuss() } label: { InkLinkLabel(title: "Discuss this in Dialogue", small: true) }
                         .buttonStyle(.inkLink)
-                        .disabled(!available || editor != nil || !shared.canEdit)
+                        .disabled(!available || editor != nil)
                         .accessibilityIdentifier("workReview.discuss." + section.id)
                 }
             }
@@ -228,7 +228,6 @@ private struct WorkReviewCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 16, radius: 16)
-        .task { if editor == nil { editor = ["answer", "edit", "comment"].first { shared.draft(key + "." + $0) != nil } } }
     }
     @ViewBuilder private var choices: some View {
         WorkReviewChoice(title: "Agree", selected: section.review.stance == "agree") {
@@ -242,14 +241,14 @@ private struct WorkReviewCard: View {
         }.accessibilityIdentifier("workReview.salient." + section.id)
     }
     @ViewBuilder private var writingActions: some View {
-        Button(section.review.answer.isEmpty ? "Answer this" : "Edit my answer") { editor = "answer" }
+        Button(shared.draft(key + ".answer") != nil ? "Continue my answer" : section.review.answer.isEmpty ? "Answer this" : "Edit my answer") { editor = "answer" }
             .buttonStyle(.inkSecondaryCompact)
             .accessibilityIdentifier("workReview.answer." + section.id)
-        Button("Edit this") { editor = "edit" }
+        Button(shared.draft(key + ".edit") != nil ? "Continue my edit" : "Edit this") { editor = "edit" }
             .buttonStyle(.inkSecondaryCompact)
             .accessibilityIdentifier("workReview.edit." + section.id)
         Menu {
-            Button("Add a note") { editor = "comment" }
+            Button(shared.draft(key + ".comment") != nil ? "Continue my note" : "Add a note") { editor = "comment" }
             Button("Set aside") { send("hide") }
             if section.review.stance != "unreviewed" { Button("Clear agreement") { send("clear_stance") } }
             Button("Read this aloud") {
@@ -280,7 +279,7 @@ private struct WorkReviewCard: View {
         // v39: asking to discuss a passage opens the conversation layer with
         // that passage attached, rather than dropping him in the Dialogue tab
         // to find the composer himself.
-        store.openConversation()
+        store.openConversation(workContext: shared.dialogueContext)
     }
 }
 
@@ -300,6 +299,7 @@ private struct WorkReviewEditor: View {
     @FocusState private var writing: Bool
     private var shared: CollaborationStore { store.collaboration }
     private var label: String { mode == "edit" ? "Your version" : mode == "answer" ? "Your answer" : "Your note" }
+    private var canSave: Bool { available && shared.canReview(resultID: resultID, sectionID: section.id) }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(label).font(InkType.linkSmall.weight(.semibold))
@@ -307,13 +307,13 @@ private struct WorkReviewEditor: View {
                 .font(InkType.meta).foregroundStyle(Theme.inkSoft)
             TextField(label, text: $text, axis: .vertical).lineLimit(4...16)
                 .focused($writing).inkField()
-                .disabled(!available || !shared.canEdit)
+                .disabled(!canSave)
                 .accessibilityIdentifier("workReview.editor." + section.id)
             if text.unicodeScalars.count > 8000 { InkNotice(text: "Please keep this under 8,000 characters. Your full draft is retained.", kind: .error) }
             HStack(spacing: 18) {
                 Button("Save " + label.lowercased()) { save() }
                     .buttonStyle(.inkPrimary)
-                    .disabled(!available || !shared.canEdit || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.unicodeScalars.count > 8000)
+                    .disabled(!canSave || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.unicodeScalars.count > 8000)
                     .accessibilityIdentifier("workReview.save." + section.id)
                 Button("Keep draft") { writing = false; persist(); close() }
                     .buttonStyle(.inkQuiet)
@@ -324,7 +324,7 @@ private struct WorkReviewEditor: View {
                 InkNotice(text: "This piece has newer feedback. Your words remain unchanged.")
                 Button("Use current review version") { revision = section.review.revision; requestID = ""; persist() }
                     .buttonStyle(.inkQuiet)
-                    .disabled(!shared.canEdit)
+                    .disabled(!canSave)
             }
         }.padding(.vertical, 6)
             .task {

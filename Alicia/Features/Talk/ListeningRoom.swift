@@ -54,7 +54,7 @@ struct ListeningStage<Controls: View>: View {
             // has particles. Hector asked for that same animation here.
             Theme.backdrop.ignoresSafeArea()
             Theme.timeTint.ignoresSafeArea()
-            if store.presenceField.enabled {
+            if store.presenceField.enabled || LivePresenceClient.shared.enabled {
                 // The same body as every room, turned toward him: opened wide
                 // and breathing with his voice while the microphone is on.
                 PresenceLayer(isActive: scenePhase == .active, opacity: 0.68)

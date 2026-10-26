@@ -342,6 +342,7 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `POST /api/morning_briefing/feedback` | Save explicit feedback for the bound briefing section. |
 | `POST /api/morning_briefing/steer` | Request a bounded change of altitude for a briefing segment. |
 | `POST /api/chat` (SSE `{"t": token}` … `{"done": …, "message_id"}`) | Dialogue streaming; optional `voice: true` adds tap-to-play media. Reviewed Mac voice adds `client_request_id`, `recording_id`, machine source IDs and captured `episode_id`. |
+| `GET /api/chat_receipt?request_id=<UUID>` | Read-only typed-send outcome. Recovery never resubmits the original model/tool action; the protected phone outbox retains its frozen words/context until acknowledgment. Private Body/health and reviewed voice retain their separate receipts. |
 | `GET /api/body` · `POST /api/body` | Private overview and explicit wellness/ritual receipts |
 | `GET /api/body/source` · `POST /api/body/ask` | Exact private report passages and optional local health answer |
 | `GET /api/thoughts` · `/api/tracks` · `/api/gallery` · `/api/health` | tab data |
@@ -355,6 +356,8 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/context_graph/elevate` · `GET /api/context_graph/translate?title=` | What Us elevates for his situation (thinkers, passages, goals with the line each was drawn from; `status` preparing/ready/refreshing) and a vault note translated into the one node it bears on |
 | `GET /api/context_graph/arrangement` | What today bears on each active context node: episode questions, validated elevation, mind/body findings, wellness goals, place, and his own words; incompatible episode/day groups are withheld while refreshing |
 | `GET /api/presence` | Her current motion-driving awareness: deterministic local signals plus an optional rate-limited Jev reading; the app ignores timestamp-only refreshes |
+| `GET /api/presence/live` | Live presence: expiring activity facts plus attributed awareness; no text or audio |
+| `POST /api/presence/live` | Live presence: bounded ephemeral capture/playback reports; Body excluded |
 | `GET/POST /api/intelligence` | Global model-spend boundary shown at the top of Us: `local_first` makes Qwen the ordinary lane, keeps compatible heavy work on the signed-in Claude desktop subscription, and refuses paid Anthropic, OpenAI and general Gemini model APIs. Jev, Gemini full-audio enrichment and Gemini natural voice remain narrow paid exceptions; switching back to `balanced` is explicitly confirmed |
 | `GET /api/home` | retained home/library context; no longer the Us framing source |
 | `GET /api/timeline` | every lived day since she began (Timeline sheet) |
@@ -380,6 +383,8 @@ to Telegram by the backend. Endpoint inventory (current and retained compatibili
 | `GET /api/goal_closure?closure_id=` | a finished goal's frozen record: goal, his closing words and whole input, her labelled reflection and next-goal seeds, his words along the way, steps, final artifact, sources, open questions. `GET /api/collaboration` adds `closures` / `closure_proposals`; POST actions `close_goal`, `reopen_goal`, `closure_decision` |
 | `GET /api/episode/<label>` | shownotes markdown |
 | `POST /api/speak` · `GET /api/speech/<name>` | read-aloud: her voice rendered in ramped chunks (`skills/reading_voice.py`), returned as an ordered chunk list — `ready` / `streaming` / `rendering`, never blocking |
+| `GET /api/morning_briefing` (`segments[]`, `steering`) · `POST /api/morning_briefing/steer` · `POST /api/morning_briefing/receipt` · `GET /api/morning_briefing/audio/<id>/<file>.m4a` | the steerable morning briefing (CL-20261015-steerable-briefing): per-segment L+1/L0/L−1 variants with ledger-tagged sentences and measured cues; Higher · Lower · Again returns a deterministic interpretation; the phone posts opportunity, consequence and session-end receipts. Landed / Didn't land goes to `POST /api/morning_briefing/feedback` with the heard path. Study records, never training. See `docs/STEERABLE_BRIEFING.md` |
+| `GET /api/study_note` · `POST /api/study_note` | the steering study's weekly note (CL-20261023-study-note-card): whether Us shows the card today (a study week's last day, or the next day if that note is missing; same in both arms; no note text), and saving the template's answers verbatim with a UUID receipt to the study's own notes, which Alicia never reads |
 | `GET /api/playlists` · `POST /api/playlist` | Studio's listening queues (create/rename/delete/add/remove/reorder); adding also renders that piece's audio so a queue is warm before he drives |
 | `POST /api/cocreate` (base64 PNG + size + anchor, 120 s timeout) | canvas co-creation: she draws from where the pencil stopped, returns an overlay layer + caption |
 | `POST /api/complement` (base64 PNG, 120 s timeout) | drawing reply w/ vision — superseded by cocreate in the UI; `requestComplement` is currently unused |
@@ -522,3 +527,36 @@ reads; views do not issue HTTP. --collaboration-preview is mock-only.
 Morning exercise briefing: `GET /api/morning_briefing` (read-only dated snapshot)
 and `GET /api/morning_briefing/audio/<id>.m4a` (authenticated Range audio).
 See docs/MORNING_BRIEFING.md. It never selects a podcast episode or manufactures listening evidence.
+
+October 4 health repairs: `POST /api/morning_briefing/feedback` stores explicit script-scoped Useful/Missed feedback and exact optional words with idempotent receipts. `GET /api/stories/<allowlisted-id>.m4a` serves completed Scaleofus original scored audio with Range support; the normal Studio playlist/player carries Book One v17 and Count Love v15. `/api/health` exposes actual briefing/voice/goal availability and sparse-feedback uncertainty. Goal work reviews queue independently by result/section and saved drafts resume explicitly. No on-device speech fallback or inferred listening/learning is introduced.
+
+## CL-20261015-steerable-briefing — steering the briefing while it plays
+
+`Core/BriefingSteering.swift` (payload models and the pure `BriefingPlanner`,
+which mirrors the backend's interpretation rules), `Core/BriefingSteeringController.swift`
+(session, stretches, outbox, verified audio cache, remote-command mapping) and
+`Features/Reading/BriefingSteerControls.swift` add Higher · Lower · Again to the
+morning briefing. `SpeechReader` plays a path of clipped pieces and changes only
+what follows the sounding piece (`replaceFuture`). The arm comes from the
+payload; Landed / Didn't land is bound to the heard path; pause is never a
+signal. Fixture: `--morning-briefing-steer-preview` (invented text). See
+`docs/STEERABLE_BRIEFING.md`.
+
+
+## CL-20261023-study-note-card — the study's weekly note on Us
+
+`Core/StudyNote.swift` (status, draft with its receipt, protected per-week draft
+files, response mapping) and `Features/Home/StudyNoteCard.swift`.
+- **The card.** A quiet line sits at the top of Us only when
+  `GET /api/study_note` says so: a study week's last day, or the next day if
+  that week's note is missing. It reads "Week N note · two minutes, your own
+  words".
+- **The sheet.** It opens the template's six prompts plus "Mornings I played
+  it", and blank is valid. Every keystroke is kept on the phone.
+- **Saving.** SAVE posts the words verbatim with a UUID receipt. A retry of the
+  same words reuses it; changed words get a new one. Only a confirmed save
+  clears the draft. The card then reads "Week N note saved" for the rest of
+  the day.
+- **Fixture:** `--study-note-preview` (`--study-note-fail-once` for the retry
+  path). Logic is in `scripts/test_study_note.py`, UI in
+  `scripts/test_study_note_ui.py`.

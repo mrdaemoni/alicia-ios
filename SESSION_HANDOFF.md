@@ -1,3 +1,70 @@
+## October 18 — reply latency and composer delivery repair
+
+Candidate branch `codex/chat-delivery-20261018`, based on the actual TestFlight
+49 source `71ce1d8`. Early matching Mac receipts clear only the submitted
+section draft; completed history reconciles old sends after disconnect/relaunch.
+Backend bounds advisory recall and coalesces overlapping diagnostics. Original
+words remain in the protected outbox until completion. No briefing room, study
+arm, steering behavior or experimental particle-field changes are included.
+Release and device acceptance must be verified separately.
+
+## October 16 — steerable morning briefing candidate (CL-20261015-steerable-briefing)
+
+The morning briefing can be steered while it plays: Higher · Lower · Again in
+the reading bar and immersive reader (ink small caps), one interpretation
+line, a prerendered spoken cue, Landed / Didn't land at the end, the after-arm
+replay, and a headphone next/previous setting (off by default). Playback is
+segment-aware: only what follows the sounding piece changes, at a sentence
+boundary, with a short fade. See `docs/STEERABLE_BRIEFING.md`.
+
+This branch is stacked on PR #49 (`codex/health-performance-20261004`,
+TestFlight 46). The paired backend PR mrdaemoni/alicia#98 must deploy first.
+Older backends and unsegmented days play the single track exactly as before.
+
+Checks: `scripts/test_briefing_steering.py` (46),
+`scripts/test_morning_integration.py`, `scripts/test_startup_latency.py`, an
+iPhone 17 simulator build, and `scripts/test_briefing_steering_ui.py`. That last
+one has 10 tests, including two that observe real seams with
+`--steer-live-audio`. No TestFlight, AppVersion bump or phone result is
+claimed. The shared task folder owns release evidence and screenshots.
+
+## October 12 — watchdog freeze, startup and receipt recovery candidate
+
+The actual build-45 phone crash is a 10-second scene-update watchdog. Matching
+symbols resolve to BodyStore.events sorting through BodyCapture.before/instant,
+then MindBodyOverview.recorded/status. ISO parsers now reuse a bounded cache;
+sorts parse once per event and ritual status uses one event list. Startup's slow
+diagnostic read publishes separately from the conversation and library.
+
+A typed send now retains its original immutable packet on this phone. After a
+connection drop, it checks the authenticated saved receipt and replaces partial
+output with a matching completed reply. An explicit retry reuses its local row
+and its original identity, never a changed context or a second user bubble.
+Public receipts exclude private Body requests. The paired backend
+`codex/messaging-latency-20261012` must release first. No model/cost policy change,
+training or synthetic production conversation is part of this patch. Existing
+capture bytes and chronological/local-day behavior stay intact.
+
+Tests: `scripts/test_chat_delivery.py`, `scripts/test_body_sort_performance.py`
+and `scripts/test_startup_latency.py`. Current deployment, Apple processing and
+physical-phone evidence belong to the shared task's RELEASE.md.
+
+## October 9 — passage attachment and send recovery candidate
+
+The phone screenshot showed Studio carrying an old PURPOSE passage. A server
+validation rejection then appeared as Alicia's response while the sheet said
+Sent and cleared Hector's words. The ordinary room composer now clears the
+active passage; only Discuss this attaches one explicitly. Typed delivery
+notices retain rejected/uncertain drafts and no longer appear as authored
+responses. Sent waits for acknowledgment. Reply links keep their original
+passage. See `docs/WORK_REVIEW.md` and `scripts/test_chat_delivery.py`.
+
+This continues PR #49 from TestFlight build 43. Release/phone acceptance belongs
+to the task receipt in
+`/Users/alicia/Documents/Alicia-development/tasks/health-performance-20261004/`.
+No backend validation bypass, model change, training or synthetic production
+conversation is part of the patch.
+
 ## September 19 — blind Jev impulse study in Aves
 
 This paired backend/app release adds an auditable private study surface under

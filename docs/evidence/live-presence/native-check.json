@@ -1,0 +1,7 @@
+{
+  "animatedParticleRegionChanges": true,
+  "reducedContentStill": true,
+  "reducedScope": "Application content, excluding system status bar and fading system home indicator",
+  "device": "iPhone 17 simulator iOS 27.0",
+  "physicalDevice": false
+}
