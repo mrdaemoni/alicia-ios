@@ -48,11 +48,13 @@ remain device checks, not simulator claims.
 **Not in iOS main.** Three reviewed changes to this flow have not reached main:
 - PR #54, the phone half of the October 23 walk-delivery repair: freeze a
   section walk's section into its submission across retries, let a Mac
-  delivery link close a stale rejected send, and drop the redundant Send. It
-  is open. The backend half (PR #106) is live.
+  delivery link close a stale rejected send, and drop the redundant Send. Its
+  exact head is contained in PR #59, which is not yet approved or merged. The
+  backend half (PR #106) is live.
 - A2-045's `243ab83` (send the section packet with a proactive answer) and
   `05c030a` (resume a section walk after a tab change without replacing its
-  original context). Both shipped only in the branch builds 1.0 (22) and (23).
+  original context). Both shipped only in the branch builds 1.0 (22) and (23),
+  and both are contained in PR #60, which is approved but not yet merged.
   Main's `reply` posts no `surface_context`, and `VoiceArchive.begin` still
   requires an identical section context to resume a recording.
 

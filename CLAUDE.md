@@ -32,12 +32,17 @@ follow this block and also close the file, where the newest ones are
 - **Network.** Since backend #102, the iOS API on :8766 accepts only loopback
   and tailnet clients. The phone reaches it over Tailscale, not a home-Wi-Fi
   address.
+- **In `main` since 2026-10-26, but in no TestFlight build yet:** iOS #50
+  (`b4fd6f4`), a second widget tap undoes the first. The phone still has the
+  set-only widget. Being in `main` is not phone state.
 - **Reviewed, but not in `main`:**
   - iOS #48 (contextual TALK on every section, shipped only as the TF42 branch
     build).
-  - iOS #50 (a second widget tap undoes the first; approved, unmerged).
-  - iOS #54 (the phone half of the walk-delivery repair; open).
-  - A2-045's two iOS commits, which shipped only on the TF22/23 branch builds:
+  - iOS #54 (the phone half of the walk-delivery repair). Its exact head is
+    inside iOS #59, which passes its tests but is not yet approved or merged.
+  - A2-045's two iOS commits, which shipped only on the TF22/23 branch builds.
+    Their exact heads are inside iOS #60, which Codex has approved but not yet
+    merged:
     - `243ab83` (section context on proactive replies): main's `reply()`
       posts no `surface_context`.
     - `05c030a` (resume a section walk after a tab change): `begin` in

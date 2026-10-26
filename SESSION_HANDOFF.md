@@ -36,12 +36,16 @@ Dialogue is a shared action through the band above the tab bar.
 - **No Telegram.** Alicia's outbound Telegram has been off since 2026-09-18,
   so the 12:30 question described below no longer exists.
 
+**In `main`, not on the phone:** iOS #50 (`b4fd6f4`, merged 2026-10-26), a
+widget tap undoes the last one. No TestFlight build carries it yet.
+
 **Reviewed, not in `main`:**
 - iOS #48, contextual TALK (the TF42 branch build only).
-- iOS #50, a widget tap undoes the last one (approved, unmerged).
-- iOS #54, the phone half of the walk-delivery repair (open).
+- iOS #54, the phone half of the walk-delivery repair. It is contained in iOS
+  #59, which is not yet approved or merged.
 - A2-045's `243ab83` and `05c030a`, which shipped only on the TF22/23 branch
-  builds.
+  builds. They are contained in iOS #60, which is approved but not yet
+  merged.
 
 `CLAUDE.md` "Current state" has the file-level detail.
 
