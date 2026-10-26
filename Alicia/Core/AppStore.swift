@@ -584,9 +584,9 @@ final class AppStore {
         await voiceArchive.sync(using: service)
         await voiceArchive.advanceProcessing(using: service)
     }
-    func refreshVoiceArchive() async {
+    func refreshVoiceArchive(recordingID: String = "") async {
         guard !isMock else { return }
-        await voiceArchive.refresh(using: service)
+        await voiceArchive.refresh(using: service, recordingID: recordingID)
         await voiceArchive.advanceProcessing(using: service)
         await reconcileVoiceReplies()
     }

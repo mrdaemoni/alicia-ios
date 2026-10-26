@@ -38,6 +38,8 @@ folder=work/'VoiceEvidenceTests';folder.mkdir()
 (folder/'VoiceEvidence.swift').symlink_to(root/'Alicia/Core/VoiceEvidence.swift')
 (folder/'VoiceProcessing.swift').symlink_to(root/'Alicia/Core/VoiceProcessing.swift')
 (folder/'SurfaceContext.swift').symlink_to(root/'Alicia/Core/SurfaceContext.swift')
+(folder/'BodyCapture.swift').symlink_to(root/'Shared/BodyCapture.swift')
+(folder/'ChatDelivery.swift').symlink_to(root/'Alicia/Core/ChatDelivery.swift')
 context_source=(root/'Alicia/Core/Collaboration.swift').read_text().split('struct WorkDialogueContext:',1)[1].split('enum CollaborationReturnPreferences',1)[0]
 (folder/'WorkDialogueContext.swift').write_text('import Foundation\nstruct WorkDialogueContext:'+context_source)
 # Exercise the actual shared history mapper, with inert dependencies instead of AppStore.init/load.
@@ -77,6 +79,7 @@ protocol AliciaService {
  var uploads:[VoiceSegment]=[]
  var waiter:CheckedContinuation<VoiceEvidenceResult?,Never>?
  var payload:VoiceEvidencePayload?
+ var recordingReads:[String]=[]
  var download:Data?
  var seals:[VoiceFinalization]=[], retries:[VoiceTranscriptionRetry]=[], sends:[VoiceSubmission]=[]
  var statusReads:[String]=[]
@@ -104,7 +107,7 @@ protocol AliciaService {
   actions.append(body)
   return offline ? nil : VoiceEvidenceResult(ok:true,deleted:body["action"] as? String == "delete_audio")
  }
- func voiceRecordings(recordingID:String) async -> VoiceEvidencePayload? { payload }
+ func voiceRecordings(recordingID:String) async -> VoiceEvidencePayload? { recordingReads.append(recordingID);return payload }
  func uploadVoice(recordingID:String,segment:VoiceSegment,file:URL) async -> VoiceEvidenceResult? {
   uploads.append(segment)
   if suspendUpload { return await withCheckedContinuation {waiter=$0} }
@@ -337,6 +340,44 @@ final class VoiceEvidenceTests:XCTestCase {
   XCTAssertFalse(a.prepareSubmission(id,voice:false))
   await a.advanceProcessing(using:f)
   XCTAssertEqual(f.sends.count,1)
+ }
+
+ @MainActor func testReadyWalkKeepsRefreshingUntilMacDeliveryWithoutPhoneSubmission()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id,destination:"walk",section:"us")
+  var remote=f.payload!.recordings[0]
+  remote.transcription!.draft!.text="These are eight complete words from my morning walk."
+  f.payload=VoiceEvidencePayload(recordings:[remote])
+  await a.refresh(using:f,recordingID:id)
+  XCTAssertEqual(a.recording(id)?.stage,.readyForYou)
+  XCTAssertEqual(f.recordingReads.last,id)
+  XCTAssertTrue(a.recording(id)!.needsProgressRefresh)
+  XCTAssertNil(a.recording(id)?.submission)
+  remote.links=[VoiceLink(receipt_id:"mac-receipt",text:remote.transcription!.draft!.text,kind:"walk")]
+  f.payload=VoiceEvidencePayload(recordings:[remote])
+  await a.refresh(using:f)
+  XCTAssertEqual(a.recording(id)?.stage,.sent)
+  XCTAssertFalse(a.recording(id)!.needsProgressRefresh)
+  XCTAssertFalse(a.prepareSubmission(id,voice:false))
+  await a.advanceProcessing(using:f)
+  XCTAssertTrue(f.sends.isEmpty)
+ }
+
+ @MainActor func testReadyManualDraftsAndMisfiresDoNotWaitForAutomaticDelivery()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id,destination:"dialogue")
+  var remote=f.payload!.recordings[0]
+  remote.transcription!.draft!.text="These are eight complete words from my morning walk."
+  remote.context.source="ios_dialogue"
+  XCTAssertFalse(remote.needsProgressRefresh)
+  remote.context.source="ios_walk"
+  remote.context.surface_context=SurfaceContext(section:"body",captured_at:remote.context.started_at)
+  XCTAssertFalse(remote.needsProgressRefresh)
+  remote.context.surface_context=SurfaceContext(section:"us",captured_at:remote.context.started_at)
+  remote.transcription!.draft!.text="Thanks for watching!"
+  XCTAssertFalse(remote.needsProgressRefresh)
+  remote.transcription!.draft!.text="These are eight complete words from my morning walk."
+  XCTAssertTrue(remote.needsProgressRefresh)
+  remote.deleted=true
+  XCTAssertFalse(remote.needsProgressRefresh)
  }
 
  @MainActor func testDefiniteFailedStatusCanReopenExactWordsWithNewReceiptOnlyExplicitly()async throws {

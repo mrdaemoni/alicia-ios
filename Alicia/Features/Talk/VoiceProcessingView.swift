@@ -148,7 +148,7 @@ struct VoiceProcessingView: View {
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 while !Task.isCancelled {
-                    if needsProgress { await store.refreshVoiceArchive() }
+                    if needsProgress { await store.refreshVoiceArchive(recordingID: id) }
                     do { try await Task.sleep(for: .seconds(4)) } catch { return }
                 }
             }
@@ -168,7 +168,7 @@ struct VoiceProcessingView: View {
         let busy = store.voiceArchive.processing || store.voiceArchive.syncing
         return Button(busy ? "Checking…" : "Check your Mac") {
             Task {
-                if let check { await check() } else { await store.refreshVoiceArchive() }
+                if let check { await check() } else { await store.refreshVoiceArchive(recordingID: id) }
             }
         }
         .buttonStyle(.inkQuiet)
@@ -176,11 +176,7 @@ struct VoiceProcessingView: View {
     }
 
     private var needsProgress: Bool {
-        guard let record, !record.deleted, record.finalization != nil, record.processingRejected != true,
-              record.submissionRejected != true else { return false }
-        if record.pendingTranscriptionRetry != nil { return true }
-        if record.submission != nil { return !["completed", "failed", "outcome_unknown"].contains(record.submissionStatus?.state ?? "") }
-        return !["ready", "failed", "cancelled"].contains(record.transcription?.state ?? "")
+        record?.needsProgressRefresh == true
     }
 
     private func receiveDraft() {

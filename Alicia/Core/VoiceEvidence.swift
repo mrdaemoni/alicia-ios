@@ -175,6 +175,22 @@ struct VoiceRecording: Codable, Identifiable {
         return .transcribing
     }
 
+    /// A ready walk still needs its Mac delivery link. Transcription finishing
+    /// is not delivery; Dialogue and private Body drafts still wait for Send.
+    var needsProgressRefresh: Bool {
+        guard !deleted, stage != .sent, finalization != nil,
+              processingRejected != true, submissionRejected != true else { return false }
+        if pendingTranscriptionRetry != nil { return true }
+        if submission != nil {
+            return !["completed", "failed", "outcome_unknown"].contains(submissionStatus?.state ?? "")
+        }
+        if transcription?.ready == true {
+            return context.source == "ios_walk" && !isPrivateBody
+                && (transcription?.draft?.text.split(whereSeparator: \.isWhitespace).count ?? 0) >= 8
+        }
+        return !["ready", "failed", "cancelled"].contains(transcription?.state ?? "")
+    }
+
     var orderedTranscripts: [VoiceTranscript] {
         transcripts.sorted { a, b in
             let lhs = voiceDate(a.recorded_at), rhs = voiceDate(b.recorded_at)
@@ -538,17 +554,17 @@ final class VoiceArchive {
         do { try replace(current); try purgeFiles(id) } catch { lastError = "Local audio deletion needs another attempt." }
     }
 
-    func refresh(using service: AliciaService) async {
+    func refresh(using service: AliciaService, recordingID: String = "") async {
         await sync(using: service)
         // An offline correction can arrive before its message link. Explicit
         // refresh retries its idempotent projection after that link exists.
-        for record in recordings {
+        for record in recordings where recordingID.isEmpty || record.id == recordingID {
             if let version = record.orderedTranscripts.last(where: { $0.kind == "correction" && $0.uploaded == true }) {
                 _ = await service.voiceAction(["action": "transcript", "recording_id": record.id,
                     "event_id": version.id, "text": version.text, "kind": version.kind, "recorded_at": version.recorded_at])
             }
         }
-        guard let payload = await service.voiceRecordings(recordingID: "") else { return }
+        guard let payload = await service.voiceRecordings(recordingID: recordingID) else { return }
         for remote in payload.recordings {
             var merged = recording(remote.id) ?? remote
             merged.links = remote.links
@@ -663,7 +679,7 @@ final class VoiceArchive {
 
     @discardableResult
     func prepareSubmission(_ id: String, voice: Bool) -> Bool {
-        guard var record = recording(id), !record.isPrivateBody, !record.deleted, record.submission == nil,
+        guard var record = recording(id), !record.isPrivateBody, !record.deleted, record.links.isEmpty, record.submission == nil,
               let state = record.transcription, state.ready, let transcriptID = state.transcript_id,
               let review = record.review else { return false }
         let text = review.text // Exact reviewed text, never re-read after an await.

@@ -1,5 +1,20 @@
 # Mac voice processing — A2-016 candidate
 
+## October 25 — delivery confirmation candidate
+
+An automatically submitted walk can finish transcription before its delivery link
+arrives. The open review now keeps refreshing that recording until the link
+arrives, then reads “Alicia has it.” A ready manual Dialogue draft or a walk below
+the backend's eight-word floor does not wait for an automatic send. Deleted,
+failed and uncertain submissions retain their existing stop conditions.
+
+The review and original-recording pages request the individual recording rather
+than loading the entire archive for each status check. Archive list refreshes
+still request the archive. A delivery link also blocks preparation of another
+phone submission. These changes include the pending section/copy/delivery guards
+from PR #54. They are an app candidate, with no backend or TestFlight release
+implied.
+
 ## October 23 walk-delivery repair candidate
 
 A reviewed walk submission now freezes the original app section alongside its
