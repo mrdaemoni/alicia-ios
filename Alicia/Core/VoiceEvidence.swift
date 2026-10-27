@@ -53,7 +53,7 @@ struct VoiceRecording: Codable, Identifiable {
     var submissionRejected: Bool?
     var submissionError: String?
     var canReopenSubmission: Bool {
-        !deleted && submission != nil && submissionStatus?.state != "outcome_unknown"
+        !deleted && links.isEmpty && submission != nil && submissionStatus?.state != "outcome_unknown"
             && (submissionRejected == true || submissionStatus?.state == "failed")
     }
     func canResumeDialogue(episodeID: String, proactiveID: String) -> Bool {
@@ -175,20 +175,43 @@ struct VoiceRecording: Codable, Identifiable {
         return .transcribing
     }
 
+    /// A ready walk still needs its Mac delivery link. Transcription finishing
+    /// is not delivery; Dialogue and private Body drafts still wait for Send.
+    var needsProgressRefresh: Bool {
+        guard !deleted, stage != .sent, finalization != nil,
+              processingRejected != true, submissionRejected != true else { return false }
+        if pendingTranscriptionRetry != nil { return true }
+        if submission != nil {
+            return !["completed", "failed", "outcome_unknown"].contains(submissionStatus?.state ?? "")
+        }
+        if transcription?.ready == true {
+            return context.source == "ios_walk" && !isPrivateBody
+                && (transcription?.draft?.text.split(whereSeparator: \.isWhitespace).count ?? 0) >= 8
+        }
+        return !["ready", "failed", "cancelled"].contains(transcription?.state ?? "")
+    }
+
     var orderedTranscripts: [VoiceTranscript] {
         transcripts.sorted { a, b in
             let lhs = voiceDate(a.recorded_at), rhs = voiceDate(b.recorded_at)
             return lhs == rhs ? a.id < b.id : lhs < rhs
         }
     }
-    /// A press of the button, not a thought: short AND wordless. The ONE rule
+    /// Empty or near-empty words, not the length of a thought. The ONE rule
     /// every "needs you" surface uses. Before 2026-09-22 Sessions and the home
     /// count used it but the composer band did not, so Hector deleted one
     /// accidental S16E08 recording from the band, went home, and the band
     /// showed the next of four more — while Sessions said "none waiting on you".
     /// The backend's walk_autosend.is_misfire applies the same rule.
     var isMisfire: Bool {
-        stage != .sent && duration < 20 && latestWords.count < 200
+        guard stage != .sent else { return false }
+        let reviewed = review?.text ?? ""
+        let words = reviewed.isEmpty ? transcription?.draft?.text ?? latestWords : reviewed
+        let count = words.split(whereSeparator: \.isWhitespace).count
+        // Until the Mac has written words, a long recording is a walk still on
+        // its way, not a press of the button, and Clear all deletes originals.
+        if reviewed.isEmpty, transcription?.draft == nil { return duration < 20 && count < 8 }
+        return count < 8
     }
 
     var latestWords: String {
@@ -539,17 +562,17 @@ final class VoiceArchive {
         do { try replace(current); try purgeFiles(id) } catch { lastError = "Local audio deletion needs another attempt." }
     }
 
-    func refresh(using service: AliciaService) async {
+    func refresh(using service: AliciaService, recordingID: String = "") async {
         await sync(using: service)
         // An offline correction can arrive before its message link. Explicit
         // refresh retries its idempotent projection after that link exists.
-        for record in recordings {
+        for record in recordings where recordingID.isEmpty || record.id == recordingID {
             if let version = record.orderedTranscripts.last(where: { $0.kind == "correction" && $0.uploaded == true }) {
                 _ = await service.voiceAction(["action": "transcript", "recording_id": record.id,
                     "event_id": version.id, "text": version.text, "kind": version.kind, "recorded_at": version.recorded_at])
             }
         }
-        guard let payload = await service.voiceRecordings(recordingID: "") else { return }
+        guard let payload = await service.voiceRecordings(recordingID: recordingID) else { return }
         for remote in payload.recordings {
             var merged = recording(remote.id) ?? remote
             merged.links = remote.links
@@ -653,7 +676,7 @@ final class VoiceArchive {
     }
 
     func retryTranscription(_ id: String) {
-        guard var record = recording(id), !record.isPrivateBody, !record.deleted, record.submission == nil,
+        guard var record = recording(id), !record.isPrivateBody, !record.deleted, record.links.isEmpty, record.submission == nil,
               let seal = record.finalization, record.transcription?.canRetryExplicitly == true else { return }
         if record.pendingTranscriptionRetry == nil {
             record.pendingTranscriptionRetry = VoiceTranscriptionRetry(recording_id: id,
@@ -664,7 +687,7 @@ final class VoiceArchive {
 
     @discardableResult
     func prepareSubmission(_ id: String, voice: Bool) -> Bool {
-        guard var record = recording(id), !record.isPrivateBody, !record.deleted, record.submission == nil,
+        guard var record = recording(id), !record.isPrivateBody, !record.deleted, record.links.isEmpty, record.submission == nil,
               let state = record.transcription, state.ready, let transcriptID = state.transcript_id,
               let review = record.review else { return false }
         let text = review.text // Exact reviewed text, never re-read after an await.
@@ -672,7 +695,8 @@ final class VoiceArchive {
         record.submission = VoiceSubmission(requestID: UUID().uuidString, recordingID: id,
             transcriptionRequestID: state.request_id, transcriptID: transcriptID, text: text,
             destination: review.destination, episodeID: record.context.episode_id,
-            prompt: record.context.question_presented, proactiveID: review.proactiveID, voice: voice)
+            prompt: record.context.question_presented, proactiveID: review.proactiveID, voice: voice,
+            surface: record.context.episode_id.isEmpty ? record.context.surface_context?.section : nil)
         do { try replace(record); return true }
         catch { lastError = "Send could not be saved on this phone. Your words are kept."; return false }
     }
@@ -731,7 +755,7 @@ final class VoiceArchive {
     }
 
     private func advanceSubmission(_ id: String, using service: AliciaService) async {
-        guard var record = recording(id), !record.deleted, var submission = record.submission,
+        guard var record = recording(id), !record.deleted, record.links.isEmpty, var submission = record.submission,
               record.submissionRejected != true,
               !["completed", "failed", "outcome_unknown"].contains(record.submissionStatus?.state ?? "") else { return }
         var shouldPost = !submission.attempted

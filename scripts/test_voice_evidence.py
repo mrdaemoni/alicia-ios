@@ -81,6 +81,7 @@ protocol AliciaService {
  var uploads:[VoiceSegment]=[]
  var waiter:CheckedContinuation<VoiceEvidenceResult?,Never>?
  var payload:VoiceEvidencePayload?
+ var recordingReads:[String]=[]
  var download:Data?
  var seals:[VoiceFinalization]=[], retries:[VoiceTranscriptionRetry]=[], sends:[VoiceSubmission]=[]
  var statusReads:[String]=[]
@@ -108,7 +109,7 @@ protocol AliciaService {
   actions.append(body)
   return offline ? nil : VoiceEvidenceResult(ok:true,deleted:body["action"] as? String == "delete_audio")
  }
- func voiceRecordings(recordingID:String) async -> VoiceEvidencePayload? { payload }
+ func voiceRecordings(recordingID:String) async -> VoiceEvidencePayload? { recordingReads.append(recordingID);return payload }
  func uploadVoice(recordingID:String,segment:VoiceSegment,file:URL) async -> VoiceEvidenceResult? {
   uploads.append(segment)
   if suspendUpload { return await withCheckedContinuation {waiter=$0} }
@@ -118,14 +119,19 @@ protocol AliciaService {
 }
 final class VoiceEvidenceTests:XCTestCase {
 
- @MainActor func macCapture(_ a:VoiceArchive,id:String,destination:String="dialogue",close:Bool=true)throws->VoiceAudioSink {
-  let sink=try a.begin(id:id,context:context(id),review:VoiceReview(destination:destination,proactiveID:destination=="proactive" ? "original-ask" : "",proactiveExcerpt:"Original question"))
+ @MainActor func macCapture(_ a:VoiceArchive,id:String,destination:String="dialogue",close:Bool=true,section:String?=nil)throws->VoiceAudioSink {
+  var captureContext=context(id)
+  if let section {
+   captureContext.episode_id="";captureContext.question_presented=""
+   captureContext.surface_context=SurfaceContext(section:section,captured_at:captureContext.started_at)
+  }
+  let sink=try a.begin(id:id,context:captureContext,review:VoiceReview(destination:destination,proactiveID:destination=="proactive" ? "original-ask" : "",proactiveExcerpt:"Original question"))
   sink.append(buffer())
   if close {a.addSegments(sink.drain(close:true).segments,to:id)}
   return sink
  }
- @MainActor func ready(_ a:VoiceArchive,id:String,destination:String="dialogue")async throws->FakeService {
-  _ = try macCapture(a,id:id,destination:destination)
+ @MainActor func ready(_ a:VoiceArchive,id:String,destination:String="dialogue",section:String?=nil)async throws->FakeService {
+  _ = try macCapture(a,id:id,destination:destination,section:section)
   XCTAssertTrue(a.finalize(id))
   var remote=a.recording(id)!
   let transcript=UUID().uuidString
@@ -330,6 +336,97 @@ final class VoiceEvidenceTests:XCTestCase {
   XCTAssertNotEqual(a.recording(id)?.review?.text,"Ignored")
   a.editRejectedSubmission(id);a.editReview(id,text:"New exact text")
   XCTAssertTrue(a.prepareSubmission(id,voice:false));XCTAssertNotEqual(a.recording(id)?.submission?.requestID,original)
+ }
+
+ @MainActor func testSectionWalkSendPreservesFrozenSurfaceAcrossRestartAndRetry()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id,destination:"walk",section:"us")
+  a.editReview(id,text:"A complete short thought that belongs to this original section.")
+  XCTAssertTrue(a.prepareSubmission(id,voice:false))
+  await a.advanceProcessing(using:f)
+  await VoiceArchive(root:a.root).advanceProcessing(using:f)
+  XCTAssertEqual(f.sends.count,2);XCTAssertEqual(f.sends[0],f.sends[1])
+  XCTAssertEqual(f.sends[0].body["surface"] as? String,"us")
+  XCTAssertEqual(f.sends[0].body["episode_id"] as? String,"")
+  XCTAssertEqual(f.sends[0].body["topic"] as? String,"")
+  XCTAssertEqual(f.sends[0].text,"A complete short thought that belongs to this original section.")
+ }
+ func testOldPendingSubmissionWithoutSurfaceStillDecodesExactly()throws {
+  let original=VoiceSubmission(requestID:"request",recordingID:"recording",transcriptionRequestID:"asr",transcriptID:"draft",text:"Exact words",destination:"walk",episodeID:"",prompt:"",proactiveID:"",voice:false,attempted:true)
+  var object=try JSONSerialization.jsonObject(with:JSONEncoder().encode(original)) as! [String:Any]
+  object.removeValue(forKey:"surface")
+  let restored=try JSONDecoder().decode(VoiceSubmission.self,from:JSONSerialization.data(withJSONObject:object))
+  XCTAssertEqual(restored,original);XCTAssertNil(restored.body["surface"])
+ }
+ @MainActor func testLongWalkWithoutMacWordsIsNotAMisfire() {
+  let id=UUID().uuidString
+  var record=VoiceRecording(id:id,context:context(id))
+  record.segments=[VoiceSegment(id:UUID().uuidString,sha256:"fixture",started_at:"2026-10-26T08:00:00.000Z",ended_at:"2026-10-26T08:10:00.000Z",bytes:1,duration:600,sample_rate:48000,channels:1,uploaded:true)]
+  XCTAssertFalse(record.isMisfire,"an untranscribed ten-minute walk would be offered to Clear all")
+  record.segments[0].duration=3
+  XCTAssertTrue(record.isMisfire)
+ }
+ @MainActor func testShortMacThoughtIsNotHiddenAsMisfire()async throws {
+  let a=archive(),id=UUID().uuidString,_=try await ready(a,id:id,destination:"walk",section:"us")
+  a.editReview(id,text:"Clarity needs the right orientation before I can act.")
+  XCTAssertLessThan(a.recording(id)!.duration,20)
+  XCTAssertFalse(a.recording(id)!.isMisfire)
+  a.editReview(id,text:"Thanks for watching!")
+  XCTAssertTrue(a.recording(id)!.isMisfire)
+ }
+ @MainActor func testMacDeliveryClosesRejectedPhoneSendWithoutReplay()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id,destination:"walk",section:"us")
+  XCTAssertTrue(a.prepareSubmission(id,voice:false))
+  f.submitResult = .rejected("Original section omitted")
+  await a.advanceProcessing(using:f)
+  var delivered=f.payload!.recordings[0]
+  delivered.links=[VoiceLink(receipt_id:"mac-receipt",text:"Machine words for review",kind:"walk")]
+  f.payload=VoiceEvidencePayload(recordings:[delivered])
+  await a.refresh(using:f)
+  XCTAssertEqual(a.recording(id)?.stage,.sent)
+  XCTAssertFalse(a.recording(id)!.canReopenSubmission)
+  a.editRejectedSubmission(id)
+  XCTAssertNotNil(a.recording(id)?.submission)
+  XCTAssertFalse(a.prepareSubmission(id,voice:false))
+  await a.advanceProcessing(using:f)
+  XCTAssertEqual(f.sends.count,1)
+ }
+
+ @MainActor func testReadyWalkKeepsRefreshingUntilMacDeliveryWithoutPhoneSubmission()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id,destination:"walk",section:"us")
+  var remote=f.payload!.recordings[0]
+  remote.transcription!.draft!.text="These are eight complete words from my morning walk."
+  f.payload=VoiceEvidencePayload(recordings:[remote])
+  await a.refresh(using:f,recordingID:id)
+  XCTAssertEqual(a.recording(id)?.stage,.readyForYou)
+  XCTAssertEqual(f.recordingReads.last,id)
+  XCTAssertTrue(a.recording(id)!.needsProgressRefresh)
+  XCTAssertNil(a.recording(id)?.submission)
+  remote.links=[VoiceLink(receipt_id:"mac-receipt",text:remote.transcription!.draft!.text,kind:"walk")]
+  f.payload=VoiceEvidencePayload(recordings:[remote])
+  await a.refresh(using:f)
+  XCTAssertEqual(a.recording(id)?.stage,.sent)
+  XCTAssertFalse(a.recording(id)!.needsProgressRefresh)
+  XCTAssertFalse(a.prepareSubmission(id,voice:false))
+  await a.advanceProcessing(using:f)
+  XCTAssertTrue(f.sends.isEmpty)
+ }
+
+ @MainActor func testReadyManualDraftsAndMisfiresDoNotWaitForAutomaticDelivery()async throws {
+  let a=archive(),id=UUID().uuidString,f=try await ready(a,id:id,destination:"dialogue")
+  var remote=f.payload!.recordings[0]
+  remote.transcription!.draft!.text="These are eight complete words from my morning walk."
+  remote.context.source="ios_dialogue"
+  XCTAssertFalse(remote.needsProgressRefresh)
+  remote.context.source="ios_walk"
+  remote.context.surface_context=SurfaceContext(section:"body",captured_at:remote.context.started_at)
+  XCTAssertFalse(remote.needsProgressRefresh)
+  remote.context.surface_context=SurfaceContext(section:"us",captured_at:remote.context.started_at)
+  remote.transcription!.draft!.text="Thanks for watching!"
+  XCTAssertFalse(remote.needsProgressRefresh)
+  remote.transcription!.draft!.text="These are eight complete words from my morning walk."
+  XCTAssertTrue(remote.needsProgressRefresh)
+  remote.deleted=true
+  XCTAssertFalse(remote.needsProgressRefresh)
  }
 
  @MainActor func testDefiniteFailedStatusCanReopenExactWordsWithNewReceiptOnlyExplicitly()async throws {
