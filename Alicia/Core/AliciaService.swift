@@ -158,6 +158,7 @@ protocol AliciaService {
     /// started from an episode. Both are never empty at once.
     func finishWalk(text: String, episodeID: String, requestID: String, prompt: String, recordingID: String, surface: String) async -> WalkReceipt?
     func conversationHistory() async -> ConversationHistory?
+    func chatReceipt(_ requestID: String) async -> ChatSendReceipt?
     func dialogueReview(replyID: String) async -> DialogueReview?
     func dialogueReviewAction(_ mutation: DialogueMutation) async -> DialogueMutationResult?
     /// Streams a reply as events: tokens, an optional voice-note URL, and a
@@ -728,6 +729,7 @@ extension AliciaService {
 
 // Older/mock services show an honest unavailable Body surface.
 extension AliciaService {
+    func chatReceipt(_ requestID: String) async -> ChatSendReceipt? { nil }
     func askBody(_ text: String) async -> BodyAnswer? { nil }
     func askBody(_ text: String, requestID: String) async -> BodyAnswer? { await askBody(text) }
     func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?, requestID: String) -> AsyncStream<ChatEvent> {

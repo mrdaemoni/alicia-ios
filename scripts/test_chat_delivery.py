@@ -20,6 +20,8 @@ def between(text, start, end):
 
 opening = between(store, '    func openConversation(', '    var isWalking:')
 sending = between(store, '    func send(', '    /// Saved public context')
+recovery = between(store, '    // MARK: typed send recovery', '    // MARK: foreground polling lifecycle')
+lifecycle = between(store, '    func startProactivePolling()', '    private func pollProactive()')
 streaming = between(live, '    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?, requestID: String)', '    // MARK: reactions')
 sheet_send = between(sheet, '    private func send()', '\n}').replace('private ', '')
 models = (root / 'Alicia/Core/Models.swift').read_text().split('/// A proactive message')[0].replace('import SwiftUI', 'import Foundation')
@@ -28,10 +30,12 @@ context = between(collaboration, 'struct WorkDialogueContext:', 'enum Collaborat
 class Handler(BaseHTTPRequestHandler):
     modes = {}
     checks = {}
+    posts = 0
     def log_message(self, *args):
         pass
 
     def do_POST(self):
+        type(self).posts += 1
         body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0'))))
         self.modes[body['request_id']] = self.path
         status = {'/reject': 400, '/auth': 401, '/timeout': 408, '/server': 502, '/recover': 202, '/recover-transient': 202}.get(self.path, 200)
@@ -86,7 +90,15 @@ struct Archive {
  var events:[ChatEvent] = []
  var requests:[String] = []
  var replyResult:String?
- func reply(proactiveID:String,text:String,recordingID:String,episodeID:String) async -> String? {replyResult}
+ var receipts:[String:ChatSendReceipt] = [:]
+ var receiptChecks = 0
+ var onReceipt:(() async -> Void)?
+ func chatReceipt(_ id:String) async -> ChatSendReceipt? {
+  receiptChecks += 1
+  await onReceipt?()
+  return receipts[id]
+ }
+ func reply(proactiveID:String,text:String,recordingID:String,episodeID:String,surfaceContext:SurfaceContext?) async -> String? {replyResult}
  func stream(_ prompt:String,voice:Bool,recordingID:String,workContext:WorkDialogueContext?,surfaceContext:SurfaceContext?,requestID:String) -> AsyncStream<ChatEvent> {
   requests.append(requestID)
   return AsyncStream {continuation in
@@ -98,10 +110,10 @@ struct Archive {
 }
 @MainActor final class Harness {
  let collaboration = Shared(), service = Service(), voiceArchive = Archive()
- var isStreaming = false, episodeChoiceSyncing = false, voiceReplies = false, isWalking = false
+ var isStreaming = false, episodeChoiceSyncing = false, voiceReplies = false, isWalking = false, isMock = false
  var showConversation = false
  var composerDrafts = ComposerDrafts(directory:URL(fileURLWithPath:CommandLine.arguments[2]))
- let chatOutbox = ChatSendOutbox(directory:URL(fileURLWithPath:CommandLine.arguments[2]+"/outbox"))
+ var chatOutbox = ChatSendOutbox(directory:URL(fileURLWithPath:CommandLine.arguments[2]+"/outbox"))
  var conversationContext = SurfaceContext(section:"studio",captured_at:"2026-10-09T17:17:00Z")
  var answeringAskID:String?
  var messages:[Message] = []
@@ -115,6 +127,12 @@ struct Archive {
  func surfaceContext() -> SurfaceContext {conversationContext}
  __OPEN__
  __SEND__
+ __RECOVERY__
+ private var proactivePoll:Task<Void,Never>?
+ func pollProactive() async {}
+ __LIFECYCLE__
+ func startRecovery() {startProactivePolling()}
+ func stopRecovery() {stopProactivePolling()}
 }
 @propertyWrapper struct Stored<Value> {
  final class Box {var value:Value; init(_ value:Value) {self.value = value}}
@@ -305,6 +323,90 @@ struct LiveHarness {
   restoredOutbox.reconcileCompleted([UUID(uuidString:newRequest.requestID)!],drafts:acceptedHarness.composerDrafts)
   precondition(acceptedHarness.composerDrafts.text(for:"studio").isEmpty, "late saved reply left its old draft behind")
 
+  // Reproduce the phone report: the stream's short recovery has ended, then
+  // the Mac finishes later. Repeated read-only checks must repair the same row.
+  let late = Harness()
+  late.chatOutbox = ChatSendOutbox(directory:draftsURL.appendingPathComponent("late"))
+  let lateSend = try late.chatOutbox.reserve(text:original,recordingID:"",voice:false,workContext:target,surfaceContext:originalContext)
+  late.service.events = [.accepted(lateSend.requestID), .failure(.pending)]
+  late.collaboration.dialogueContext = target
+  late.send(original,surfaceContext:originalContext) {_ in}; await settle(late)
+  let rowID = late.messages.last!.id
+  let postCount = late.service.requests.count
+  late.service.receipts[lateSend.requestID] = .init(request_id:lateSend.requestID,state:"pending")
+  for _ in 0..<12 {await late.recoverPendingChatSends()}
+  precondition(late.messages.last?.deliveryFailure == .pending && late.chatOutbox.pending.count == 1)
+  late.composerDrafts.set("Newer words",for:"studio")
+  late.composerDrafts.set("Private words",for:"body")
+  late.service.receipts[lateSend.requestID] = .init(request_id:lateSend.requestID,state:"completed",reply:"Finished later",reply_id:lateSend.requestID,message_id:100,inspectable:true)
+  await late.recoverPendingChatSends()
+  precondition(late.messages.count == 2 && late.messages.last?.id == rowID)
+  precondition(late.messages.last?.text == "Finished later" && late.messages.last?.deliveryFailure == nil)
+  precondition(late.messages.last?.replyID == lateSend.requestID && late.messages.last?.messageID == 100)
+  precondition(late.chatOutbox.pending.isEmpty && late.service.requests.count == postCount && late.pendingSendRequestIDs.isEmpty)
+  precondition(late.composerDrafts.text(for:"studio") == "Newer words" && late.composerDrafts.text(for:"body") == "Private words")
+  precondition(late.collaboration.remembered[lateSend.requestID] == target)
+
+  // Relaunch restores only the protected packet; the receipt can recover an
+  // answer beyond the history window without sending it again or duplicating it.
+  let restartURL = draftsURL.appendingPathComponent("restart")
+  let disk = ChatSendOutbox(directory:restartURL)
+  let saved = try disk.reserve(text:original,recordingID:"",voice:false,workContext:nil,surfaceContext:originalContext)
+  let restart = Harness(); restart.chatOutbox = ChatSendOutbox(directory:restartURL)
+  restart.service.receipts[saved.requestID] = .init(request_id:saved.requestID,state:"uncertain")
+  await restart.recoverPendingChatSends()
+  precondition(restart.messages.count == 2 && restart.messages.last?.deliveryFailure == .unresolved)
+  restart.service.receipts[saved.requestID] = .init(request_id:saved.requestID,state:"completed",reply:"Recovered after launch",reply_id:saved.requestID,message_id:101,inspectable:true)
+  restart.startRecovery()
+  for _ in 0..<50 {if restart.chatOutbox.pending.isEmpty {break}; await Task.yield()}
+  restart.stopRecovery()
+  precondition(restart.messages.count == 2 && restart.messages.last?.text == "Recovered after launch")
+  precondition(restart.service.requests.isEmpty && restart.chatOutbox.pending.isEmpty)
+  await restart.recoverPendingChatSends()
+  precondition(restart.messages.count == 2)
+
+  let race = Harness(); race.chatOutbox = ChatSendOutbox(directory:draftsURL.appendingPathComponent("race"))
+  let racing = try race.chatOutbox.reserve(text:original,recordingID:"",voice:false,workContext:nil,surfaceContext:originalContext)
+  race.service.receipts[racing.requestID] = .init(request_id:UUID().uuidString,state:"completed",reply:"Foreign",reply_id:racing.requestID)
+  await race.recoverPendingChatSends()
+  precondition(race.messages.isEmpty && race.chatOutbox.pending.count == 1)
+  race.service.receipts[racing.requestID] = .init(request_id:racing.requestID,state:"completed",reply:"Saved",reply_id:racing.requestID)
+  race.isStreaming = true
+  await race.recoverPendingChatSends()
+  precondition(race.service.receiptChecks == 1)
+  race.isStreaming = false
+  race.service.onReceipt = {race.isStreaming = true; await race.recoverPendingChatSends()}
+  await race.recoverPendingChatSends()
+  precondition(race.messages.isEmpty && race.chatOutbox.pending.count == 1 && race.service.receiptChecks == 2)
+  race.isStreaming = false; race.service.onReceipt = nil
+  race.service.receipts[racing.requestID] = nil
+  await race.recoverPendingChatSends()
+  precondition(race.messages.isEmpty && race.chatOutbox.pending.count == 1)
+  race.service.receipts[racing.requestID] = .init(request_id:racing.requestID,state:"rejected")
+  race.composerDrafts.set("Keep newer words",for:"studio")
+  await race.recoverPendingChatSends()
+  precondition(race.messages.last?.deliveryFailure?.definitelyRejected == true && race.chatOutbox.pending.isEmpty)
+  precondition(race.composerDrafts.text(for:"studio") == "Keep newer words")
+  precondition(race.service.requests.isEmpty)
+
+  // Background cancellation must discard even a successful in-flight GET.
+  let cancelled = Harness(); cancelled.chatOutbox = ChatSendOutbox(directory:draftsURL.appendingPathComponent("cancelled"))
+  let cancelledSend = try cancelled.chatOutbox.reserve(text:original,recordingID:"",voice:false,workContext:nil,surfaceContext:originalContext)
+  cancelled.service.receipts[cancelledSend.requestID] = .init(request_id:cancelledSend.requestID,state:"completed",reply:"After foreground",reply_id:cancelledSend.requestID)
+  var blocked:CheckedContinuation<Void,Never>?
+  cancelled.service.onReceipt = {await withCheckedContinuation {blocked = $0}}
+  cancelled.startRecovery()
+  for _ in 0..<100 {if blocked != nil {break}; await Task.yield()}
+  precondition(blocked != nil)
+  cancelled.stopRecovery(); blocked?.resume()
+  for _ in 0..<100 {await Task.yield()}
+  precondition(cancelled.messages.isEmpty && cancelled.chatOutbox.pending.count == 1)
+  cancelled.service.onReceipt = nil
+  cancelled.startRecovery()
+  for _ in 0..<100 {if cancelled.chatOutbox.pending.isEmpty {break}; await Task.yield()}
+  cancelled.stopRecovery()
+  precondition(cancelled.messages.last?.text == "After foreground" && cancelled.chatOutbox.pending.isEmpty)
+
   for path in ["reject","auth","timeout","server","sse-error","malformed","success","recover","recover-transient"] {
    let service = LiveHarness(base:URL(string:CommandLine.arguments[1]+"/"+path)!)
    var failures:[ChatDeliveryFailure] = [], tokens:[String] = [], completed = false, recovered = false
@@ -334,6 +436,8 @@ for key, value in {
     '__FAILURE__': (root / 'Alicia/Core/ChatDelivery.swift').read_text(),
     '__DRAFTS__': (root / 'Alicia/Core/SurfaceContext.swift').read_text(),
     '__OPEN__': opening, '__SEND__': sending, '__STREAM__': streaming,
+    '__RECOVERY__': recovery,
+    '__LIFECYCLE__': lifecycle,
     '__SHEET_SEND__': sheet_send,
 }.items():
     program = program.replace(key, value)
@@ -347,6 +451,7 @@ try:
         env = dict(os.environ, DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
         subprocess.run(['xcrun', 'swiftc', '-parse-as-library', str(source), '-o', str(executable)], check=True, env=env)
         subprocess.run([str(executable), f'http://127.0.0.1:{server.server_port}', str(directory/'drafts')], check=True, env=env, timeout=25)
+        assert Handler.posts == 9, 'Recovery replayed a POST'
 finally:
     server.shutdown()
     server.server_close()

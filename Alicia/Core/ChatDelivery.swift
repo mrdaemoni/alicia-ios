@@ -39,6 +39,7 @@ struct PendingChatSend: Codable {
         } catch { damaged = true }
     }
     private var file: URL { directory.appendingPathComponent("chat-sends.json") }
+    var pending: [PendingChatSend] { Array(entries.values).sorted { $0.requestID < $1.requestID } }
     private func persist() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var url = directory, flags = URLResourceValues(); flags.isExcludedFromBackup = true
@@ -100,4 +101,5 @@ struct ChatDeliveryFailure: Hashable, Sendable {
     static let interrupted = Self(message: "Delivery could not be confirmed. Your words remain in the composer. Check Dialogue before trying again.")
     static let replyInterrupted = Self(message: "Your message was received, but the reply did not finish. Reopen Dialogue to recover the saved reply.")
     static let pending = Self(message: "Alicia has your message and is still preparing a reply. Check Dialogue shortly; this send has not been repeated.")
+    static let unresolved = Self(message: "The Mac received your message, but could not confirm a finished reply. This send has not been repeated; Alicia will check for its saved reply when connected.")
 }

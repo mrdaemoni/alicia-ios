@@ -467,17 +467,24 @@ struct LiveAliciaService: AliciaService {
         }
     }
 
+    func chatReceipt(_ requestID: String) async -> ChatSendReceipt? {
+        guard UUID(uuidString: requestID) != nil else { return nil }
+        var check = request("/api/chat_receipt?request_id=" + requestID)
+        check.timeoutInterval = 3
+        check.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (data, response) = try? await URLSession.shared.data(for: check),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let receipt = try? JSONDecoder().decode(ChatSendReceipt.self, from: data),
+              UUID(uuidString: receipt.request_id) == UUID(uuidString: requestID) else { return nil }
+        return receipt
+    }
+
     private func recoverChat(_ requestID: String, received: (String) -> Void) async -> ChatEvent {
         guard UUID(uuidString: requestID) != nil else { return .failure(.interrupted) }
         var pending = false
         for attempt in 0..<10 {
             if Task.isCancelled { break }
-            var check = request("/api/chat_receipt?request_id=" + requestID)
-            check.timeoutInterval = 3
-            guard let (data, response) = try? await URLSession.shared.data(for: check),
-                  (response as? HTTPURLResponse)?.statusCode == 200,
-                  let receipt = try? JSONDecoder().decode(ChatSendReceipt.self, from: data),
-                  UUID(uuidString: receipt.request_id) == UUID(uuidString: requestID) else {
+            guard let receipt = await chatReceipt(requestID) else {
                 // A second route change must not turn the first lost response
                 // into a permanent unknown. These are GETs, never send replays.
                 if attempt < 9 { try? await Task.sleep(for: .milliseconds(400)) }
