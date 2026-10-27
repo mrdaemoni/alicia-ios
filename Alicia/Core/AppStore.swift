@@ -621,8 +621,8 @@ final class AppStore {
     private func reconcileVoiceReplies() async {
         // Read history only when a voice receipt completed. The backend is the source of message IDs.
         guard !isStreaming, voiceArchive.recordings.contains(where: { $0.submissionStatus?.state == "completed" }) else { return }
-        let before = messages.map(\.id)
-        if let history = await service.conversationHistory(), !isStreaming, messages.map(\.id) == before {
+        let before = messages
+        if let history = await service.conversationHistory(), !isStreaming, messages == before {
             reconcileCompletedChatDrafts(history)
             messages = history.messages.map(historyMessage)
         }
@@ -635,9 +635,9 @@ final class AppStore {
 
     func refreshConversation() async {
         guard !isStreaming else { return }
-        let before = messages.map(\.id)
+        let before = messages
         guard let history = await service.conversationHistory(), !isStreaming,
-              messages.map(\.id) == before else { return }
+              messages == before else { return }
         reconcileCompletedChatDrafts(history)
         messages = history.messages.map(historyMessage)
     }
@@ -1010,7 +1010,7 @@ final class AppStore {
         briefingSteering.flush()
         Task { await collaboration.load() }
         Task { await refreshVoiceArchive() }
-        let messagesAtStart = messages.map(\.id)
+        let messagesAtStart = messages
         async let day = service.episodeDay(day: "")
         async let history = service.conversationHistory()
         async let t = service.thoughts()
@@ -1027,7 +1027,7 @@ final class AppStore {
         async let hc = service.homeContext()
         async let pls = service.playlists()
         if let fresh = await day { acceptEpisodeDay(fresh) }
-        if let transcript = await history, !isStreaming, messages.map(\.id) == messagesAtStart {
+        if let transcript = await history, !isStreaming, messages == messagesAtStart {
             reconcileCompletedChatDrafts(transcript)
             messages = transcript.messages.map(historyMessage)
         }
@@ -1106,7 +1106,81 @@ final class AppStore {
     // ProactiveNotifier) fires far too rarely on a dev-signed build.
     private var proactivePoll: Task<Void, Never>?
 
+    // MARK: typed send recovery
+    private var chatReceiptPoll: Task<Void, Never>?
+    private var checkingChatReceipts = false
+
+    private func startChatReceiptPolling() {
+        chatReceiptPoll?.cancel()
+        chatReceiptPoll = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.recoverPendingChatSends()
+                do { try await Task.sleep(for: .seconds(5)) }
+                catch { return }
+            }
+        }
+    }
+
+    /// Keep checking durable sends after the short stream recovery window.
+    /// Only GETs run here, including after relaunch; original actions never replay.
+    func recoverPendingChatSends() async {
+        guard !isMock, !isStreaming, !checkingChatReceipts else { return }
+        checkingChatReceipts = true
+        defer { checkingChatReceipts = false }
+        for pending in chatOutbox.pending {
+            guard !Task.isCancelled, !isStreaming else { return }
+            guard let receipt = await service.chatReceipt(pending.requestID) else { continue }
+            guard !Task.isCancelled, !isStreaming else { return }
+            guard let identity = UUID(uuidString: pending.requestID),
+                  UUID(uuidString: receipt.request_id) == identity,
+                  chatOutbox.pending.contains(where: { UUID(uuidString: $0.requestID) == identity }) else { continue }
+            var index = messages.firstIndex { message in
+                message.sender == .alicia &&
+                    (message.chatRequestID.flatMap(UUID.init(uuidString:)) == identity ||
+                     message.replyID.flatMap(UUID.init(uuidString:)) == identity)
+            }
+            if index == nil, receipt.confirms(pending.requestID) || ["pending", "uncertain", "rejected"].contains(receipt.state) {
+                if !messages.contains(where: { $0.sender == .me && $0.chatRequestID.flatMap(UUID.init(uuidString:)) == identity }) {
+                    messages.append(Message(sender: .me, text: pending.text, workContext: pending.workContext, chatRequestID: pending.requestID))
+                }
+                index = messages.count
+                messages.append(Message(sender: .alicia, text: "", workContext: pending.workContext, chatRequestID: pending.requestID))
+            }
+            if receipt.confirms(pending.requestID) {
+                if let section = pending.surfaceContext?.section {
+                    composerDrafts.acknowledge(pending.text, for: section)
+                }
+                if let index {
+                    messages[index].text = receipt.reply ?? ""
+                    messages[index].replyID = receipt.inspectable == true ? receipt.reply_id : nil
+                    messages[index].messageID = receipt.message_id
+                    messages[index].deliveryFailure = nil
+                }
+                if receipt.inspectable == true, let context = pending.workContext, let replyID = receipt.reply_id {
+                    collaboration.rememberDialogueContext(context, replyID: replyID)
+                }
+                chatOutbox.acknowledge(pending.requestID)
+                pendingSendRequestIDs = pendingSendRequestIDs.filter { !$0.value.hasPrefix(pending.requestID + "|") }
+            } else if let index {
+                if receipt.state == "pending" { messages[index].deliveryFailure = .pending }
+                if receipt.state == "uncertain" { messages[index].deliveryFailure = .unresolved }
+                if receipt.state == "missing" { messages[index].deliveryFailure = .interrupted }
+                if receipt.state == "rejected" {
+                    if let section = pending.surfaceContext?.section, composerDrafts.text(for: section).isEmpty {
+                        composerDrafts.set(pending.text, for: section)
+                    }
+                    messages[index].deliveryFailure = .init(message: "The reply did not finish. Your original words are kept above; this send has not been repeated.", definitelyRejected: true)
+                    chatOutbox.acknowledge(pending.requestID)
+                    pendingSendRequestIDs = pendingSendRequestIDs.filter { !$0.value.hasPrefix(pending.requestID + "|") }
+                }
+            }
+        }
+    }
+
+    // MARK: foreground polling lifecycle
+
     func startProactivePolling() {
+        startChatReceiptPolling()
         proactivePoll?.cancel()
         proactivePoll = Task { [weak self] in
             while !Task.isCancelled {
@@ -1117,6 +1191,8 @@ final class AppStore {
     }
 
     func stopProactivePolling() {
+        chatReceiptPoll?.cancel()
+        chatReceiptPoll = nil
         proactivePoll?.cancel()
         proactivePoll = nil
     }

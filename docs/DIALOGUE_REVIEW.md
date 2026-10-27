@@ -107,3 +107,27 @@ Reopening the conversation or refreshing history reconciles completed assistant
 reply UUIDs against the outbox and clears any matching old draft, including
 sends completed while the app was disconnected. No model or tool is replayed.
 The private Body/health and reviewed voice lanes retain their separate handling.
+
+## October 27 — keep recovering a late typed reply
+
+Candidate `codex/late-chat-recovery-20261027`; release and phone acceptance
+remain separate. After the stream's short recovery window, a foreground task
+checks pending protected-outbox receipts every five seconds. It starts with
+the existing foreground polling lifecycle and cancels on background. Empty
+outboxes make no receipt requests. These are authenticated, uncached GETs;
+no message, model call or tool action is automatically replayed.
+
+A matching completed receipt replaces the original assistant row, clears its
+transport warning and acknowledges only the originating draft. A relaunched
+phone can recover directly from the outbox even when that reply has left the
+history window. Uncertain outcomes say that completion could not be confirmed;
+explicit rejection retains the original user bubble and restores an empty
+originating draft. Newer words and private Body drafts are preserved.
+
+Recovery defers during a live send, coalesces overlapping checks, and discards
+results after cancellation. History reads compare the full message snapshot
+before publishing so stale history cannot erase a reply recovered in place.
+The Swift/HTTP harness exercises delayed completion beyond the short recovery
+window, relaunch, foreign receipts, offline checks, reentrancy, cancellation,
+draft preservation, rejection and zero recovery POSTs. The startup harness
+also covers an older history read completing after an in-place reply update.

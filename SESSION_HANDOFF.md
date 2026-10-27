@@ -1,3 +1,31 @@
+## October 27 candidate — pending typed replies recover while the app stays open
+
+Candidate `codex/late-chat-recovery-20261027`, based on `6e5371c`. The October
+26 send completed on the Mac while its phone warning remained. A dedicated
+foreground receipt reader now continues after the short stream-recovery
+window, replaces the matching row when complete, and resumes from the protected
+outbox after relaunch. No original POST or action is replayed. Stale history
+reads cannot overwrite an in-place recovered reply. See docs/DIALOGUE_REVIEW.md.
+No release, version bump or physical-phone acceptance is claimed.
+
+Handoff: Codex owns `/Users/alicia/AliciaApp-worktrees/late-chat-recovery-20261027`.
+Files: `Core/AppStore.swift`, `Core/ChatDelivery.swift`, `Core/AliciaService.swift`,
+`Core/LiveAliciaService.swift`, the two existing delivery/startup harnesses and
+these recovery docs. The existing authenticated chat-receipt endpoint is
+unchanged; the protocol gains a read method with a nil default for older/mock
+services. No stored format changes. The separate walk-status branch also
+touches AppStore/LiveAliciaService for voice handling; those edits are outside
+this task. The base includes merged #58/#60.
+
+Verification: `python3 scripts/test_chat_delivery.py` and
+`python3 scripts/test_startup_latency.py` pass with fake transport/storage;
+the actual iPhone 17 simulator target builds with signing disabled, and
+`git diff --check` passes. No visual/motion change, device QA or live send was
+performed. The original response also took roughly 90 seconds; backend context
+and routing latency remain a separate performance concern. Next action is
+review, then an explicitly authorized app release. Rollback is the previous
+app build; protected pending sends and backend journals remain intact.
+
 ## Current release — October 26, 2026
 
 The latest TestFlight build is still **1.0 (53)**, from `1c14936` (PR #57,

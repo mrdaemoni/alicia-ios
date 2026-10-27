@@ -10,15 +10,20 @@ source = (root/'Alicia/Core/AppStore.swift').read_text()
 load = source[source.index('    func load() async {'):source.index('    private static func historyDate(')]
 program = r'''
 import Foundation
-struct Message {var id = UUID()}
+struct Message: Equatable {var id = UUID(); var text = ""}
 struct History {var messages:[String] = []}
 @MainActor enum ProactiveNotifier {static func markSeen(_ value:[String]) {}}
 @MainActor final class Shared {func load() async {}}
 @MainActor final class Service {
  var waiting:CheckedContinuation<[String]?,Never>?
+ var historyWaiting:CheckedContinuation<History?,Never>?
+ var blockHistory = false
  func health() async -> [String]? {await withCheckedContinuation{waiting = $0}}
  func episodeDay(day:String) async -> String? {"day"}
- func conversationHistory() async -> History? {nil}
+ func conversationHistory() async -> History? {
+  if blockHistory {return await withCheckedContinuation {historyWaiting = $0}}
+  return nil
+ }
  func thoughts() async -> [String]? {["thought"]}
  func tracks() async -> [String]? {["track"]}
  func gallery() async -> [String]? {["gallery"]}
@@ -39,6 +44,7 @@ struct History {var messages:[String] = []}
  var thinkingMode = "", walkWords = 0
  func refreshPresence() async {}
  func refreshMorningBriefing() async {}
+ func refreshStudyNote() async {}
  func refreshVoiceArchive() async {}
  func refreshEpisodeThinkers() async {}
  func acceptEpisodeDay(_ day:String) {episodeDay = day}
@@ -59,6 +65,18 @@ __LOAD__
   h.service.waiting?.resume(returning:["diagnostics"])
   for _ in 0..<100 {if !h.health.isEmpty {break}; await Task.yield()}
   precondition(h.health == ["diagnostics"])
+  let racing = Harness(); racing.messages = [.init(text:"Pending")]
+  racing.service.blockHistory = true
+  var finished = false
+  Task {await racing.load(); finished = true}
+  for _ in 0..<100 {if racing.service.historyWaiting != nil {break}; await Task.yield()}
+  precondition(racing.service.historyWaiting != nil)
+  let originalID = racing.messages[0].id
+  racing.messages[0].text = "Recovered reply"
+  racing.service.historyWaiting?.resume(returning:History(messages:["Stale history"]))
+  for _ in 0..<100 {if finished {break}; await Task.yield()}
+  precondition(finished && racing.messages[0].id == originalID && racing.messages[0].text == "Recovered reply", "stale history overwrote a recovered reply in the same row")
+  racing.service.waiting?.resume(returning:[])
   print("Startup passed: library, episode, home and mode publish before blocked diagnostics; diagnostics arrive independently.")
  }
 }
