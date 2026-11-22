@@ -133,8 +133,16 @@ struct ConversationSheet: View {
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
             }
             .onChange(of: messages.last?.text) { _, _ in
-                guard let last = messages.last, last.isDraft else { return }
+                guard busy, let last = messages.last else { return }
                 proxy.scrollTo(last.id, anchor: .bottom)
+            }
+            .onChange(of: busy) { _, isBusy in
+                guard !isBusy, let last = messages.last else { return }
+                // The keyboard returns when a send finishes. Keep her reply in view.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(350))
+                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
             }
             .task {
                 if !privateBody { await store.refreshConversation() }
