@@ -97,6 +97,12 @@ struct ConversationSheet: View {
         .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 10)
     }
 
+    private var progressLine: String {
+        if privateBody { return "Thinking privately on your Mac…" }
+        if messages.last?.isDraft == true { return "Alicia is writing…" }
+        return store.sendReceived ? "Received. Alicia is thinking…" : "Alicia is thinking…"
+    }
+
     private var conversation: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -113,7 +119,7 @@ struct ConversationSheet: View {
                         MessageBubble(message: message, inspect: { inspected = $0 }).id(message.id)
                     }
                     if busy {
-                        Text(privateBody ? "Thinking privately on your Mac…" : "Alicia is thinking…")
+                        Text(progressLine)
                             .font(.caption).foregroundStyle(Theme.inkSoft)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .id("thinking")
@@ -125,6 +131,10 @@ struct ConversationSheet: View {
             .onChange(of: messages.count) { _, _ in
                 guard let last = messages.last else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
+            }
+            .onChange(of: messages.last?.text) { _, _ in
+                guard let last = messages.last, last.isDraft else { return }
+                proxy.scrollTo(last.id, anchor: .bottom)
             }
             .task {
                 if !privateBody { await store.refreshConversation() }

@@ -98,7 +98,7 @@ struct Archive {
 }
 @MainActor final class Harness {
  let collaboration = Shared(), service = Service(), voiceArchive = Archive()
- var isStreaming = false, episodeChoiceSyncing = false, voiceReplies = false, isWalking = false
+ var isStreaming = false, sendReceived = false, episodeChoiceSyncing = false, voiceReplies = false, isWalking = false
  var showConversation = false
  var composerDrafts = ComposerDrafts(directory:URL(fileURLWithPath:CommandLine.arguments[2]))
  let chatOutbox = ChatSendOutbox(directory:URL(fileURLWithPath:CommandLine.arguments[2]+"/outbox"))
@@ -202,6 +202,19 @@ struct LiveHarness {
   h.send(original) {confirmed = $0}
   await settle(h)
   precondition(confirmed == true && h.messages.last?.deliveryFailure == nil && h.messages.last?.text == "OK")
+  h.service.events = [.draft("Half a"),.draft("Half a reply"),.token("The final "),.token("reply"),.done(messageID:5)]
+  h.send(original) {confirmed = $0}
+  await settle(h)
+  precondition(confirmed == true && h.messages.last?.text == "The final reply" && h.messages.last?.isDraft == false)
+  h.service.events = [.draft("Words to clear"),.draft(""),.token("A fallback reply"),.done(messageID:6)]
+  h.send(original) {confirmed = $0}
+  await settle(h)
+  precondition(h.messages.last?.text == "A fallback reply" && h.messages.last?.isDraft == false)
+  h.service.events = [.draft("A draft that never finished")]
+  h.send(original) {confirmed = $0}
+  await settle(h)
+  precondition(confirmed == false && h.messages.last?.text == "" && h.messages.last?.isDraft == false)
+  precondition(h.messages.last?.deliveryFailure == .interrupted)
   h.service.events = []
   h.send(original) {confirmed = $0}
   await settle(h)

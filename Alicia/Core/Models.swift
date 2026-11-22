@@ -29,11 +29,14 @@ struct Message: Identifiable, Hashable {
     var workContext: WorkDialogueContext? = nil
     var deliveryFailure: ChatDeliveryFailure? = nil
     var chatRequestID: String? = nil
+    /// Her words while Qwen is still writing them. Disposable: the final reply replaces them.
+    var isDraft = false
 }
 
 /// One event in a streamed chat reply.
 enum ChatEvent {
     case accepted(String)
+    case draft(String)
     case token(String)
     case details(String)
     case voice(URL)

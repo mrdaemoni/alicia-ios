@@ -134,6 +134,11 @@ struct MessageBubble: View {
     let message: Message
     var inspect: (Message) -> Void = { _ in }
     private var isMe: Bool { message.sender == .me }
+    /// A draft or a direct save has no saved context to open.
+    private var canInspect: Bool {
+        !isMe && !message.text.isEmpty && !message.isDraft
+            && (message.replyID != nil || message.chatRequestID == nil)
+    }
 
     // Reactions render as words in her register (InkReactions); the emoji
     // strings still travel to the backend, where the loops key on them.
@@ -192,7 +197,7 @@ struct MessageBubble: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(message.text.isEmpty ? AttributedString("…") : rendered)
                     .foregroundStyle(Theme.ink)
-                if !isMe, !message.text.isEmpty {
+                if canInspect {
                     // Goes somewhere (the review sheet): her small link,
                     // hugging its words so the bubble keeps its width.
                     Button { inspect(message) } label: {
@@ -252,7 +257,7 @@ struct MessageBubble: View {
             }
         }
         .contextMenu {
-            if !isMe, !message.text.isEmpty {
+            if canInspect {
                 Button("Behind this reply") { inspect(message) }
             }
             // React to her messages — chat replies feed the archetype loop,
