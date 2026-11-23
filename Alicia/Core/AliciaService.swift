@@ -547,6 +547,28 @@ struct MockAliciaService: AliciaService {
 #endif
         return nil
     }
+#if DEBUG
+    /// `--reply-draft-preview`: received, then her words arriving, then the final reply. Invented text.
+    func stream(_ prompt: String, voice: Bool, recordingID: String, workContext: WorkDialogueContext?, surfaceContext: SurfaceContext?, requestID: String) -> AsyncStream<ChatEvent> {
+        guard ProcessInfo.processInfo.arguments.contains("--reply-draft-preview") else {
+            return stream(prompt, voice: voice, recordingID: recordingID, workContext: workContext, surfaceContext: surfaceContext)
+        }
+        return AsyncStream { continuation in
+            Task {
+                continuation.yield(.accepted(requestID))
+                try? await Task.sleep(for: .seconds(4))
+                for words in ["The second", "The second draft is", "The second draft is closer to what you meant"] {
+                    continuation.yield(.draft(words))
+                    try? await Task.sleep(for: .seconds(2))
+                }
+                continuation.yield(.token("The second draft is closer to what you meant."))
+                continuation.yield(.done(messageID: nil))
+                continuation.finish()
+            }
+        }
+    }
+#endif
+
     func stream(_ prompt: String, voice: Bool) -> AsyncStream<ChatEvent> {
         let reply = SampleData.reply(to: prompt)
         return AsyncStream { continuation in

@@ -107,3 +107,12 @@ Reopening the conversation or refreshing history reconciles completed assistant
 reply UUIDs against the outbox and clears any matching old draft, including
 sends completed while the app was disconnected. No model or tool is replayed.
 The private Body/health and reviewed voice lanes retain their separate handling.
+
+## November 22 — received, then her words as she writes (CL-20261122-reply-drafts)
+
+The sheet says "Received. Alicia is thinking…" once the Mac has durably accepted a
+send. The app asks for drafts, and her bubble fills in while Qwen writes under
+"Alicia is writing…". A draft is disposable: the final reply replaces it, and a
+draft that never became a reply is cleared rather than left as something she said.
+A draft or a direct save has no "Behind this reply" link, because it has no saved
+context to open. Fixture: `--reply-draft-preview` (invented text).

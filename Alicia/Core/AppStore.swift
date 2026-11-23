@@ -1394,6 +1394,8 @@ final class AppStore {
     /// Dialogue's presence reads this to show her *thinking* — the one place
     /// in the app where "she is working right now" is literally true.
     private(set) var isStreaming = false
+    /// The Mac has durably received the send now in progress.
+    private(set) var sendReceived = false
     /// Which proactive card the Alicia tab should scroll to on arrival
     /// (set by a Dialogue whisper tap; cleared after the scroll).
     var pendingMindFocusID: String?
@@ -1572,6 +1574,7 @@ final class AppStore {
             messages.append(Message(sender: .alicia, text: "", workContext: workContext, chatRequestID: requestID))
         }
         isStreaming = true
+        sendReceived = false
         Task {
             var received = false
             var confirmed = false
@@ -1580,17 +1583,26 @@ final class AppStore {
             do {
                 // `defer` rather than a trailing assignment: a thrown or cancelled
                 // stream must not leave her looking permanently mid-thought.
-                defer { isStreaming = false }
+                defer { isStreaming = false; sendReceived = false }
                 for await event in service.stream(pending.text, voice: pending.voice, recordingID: pending.recordingID, workContext: workContext, surfaceContext: pending.surfaceContext, requestID: requestID) {
                     guard messages.indices.contains(idx) else { break }
                     switch event {
                     case .accepted(let identity):
                         guard UUID(uuidString: identity) == UUID(uuidString: requestID) else { continue }
                         received = true
+                        sendReceived = true
                         if let section = pending.surfaceContext?.section {
                             composerDrafts.acknowledge(pending.text, for: section)
                         }
-                    case .token(let t):   messages[idx].text += t
+                    case .draft(let words):
+                        messages[idx].text = words
+                        messages[idx].isDraft = !words.isEmpty
+                    case .token(let t):
+                        if messages[idx].isDraft {
+                            messages[idx].text = ""
+                            messages[idx].isDraft = false
+                        }
+                        messages[idx].text += t
                     case .details(let id):
                         guard UUID(uuidString: id) == UUID(uuidString: requestID) else { continue }
                         confirmed = true
@@ -1608,6 +1620,7 @@ final class AppStore {
                         if let section = pending.surfaceContext?.section {
                             composerDrafts.acknowledge(pending.text, for: section)
                         }
+                        messages[idx].isDraft = false
                         messages[idx].text = receipt.reply ?? ""
                         messages[idx].replyID = receipt.inspectable == true ? receipt.reply_id : nil
                         messages[idx].messageID = receipt.message_id
@@ -1636,6 +1649,11 @@ final class AppStore {
                         chatOutbox.acknowledge(requestID)
                         pendingSendRequestIDs.removeValue(forKey: key)
                     }
+                }
+                // A draft that never became a reply is not something she said.
+                if messages.indices.contains(idx), messages[idx].isDraft {
+                    messages[idx].text = ""
+                    messages[idx].isDraft = false
                 }
                 if let problem = failure ?? (!finished && !confirmed ? .interrupted : nil), messages.indices.contains(idx) {
                     messages[idx].deliveryFailure = (confirmed || (received && problem != .pending)) ? .replyInterrupted : problem

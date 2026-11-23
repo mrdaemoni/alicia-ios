@@ -43,6 +43,13 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path in ['/success', '/accepted']:
             for event in [{'accepted': body['request_id']}, {'reply_id': body['request_id']}, {'t': 'An inert answer.'}, {'done': True, 'message_id': 12}]:
                 self.wfile.write(('data: ' + json.dumps(event) + '\n\n').encode())
+        elif self.path == '/drafts':
+            # The app must ask for drafts; a client that does not gets none.
+            words = ['Half an', 'Half an inert', ''] if body.get('drafts') is True else []
+            events = [{'accepted': body['request_id']}, *[{'draft': word} for word in words],
+                      {'reply_id': body['request_id']}, {'t': 'An inert answer.'}, {'done': True, 'message_id': 8}]
+            for event in events:
+                self.wfile.write(('data: ' + json.dumps(event) + '\n\n').encode())
         elif self.path == '/sse-error':
             self.wfile.write(b'data: {"error":"inert generation failure","done":true}\n\n')
         elif self.path == '/malformed':
@@ -86,7 +93,7 @@ struct Archive {
  var events:[ChatEvent] = []
  var requests:[String] = []
  var replyResult:String?
- func reply(proactiveID:String,text:String,recordingID:String,episodeID:String) async -> String? {replyResult}
+ func reply(proactiveID:String,text:String,recordingID:String,episodeID:String,surfaceContext:SurfaceContext?) async -> String? {replyResult}
  func stream(_ prompt:String,voice:Bool,recordingID:String,workContext:WorkDialogueContext?,surfaceContext:SurfaceContext?,requestID:String) -> AsyncStream<ChatEvent> {
   requests.append(requestID)
   return AsyncStream {continuation in
@@ -98,7 +105,7 @@ struct Archive {
 }
 @MainActor final class Harness {
  let collaboration = Shared(), service = Service(), voiceArchive = Archive()
- var isStreaming = false, episodeChoiceSyncing = false, voiceReplies = false, isWalking = false
+ var isStreaming = false, sendReceived = false, episodeChoiceSyncing = false, voiceReplies = false, isWalking = false
  var showConversation = false
  var composerDrafts = ComposerDrafts(directory:URL(fileURLWithPath:CommandLine.arguments[2]))
  let chatOutbox = ChatSendOutbox(directory:URL(fileURLWithPath:CommandLine.arguments[2]+"/outbox"))
@@ -202,6 +209,19 @@ struct LiveHarness {
   h.send(original) {confirmed = $0}
   await settle(h)
   precondition(confirmed == true && h.messages.last?.deliveryFailure == nil && h.messages.last?.text == "OK")
+  h.service.events = [.draft("Half a"),.draft("Half a reply"),.token("The final "),.token("reply"),.done(messageID:5)]
+  h.send(original) {confirmed = $0}
+  await settle(h)
+  precondition(confirmed == true && h.messages.last?.text == "The final reply" && h.messages.last?.isDraft == false)
+  h.service.events = [.draft("Words to clear"),.draft(""),.token("A fallback reply"),.done(messageID:6)]
+  h.send(original) {confirmed = $0}
+  await settle(h)
+  precondition(h.messages.last?.text == "A fallback reply" && h.messages.last?.isDraft == false)
+  h.service.events = [.draft("A draft that never finished")]
+  h.send(original) {confirmed = $0}
+  await settle(h)
+  precondition(confirmed == false && h.messages.last?.text == "" && h.messages.last?.isDraft == false)
+  precondition(h.messages.last?.deliveryFailure == .interrupted)
   h.service.events = []
   h.send(original) {confirmed = $0}
   await settle(h)
@@ -305,20 +325,22 @@ struct LiveHarness {
   restoredOutbox.reconcileCompleted([UUID(uuidString:newRequest.requestID)!],drafts:acceptedHarness.composerDrafts)
   precondition(acceptedHarness.composerDrafts.text(for:"studio").isEmpty, "late saved reply left its old draft behind")
 
-  for path in ["reject","auth","timeout","server","sse-error","malformed","success","recover","recover-transient"] {
+  for path in ["reject","auth","timeout","server","sse-error","malformed","success","drafts","recover","recover-transient"] {
    let service = LiveHarness(base:URL(string:CommandLine.arguments[1]+"/"+path)!)
-   var failures:[ChatDeliveryFailure] = [], tokens:[String] = [], completed = false, recovered = false
+   var failures:[ChatDeliveryFailure] = [], tokens:[String] = [], drafts:[String] = [], completed = false, recovered = false
    let rid = UUID().uuidString
    for await event in service.stream(original,voice:false,recordingID:"",workContext:target,surfaceContext:originalContext,requestID:rid) {
     switch event {
     case .failure(let failure): failures.append(failure)
+    case .draft(let words): drafts.append(words)
     case .token(let token): tokens.append(token)
     case .done: completed = true
     case .recovered(let receipt): recovered = receipt.confirms(rid)
     case .accepted, .details, .voice: break
     }
    }
-   if path == "success" {precondition(failures.isEmpty && completed && tokens == ["An inert answer."])}
+   if path == "success" {precondition(failures.isEmpty && completed && tokens == ["An inert answer."] && drafts.isEmpty)}
+   else if path == "drafts" {precondition(failures.isEmpty && completed && drafts == ["Half an","Half an inert",""] && tokens == ["An inert answer."])}
    else if path.hasPrefix("recover") {precondition(recovered && failures.isEmpty)}
    else {
     precondition(failures.count == 1 && !completed && tokens.isEmpty)
@@ -332,7 +354,8 @@ struct LiveHarness {
 for key, value in {
     '__MODELS__': models, '__CONTEXT__': context,
     '__FAILURE__': (root / 'Alicia/Core/ChatDelivery.swift').read_text(),
-    '__DRAFTS__': (root / 'Alicia/Core/SurfaceContext.swift').read_text(),
+    # This fixture needs the storage, not observation, and the macro plugin is unavailable in the contained gate.
+    '__DRAFTS__': (root / 'Alicia/Core/SurfaceContext.swift').read_text().replace('@Observable', ''),
     '__OPEN__': opening, '__SEND__': sending, '__STREAM__': streaming,
     '__SHEET_SEND__': sheet_send,
 }.items():

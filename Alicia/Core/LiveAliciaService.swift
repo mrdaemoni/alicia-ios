@@ -408,7 +408,7 @@ struct LiveAliciaService: AliciaService {
         AsyncStream { continuation in
             let task = Task {
                 do {
-                    var payload: [String: Any] = ["text": prompt, "voice": voice, "recording_id": recordingID, "request_id": requestID]
+                    var payload: [String: Any] = ["text": prompt, "voice": voice, "recording_id": recordingID, "request_id": requestID, "drafts": true]
                     if let workContext { payload["work_context"] = workContext.wire }
                     if let surfaceContext { payload["surface_context"] = surfaceContext.wire }
                     let body = try JSONSerialization.data(withJSONObject: payload)
@@ -441,6 +441,7 @@ struct LiveAliciaService: AliciaService {
                            UUID(uuidString: accepted) == UUID(uuidString: requestID) {
                             continuation.yield(.accepted(accepted))
                         }
+                        if let draft = event.draft { continuation.yield(.draft(draft)) }
                         if let t = event.t { continuation.yield(.token(t)) }
                         if let id = event.reply_id { continuation.yield(.details(id)) }
                         if let v = event.voice, let url = mediaURL(v) {
@@ -497,6 +498,7 @@ struct LiveAliciaService: AliciaService {
 
     private struct WireEvent: Decodable {
         var accepted: String?
+        var draft: String?
         var t: String?
         var voice: String?
         var done: Bool?
