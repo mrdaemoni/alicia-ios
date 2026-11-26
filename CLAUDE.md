@@ -459,6 +459,7 @@ working route. Endpoint inventory (current and retained compatibility surfaces):
 | `GET /api/playlists` · `POST /api/playlist` | Studio's listening queues (create/rename/delete/add/remove/reorder); adding also renders that piece's audio so a queue is warm before he drives |
 | `GET /api/stories/<id>.m4a` | the Scaleofus original scored stories in Studio's story queue (allowlisted ids, Range playback) |
 | `GET /api/morning_briefing/audio/<id>.m4a` | the briefing's legacy single-track audio (Range) |
+| `GET /api/day_episodes` · `GET /api/day_episodes/audio/<id>` | Afternoon and Evening with Alicia (backend CL-20261125-day-episodes): today's two long-form episodes, read-only, and their measured audio (Range). They also arrive as `alicia_day_episode` notes in their own Studio playlists. See the backend `docs/DAY_EPISODES.md` |
 | `GET /api/audio/<file>` · `/api/voice/<file>` · `/api/drawing/<file>` | media byte-servers for episode audio, her voice notes and drawings (`?token=`) |
 | `POST /api/cocreate` (base64 PNG + size + anchor, 120 s timeout) | canvas co-creation: she draws from where the pencil stopped, returns an overlay layer + caption |
 | `POST /api/complement` (base64 PNG, 120 s timeout) | drawing reply w/ vision — superseded by cocreate in the UI; `requestComplement` is currently unused |
