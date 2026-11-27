@@ -935,6 +935,25 @@ struct LiveAliciaService: AliciaService {
         return briefing
     }
 
+    /// CL-20261126-us-day-episodes. Not a connection probe: the morning read
+    /// already reports reachability, so one failed card never raises the banner.
+    func dayEpisodes() async -> DayEpisodes? {
+        guard var value: DayEpisodes = await fetchOne("/api/day_episodes", reportsConnection: false) else { return nil }
+        for index in value.episodes.indices {
+            var episode = value.episodes[index]
+            if !episode.audio_url.isEmpty { episode.audio_url = mediaURL(episode.audio_url)?.absoluteString ?? "" }
+            let speech = episode.speech
+            episode.speechChunks = (speech?.chunks ?? []).compactMap { chunk in
+                guard let url = mediaURL(chunk.url) else { return nil }
+                return SpeechChunk(url: url, duration: chunk.duration ?? 0, text: chunk.text ?? "",
+                    cues: chunk.cues ?? [], timingStatus: chunk.timing_status ?? speech?.timing_status ?? "unavailable",
+                    spokenText: speech?.spoken_text ?? "", speechBackend: chunk.speech_backend ?? speech?.speech_backend ?? "")
+            }
+            value.episodes[index] = episode
+        }
+        return value
+    }
+
     func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult {
         var req = request("/api/morning_briefing/" + endpoint.rawValue, method: "POST", body: body)
         req.timeoutInterval = 10

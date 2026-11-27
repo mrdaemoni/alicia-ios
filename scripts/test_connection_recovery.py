@@ -89,11 +89,11 @@ __LIVE__
 }
 @MainActor final class FakeService {
  var probeOK=false, holdProbe=false, holdMode=false, holdSave=false
- var probes=0, modes=0, briefings=0, episodes=0, saves=0
+ var probes=0, modes=0, briefings=0, episodes=0, days=0, saves=0
  var probeWait:CheckedContinuation<Bool,Never>?
  var modeWait:CheckedContinuation<IntelligenceModeState?,Never>?
  var saveWait:CheckedContinuation<IntelligenceModeState?,Never>?
- var modeValue:IntelligenceModeState?, briefingValue:String?, episodeValue:String?
+ var modeValue:IntelligenceModeState?, briefingValue:String?, episodeValue:String?, daysValue:String?
  func probeConnection() async -> Bool {
   probes += 1
   if holdProbe {return await withCheckedContinuation {probeWait=$0}}
@@ -111,6 +111,7 @@ __LIVE__
  }
  func morningBriefing() async -> String? {briefings += 1; return briefingValue}
  func episodeDay(day:String) async -> String? {episodes += 1; return episodeValue}
+ func dayEpisodes() async -> String? {days += 1; return daysValue}
 }
 @MainActor final class StoreHarness {
  let service=FakeService()
@@ -118,11 +119,12 @@ __LIVE__
  var intelligenceModeSaving=false, intelligenceModeError="Previous failure"
  var intelligenceModeRevision=0
  var connectionRecoveryTask:Task<Void,Never>?
- var morningBriefing:String?, episodeDay:String?
+ var morningBriefing:String?, episodeDay:String?, dayEpisodes:String?
  var morningBriefingRefreshing=false
  let isMock=false
  var selectedSection="studio", draft="Unsent exact words", outbox=["immutable receipt"]
  func acceptEpisodeDay(_ value:String) {episodeDay=value}
+ func acceptDayEpisodes(_ value:String) {dayEpisodes=value}
  func syncThoughtReturn() async {}
 __STORE__
 }
@@ -154,28 +156,28 @@ __STORE__
   print("HTTP: exhausted failure,401/403,malformed and wrong-shape200 cannot recover; subsequent valid authenticated mode does.")
 
   let h=StoreHarness()
-  h.intelligenceMode = .localPreview;h.morningBriefing="Retained reading";h.episodeDay="Retained topic"
+  h.intelligenceMode = .localPreview;h.morningBriefing="Retained reading";h.episodeDay="Retained topic";h.dayEpisodes="Retained episodes"
   await h.reprobeConnection()
-  precondition(h.service.probes==1 && h.service.modes==0 && h.service.briefings==0 && h.service.episodes==0)
+  precondition(h.service.probes==1 && h.service.modes==0 && h.service.briefings==0 && h.service.episodes==0 && h.service.days==0)
   precondition(h.intelligenceMode == .localPreview && h.intelligenceModeError == "Previous failure")
-  precondition(h.morningBriefing == "Retained reading" && h.episodeDay == "Retained topic")
+  precondition(h.morningBriefing == "Retained reading" && h.episodeDay == "Retained topic" && h.dayEpisodes == "Retained episodes")
 
   h.service.probeOK=true;h.service.modeValue = .localPreview
-  h.service.briefingValue="Recovered reading";h.service.episodeValue="Recovered topic"
+  h.service.briefingValue="Recovered reading";h.service.episodeValue="Recovered topic";h.service.daysValue="Recovered episodes"
   h.morningBriefingRefreshing=true // an old failing page request still owns this flag
   await h.reprobeConnection()
   precondition(h.intelligenceMode.isLocalFirst && h.intelligenceModeError.isEmpty)
-  precondition(h.morningBriefing == "Recovered reading" && h.episodeDay == "Recovered topic")
+  precondition(h.morningBriefing == "Recovered reading" && h.episodeDay == "Recovered topic" && h.dayEpisodes == "Recovered episodes")
   precondition(h.morningBriefingRefreshing, "Recovery must not clear another page load's busy flag")
-  precondition(h.service.modes==1 && h.service.briefings==1 && h.service.episodes==1 && h.service.saves==0)
+  precondition(h.service.modes==1 && h.service.briefings==1 && h.service.episodes==1 && h.service.days==1 && h.service.saves==0)
   precondition(h.selectedSection == "studio" && h.draft == "Unsent exact words" && h.outbox == ["immutable receipt"])
 
-  h.service.modeValue=nil;h.service.briefingValue=nil;h.service.episodeValue=nil
+  h.service.modeValue=nil;h.service.briefingValue=nil;h.service.episodeValue=nil;h.service.daysValue=nil
   await h.reprobeConnection()
   precondition(h.intelligenceMode.isLocalFirst && !h.intelligenceModeError.isEmpty)
-  precondition(h.morningBriefing == "Recovered reading" && h.episodeDay == "Recovered topic")
+  precondition(h.morningBriefing == "Recovered reading" && h.episodeDay == "Recovered topic" && h.dayEpisodes == "Recovered episodes")
   precondition(h.connectionRecoveryTask == nil)
-  print("Store: failed then recovered reads reload all three home fields; nil refreshes retain data, drafts, navigation and spending settings.")
+  print("Store: failed then recovered reads reload all four home fields; nil refreshes retain data, drafts, navigation and spending settings.")
 
   let c=StoreHarness();c.service.holdProbe=true
   let callers=(0..<12).map {_ in Task {await c.reprobeConnection()}}
@@ -183,7 +185,7 @@ __STORE__
   await settle();precondition(c.service.probes==1)
   c.service.probeWait?.resume(returning:true)
   for caller in callers {await caller.value}
-  precondition(c.service.modes==1 && c.service.briefings==1 && c.service.episodes==1)
+  precondition(c.service.modes==1 && c.service.briefings==1 && c.service.episodes==1 && c.service.days==1)
   precondition(c.connectionRecoveryTask == nil)
   c.service.holdProbe=false;c.service.probeOK=true
   await c.reprobeConnection()

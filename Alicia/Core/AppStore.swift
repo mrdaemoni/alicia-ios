@@ -851,6 +851,37 @@ final class AppStore {
         if episodeChoiceNeedsRefresh { await refreshEpisodeDay() }
     }
 
+    // MARK: Afternoon and Evening with Alicia on Us (CL-20261126-us-day-episodes)
+
+    var dayEpisodes: [DayEpisode] = []
+    var dayEpisodesRefreshing = false
+
+    func refreshDayEpisodes() async {
+        guard !dayEpisodesRefreshing else { return }
+        dayEpisodesRefreshing = true
+        defer { dayEpisodesRefreshing = false }
+        if let fresh = await service.dayEpisodes() { acceptDayEpisodes(fresh) }
+    }
+
+    func acceptDayEpisodes(_ value: DayEpisodes) { dayEpisodes = value.episodes }
+
+    var currentDayEpisodeID: String? {
+        guard let id = reader.current?.stableID, id.hasPrefix("day:") else { return nil }
+        return String(id.dropFirst("day:".count))
+    }
+
+    var playingDayEpisodeID: String? { reader.isSpeaking ? currentDayEpisodeID : nil }
+
+    /// The same reading as its Studio playlist item (`day:<id>`), so starting it
+    /// in one place and pausing it in the other is one reading. The morning's
+    /// BriefingStage and steering stay the morning's own.
+    func toggleDayEpisode(_ episode: DayEpisode) {
+        guard episode.hasPlayableAudio, let url = URL(string: episode.audio_url) else { return }
+        readAloud(Readable(title: episode.title, body: episode.text, kind: "note",
+            speechChunks: episode.speechChunks.isEmpty ? [SpeechChunk(url: url, duration: episode.duration)] : episode.speechChunks,
+            speechDuration: episode.duration, stableID: episode.readingID))
+    }
+
     // MARK: playlists — the listening queues (Studio)
 
     var morningBriefing: MorningBriefing?
@@ -1006,6 +1037,7 @@ final class AppStore {
     func load() async {
         Task { await refreshPresence() }
         Task { await refreshMorningBriefing() }
+        Task { await refreshDayEpisodes() }
         Task { await refreshStudyNote() }
         briefingSteering.flush()
         Task { await collaboration.load() }
@@ -1459,9 +1491,11 @@ final class AppStore {
             // waiting. Do not skip a recovered reading behind its busy flag.
             async let briefing = self.service.morningBriefing()
             async let episode = self.service.episodeDay(day: "")
-            let (_, freshBriefing, freshEpisode) = await (mode, briefing, episode)
+            async let days = self.service.dayEpisodes()
+            let (_, freshBriefing, freshEpisode, freshDays) = await (mode, briefing, episode, days)
             if let freshBriefing { self.morningBriefing = freshBriefing }
             if let freshEpisode { self.acceptEpisodeDay(freshEpisode) }
+            if let freshDays { self.acceptDayEpisodes(freshDays) }
         }
         connectionRecoveryTask = task
         await task.value
