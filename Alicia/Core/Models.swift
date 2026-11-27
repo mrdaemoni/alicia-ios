@@ -126,7 +126,8 @@ struct Playlist: Identifiable, Hashable {
             Readable(title: title, body: body, kind: kind,
                      speechChunks: speechChunks, speechDuration: duration,
                      episodeID: kind == "episode" ? source : nil,
-                     stableID: source == "alicia_morning_briefing" ? "morning:" + id : source == "scaleofus_original" ? "story:" + id : nil)
+                     stableID: source == "alicia_morning_briefing" ? "morning:" + id : source == "scaleofus_original" ? "story:" + id
+                        : source == "alicia_day_episode" ? "day:" + id : nil)
         }
     }
 

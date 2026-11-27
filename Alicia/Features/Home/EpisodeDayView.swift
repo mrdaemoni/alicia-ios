@@ -38,6 +38,24 @@ struct EpisodeHomeView: View {
                         // (build 35 on the phone, 2026-09-27).
                         onOpenPlaylist: { briefingPlaylistID = $0 },
                         onRefresh: { Task { await store.reprobeConnection() } })
+                    // CL-20261126-us-day-episodes: the afternoon and evening follow
+                    // the morning here as well as in their Studio playlists. Only
+                    // today's, even if Us stays open past midnight.
+                    if !store.dayEpisodes.isEmpty {
+                        TimelineView(.periodic(from: .now, by: 60)) { clock in
+                            VStack(alignment: .leading, spacing: 26) {
+                                ForEach(store.dayEpisodes.filter { $0.isToday(clock.date) }) { episode in
+                                    DayEpisodeView(episode: episode,
+                                        playingEpisodeID: store.playingDayEpisodeID,
+                                        loadingEpisodeID: store.reader.isLoadingMedia ? store.currentDayEpisodeID : nil,
+                                        failedEpisodeID: store.reader.failure != nil ? store.currentDayEpisodeID : nil,
+                                        playbackError: store.reader.failure,
+                                        onTogglePlayback: store.toggleDayEpisode,
+                                        onOpenPlaylist: { briefingPlaylistID = $0 })
+                                }
+                            }
+                        }
+                    }
                     MindBodyOverview()
                     // Option A (CL-20260918-context-graph-behaviours): his situation,
                     // above the goals, opening into the room with the whole graph.
@@ -68,11 +86,11 @@ struct EpisodeHomeView: View {
                 .padding(22)
                 .padding(.bottom, 20)
             }
-            .task { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.refreshStudyNote(); await store.bodyStore.refresh() }
+            .task { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.refreshDayEpisodes(); await store.refreshStudyNote(); await store.bodyStore.refresh() }
             // The graph and its elevation load on their own task so a slow body
             // refresh never holds the section back.
             .task { await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
-            .refreshable { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.refreshStudyNote(); await store.refreshEpisodeDay(); await store.bodyStore.refresh(); await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
+            .refreshable { await store.refreshIntelligenceMode(); await store.refreshMorningBriefing(); await store.refreshDayEpisodes(); await store.refreshStudyNote(); await store.refreshEpisodeDay(); await store.bodyStore.refresh(); await store.refreshContextGraph(); await store.refreshContextArrangement(); await store.refreshContextElevation() }
             .presenceBackground(.us, store: store)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(item: $briefingPlaylistID) { PlaylistDetailView(playlistID: $0) }

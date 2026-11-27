@@ -120,6 +120,8 @@ protocol AliciaService {
     func saveBodyEvent(_ event: BodyEvent) async -> BodySaveResult?
     func episodeReading(episodeID: String, prepare: Bool) async -> SpeechStatus
     func morningBriefing() async -> MorningBriefing?
+    /// Afternoon and Evening with Alicia for Us (CL-20261126-us-day-episodes). Read-only.
+    func dayEpisodes() async -> DayEpisodes?
     func briefingFeedback(_ mutation: BriefingFeedbackMutation) async -> BriefingFeedbackResult?
     /// Steer, receipt or Landed / Didn't land for the steerable briefing.
     func morningBriefingPost(_ endpoint: BriefingEndpoint, body: Data) async -> BriefingPostResult
@@ -292,6 +294,12 @@ extension AliciaService {
         if ProcessInfo.processInfo.arguments.contains("--morning-briefing-preview") {
             return await MorningBriefingPreview.value
         }
+#endif
+        return nil
+    }
+    func dayEpisodes() async -> DayEpisodes? {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--day-episodes-preview") { return DayEpisodesPreview.value }
 #endif
         return nil
     }

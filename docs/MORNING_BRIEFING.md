@@ -174,3 +174,24 @@ end check and never does. Contract and playback: `docs/STEERABLE_BRIEFING.md`.
 Since TestFlight 1.0 (49), starting the briefing opens a full-screen room with
 her particle field and no text; the reading bar's FULL SCREEN reopens it. The
 card looks as before. Steering shipped in builds 47–49 and is in iOS main.
+
+## November 26 — the afternoon and evening on Us
+
+Afternoon and Evening with Alicia (backend CL-20261125-day-episodes) follow the
+morning card on Us as two sections of their own (CL-20261126-us-day-episodes):
+
+- A ready episode's title plays it, with its measured duration. "Read it" opens
+  the full text, any error and its sources. "Its playlist" opens the Studio
+  playlist inside Us.
+- Before its start the slot shows only "Prepared from" the configured time.
+  While it is being prepared, or after a failure, it shows the backend's own
+  status or error.
+- `GET /api/day_episodes` supplies them, with `speech` when a complete cached
+  reading of the same words exists. Without one the measured file plays alone.
+- The Us card and the Studio item share the reader id `day:<id>`, so they are one
+  reading. There is no feedback, steering or full-screen room for these; those
+  stay the morning's.
+- Only today's episodes show, even if Us stays open past midnight.
+- They refresh with the morning: when Us appears, on pull to refresh and on
+  connection recovery.
+- Fixture: `--day-episodes-preview` (invented text; this repo is public).
